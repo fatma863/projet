@@ -1,10 +1,40 @@
 import { useAuth } from '../../contexts/AuthContext';
+import { useEffect } from 'react';
 import { Bell, LogOut, User, Menu } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import api from '../../lib/api';
+import { getEcho } from '../../lib/echo';
 
 export default function Topbar({ onMenuClick }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.get('/notifications?per_page=20').then((r) => r.data),
+    staleTime: 30000,
+  });
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    const echo = getEcho();
+    const channel = echo.private(`user.${user.id}`);
+
+    channel.listen('.notification.created', () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    });
+    channel.listen('.notification.updated', () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    });
+
+    return () => {
+      echo.leave(`private-user.${user.id}`);
+    };
+  }, [queryClient, user?.id]);
+
+  const notifications = data?.notifications || data?.data || [];
+  const unreadCount = data?.unread_count ?? notifications.filter((n) => !n.read_at).length;
 
   const handleLogout = async () => {
     await logout();
@@ -31,6 +61,11 @@ export default function Topbar({ onMenuClick }) {
           className="relative rounded-md p-2 hover:bg-accent transition-colors"
         >
           <Bell size={20} className="text-muted-foreground" />
+          {unreadCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[10px] font-semibold text-primary-foreground">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
         </button>
 
         <div className="flex items-center gap-3">

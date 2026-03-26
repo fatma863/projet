@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../lib/api';
+import { disconnectEcho } from '../lib/echo';
 
 const AuthContext = createContext(null);
 
@@ -22,6 +23,7 @@ export function AuthProvider({ children }) {
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
     } catch {
+      disconnectEcho();
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       setUser(null);
@@ -35,6 +37,7 @@ export function AuthProvider({ children }) {
   }, [fetchUser]);
 
   const login = async (email, password) => {
+    disconnectEcho();
     const { data } = await api.post('/auth/login', { email, password });
     localStorage.setItem('token', data.token);
     const userData = data.user;
@@ -44,6 +47,7 @@ export function AuthProvider({ children }) {
   };
 
   const register = async (name, email, password, password_confirmation) => {
+    disconnectEcho();
     const { data } = await api.post('/auth/register', {
       name, email, password, password_confirmation,
     });
@@ -60,6 +64,7 @@ export function AuthProvider({ children }) {
     } catch {
       // ignore
     }
+    disconnectEcho();
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);

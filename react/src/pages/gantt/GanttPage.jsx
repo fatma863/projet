@@ -97,14 +97,46 @@ function GanttChart({ tasks }) {
     return { minDate: min, maxDate: max, totalDays, months };
   }, [tasks]);
 
-  const getBarStyle = (task) => {
+  const taskRows = useMemo(() => tasks.map((task, index) => ({ ...task, rowIndex: index })), [tasks]);
+  const byId = useMemo(() => {
+    const map = new Map();
+    taskRows.forEach((t) => map.set(t.id, t));
+    return map;
+  }, [taskRows]);
+
+  const getBarMetrics = (task) => {
     if (!task.start || !task.end) return null;
     const startOffset = (new Date(task.start).getTime() - minDate) / 86400000;
-    const duration = Math.max(1, (new Date(task.end).getTime() - new Date(task.start).getTime()) / 86400000);
+    const duration = Math.max(1, (new Date(task.end).getTime() - new Date(task.start).getTime()) / 86400000 + 1);
     const left = (startOffset / totalDays) * 100;
     const width = (duration / totalDays) * 100;
-    return { left: `${left}%`, width: `${width}%` };
+    return { left, width };
   };
+
+  const dependencies = useMemo(() => {
+    const lines = [];
+    taskRows.forEach((task) => {
+      const to = getBarMetrics(task);
+      if (!to || !task.dependencies?.length) return;
+      task.dependencies.forEach((dep) => {
+        const fromTask = byId.get(dep.id);
+        const from = fromTask ? getBarMetrics(fromTask) : null;
+        if (!from || !fromTask) return;
+        lines.push({
+          key: `${dep.id}-${task.id}-${dep.type}`,
+          x1: from.left + from.width,
+          y1: fromTask.rowIndex * 36 + 18,
+          x2: to.left,
+          y2: task.rowIndex * 36 + 18,
+          critical: task.is_critical && fromTask.is_critical,
+        });
+      });
+    });
+    return lines;
+  }, [taskRows, byId, minDate, totalDays]);
+
+  const rowHeight = 36;
+  const chartHeight = taskRows.length * rowHeight;
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border bg-card">
@@ -123,8 +155,24 @@ function GanttChart({ tasks }) {
 
       {/* Rows */}
       <div>
-        {tasks.map((task) => {
-          const barStyle = getBarStyle(task);
+        <div className="relative">
+          <svg className="pointer-events-none absolute left-56 right-0 top-0 z-10" style={{ height: `${chartHeight}px` }}>
+            {dependencies.map((line) => (
+              <line
+                key={line.key}
+                x1={`${line.x1}%`}
+                y1={line.y1}
+                x2={`${line.x2}%`}
+                y2={line.y2}
+                stroke={line.critical ? '#dc2626' : '#64748b'}
+                strokeWidth={line.critical ? 2.5 : 1.5}
+                strokeDasharray={line.critical ? '0' : '4 3'}
+              />
+            ))}
+          </svg>
+
+          {taskRows.map((task) => {
+          const metrics = getBarMetrics(task);
           return (
             <div key={task.id} className="flex border-b border-border last:border-0">
               {/* Task name */}
@@ -140,14 +188,16 @@ function GanttChart({ tasks }) {
 
               {/* Bar area */}
               <div className="relative flex-1 py-2" style={{ minHeight: '36px' }}>
-                {barStyle ? (
+                {metrics ? (
                   <div
-                    className="absolute top-2 h-6 rounded"
+                    className={`absolute top-2 z-20 h-6 rounded ${task.is_critical ? 'ring-2 ring-red-600 ring-offset-1' : ''}`}
                     style={{
-                      ...barStyle,
-                      backgroundColor: PRIORITY_COLORS[task.priority] || '#6366f1',
+                      left: `${metrics.left}%`,
+                      width: `${metrics.width}%`,
+                      backgroundColor: task.is_critical ? '#dc2626' : (PRIORITY_COLORS[task.priority] || '#6366f1'),
                       opacity: 0.85,
                     }}
+                    title={task.is_critical ? 'Chemin critique' : undefined}
                   >
                     {/* Progress fill */}
                     {task.progress > 0 && (
@@ -167,19 +217,11 @@ function GanttChart({ tasks }) {
                   </div>
                 )}
 
-                {/* Dependency arrows rendered as simple markers */}
-                {task.dependencies?.map((dep) => (
-                  <div
-                    key={dep.id}
-                    className="absolute top-1 h-1 w-1 rounded-full bg-muted-foreground"
-                    style={{ left: '0%' }}
-                    title={`Dépend de tâche #${dep.id} (${dep.type})`}
-                  />
-                ))}
               </div>
             </div>
           );
         })}
+        </div>
       </div>
 
       {/* Legend */}
@@ -190,6 +232,10 @@ function GanttChart({ tasks }) {
             {key === 'low' ? 'Basse' : key === 'medium' ? 'Moyenne' : key === 'high' ? 'Haute' : 'Urgente'}
           </div>
         ))}
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="h-3 w-3 rounded bg-red-600" />
+          Chemin critique
+        </div>
       </div>
     </div>
   );

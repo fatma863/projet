@@ -29,38 +29,18 @@ class AssignmentOptimizerService
         }
 
         $scored = $candidates->map(function (User $user) use ($task, $project) {
-            $scores = [];
-
-            // 1. Workload score (lower workload = higher score)
             $workloadScore = $this->workloadScore($user, $project);
-            $scores['workload'] = $workloadScore;
-
-            // 2. Skill match score
-            $skillScore = $this->skillMatchScore($user, $task);
-            $scores['skill_match'] = $skillScore;
-
-            // 3. Experience score (completed similar tasks in this project)
-            $experienceScore = $this->experienceScore($user, $task);
-            $scores['experience'] = $experienceScore;
-
-            // 4. Availability score (capacity vs current allocation)
-            $availabilityScore = $this->availabilityScore($user);
-            $scores['availability'] = $availabilityScore;
-
-            // Weighted total
-            $total = round(
-                $workloadScore * 0.30 +
-                $skillScore * 0.25 +
-                $experienceScore * 0.25 +
-                $availabilityScore * 0.20,
-                1
-            );
+            $performanceScore = $this->performanceScore($user);
+            $total = round(($workloadScore * 0.55) + ($performanceScore * 0.45), 1);
 
             return [
                 'user_id'    => $user->id,
                 'name'       => $user->name,
                 'email'      => $user->email,
-                'scores'     => $scores,
+                'scores'     => [
+                    'workload' => $workloadScore,
+                    'performance' => $performanceScore,
+                ],
                 'total'      => $total,
                 'capacity_hours' => (float) $user->pivot->capacity_hours_per_week,
                 'skills'     => json_decode($user->pivot->skills ?? '[]', true),
@@ -75,12 +55,11 @@ class AssignmentOptimizerService
         $result = [
             'suggestions'  => array_slice($ranked, 0, 5),
             'best_match'   => $ranked[0] ?? null,
+            'recommended_user' => $ranked[0] ?? null,
             'confidence'   => $confidence,
             'criteria'     => [
-                'workload_weight'     => '30%',
-                'skill_match_weight'  => '25%',
-                'experience_weight'   => '25%',
-                'availability_weight' => '20%',
+                'workload_weight' => '55%',
+                'performance_weight' => '45%',
             ],
         ];
 
@@ -132,9 +111,6 @@ class AssignmentOptimizerService
         ];
     }
 
-    /**
-     * Workload: fewer active tasks = higher score.
-     */
     private function workloadScore(User $user, Project $project): float
     {
         $activeTasks = $user->assignedTasks()
@@ -142,73 +118,36 @@ class AssignmentOptimizerService
             ->count();
 
         // 0 tasks = 100, 1 = 85, 2 = 70, ... max 10+
-        return max(0, 100 - ($activeTasks * 15));
+        return max(0, 100 - ($activeTasks * 12));
     }
 
-    /**
-     * Skill match: how well user skills match task title/description keywords.
-     */
-    private function skillMatchScore(User $user, Task $task): float
+    private function performanceScore(User $user): float
     {
-        $userSkills = collect(json_decode($user->pivot->skills ?? '[]', true))
-            ->map(fn ($s) => mb_strtolower($s));
-
-        if ($userSkills->isEmpty()) {
-            return 40; // neutral when no skills defined
-        }
-
-        $taskText = mb_strtolower($task->title . ' ' . ($task->description ?? ''));
-
-        $matches = $userSkills->filter(function ($skill) use ($taskText) {
-            return str_contains($taskText, $skill);
-        })->count();
-
-        if ($matches === 0) {
-            return 20;
-        }
-
-        return min(100, 40 + ($matches / max(1, $userSkills->count())) * 60);
-    }
-
-    /**
-     * Experience: has the user completed similar tasks (same complexity range)?
-     */
-    private function experienceScore(User $user, Task $task): float
-    {
-        $completedSimilar = $user->assignedTasks()
+        $completed = $user->assignedTasks()
             ->where('progress_percent', 100)
-            ->whereBetween('complexity', [max(1, $task->complexity - 2), $task->complexity + 2])
-            ->count();
+            ->whereNotNull('estimated_hours')
+            ->where('estimated_hours', '>', 0)
+            ->get();
 
-        return min(100, $completedSimilar * 25);
-    }
-
-    /**
-     * Availability: capacity hours vs hours already allocated this week.
-     */
-    private function availabilityScore(User $user): float
-    {
-        $capacity = (float) ($user->pivot->capacity_hours_per_week ?? 40);
-
-        $allocatedHours = $user->assignedTasks()
-            ->where('progress_percent', '<', 100)
-            ->get()
-            ->sum(fn ($t) => ($t->estimated_hours ?? 8) * ($t->pivot->allocation_percent / 100));
-
-        // Weekly allocation ratio
-        $weeklyEstimate = $allocatedHours / 4; // rough month->week
-
-        if ($capacity <= 0) {
-            return 0;
+        if ($completed->isEmpty()) {
+            return 55.0;
         }
 
-        $utilizationRatio = $weeklyEstimate / $capacity;
+        $onTimeRatio = $completed->filter(function ($task) {
+            if (!$task->due_date || !$task->planned_end) {
+                return true;
+            }
+            return $task->planned_end->lessThanOrEqualTo($task->due_date);
+        })->count() / max(1, $completed->count());
 
-        if ($utilizationRatio >= 1) {
-            return 0;
-        }
+        $accuracyRatio = $completed->avg(function ($task) {
+            $actual = max(0.1, (float) $task->actual_hours);
+            $est = max(0.1, (float) $task->estimated_hours);
+            $diff = abs($actual - $est) / $est;
+            return max(0, 1 - min(1, $diff));
+        });
 
-        return round((1 - $utilizationRatio) * 100);
+        return round(min(100, ($onTimeRatio * 60 + $accuracyRatio * 40) * 100), 1);
     }
 
     private function calculateConfidence(array $ranked, int $teamSize): float

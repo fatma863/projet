@@ -1,13 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/api';
+import { getEcho } from '../../lib/echo';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Spinner } from '../../components/ui/Spinner';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Bell, Check, CheckCheck } from 'lucide-react';
+import { useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications'],
@@ -24,8 +28,44 @@ export default function NotificationsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
-  const notifications = data?.data || [];
-  const unreadCount = notifications.filter((n) => !n.read_at).length;
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    const echo = getEcho();
+    const channel = echo.private(`user.${user.id}`);
+
+    channel.listen('.notification.created', (payload) => {
+      if (!payload.notification) return;
+      queryClient.setQueryData(['notifications'], (current) => {
+        const prev = current || {};
+        const existing = prev.notifications || prev.data || [];
+        if (existing.some((n) => n.id === payload.notification.id)) return prev;
+        return {
+          ...prev,
+          notifications: [payload.notification, ...existing],
+          unread_count: payload.unread_count ?? (prev.unread_count || 0) + 1,
+        };
+      });
+    });
+
+    channel.listen('.notification.updated', (payload) => {
+      if (!payload.notification) return;
+      queryClient.setQueryData(['notifications'], (current) => {
+        const prev = current || {};
+        const existing = prev.notifications || prev.data || [];
+        return {
+          ...prev,
+          notifications: existing.map((n) => (n.id === payload.notification.id ? payload.notification : n)),
+        };
+      });
+    });
+
+    return () => {
+      echo.leave(`private-user.${user.id}`);
+    };
+  }, [queryClient, user?.id]);
+
+  const notifications = data?.notifications || data?.data || [];
+  const unreadCount = data?.unread_count ?? notifications.filter((n) => !n.read_at).length;
 
   return (
     <div className="space-y-6">

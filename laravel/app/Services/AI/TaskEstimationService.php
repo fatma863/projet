@@ -4,14 +4,10 @@ namespace App\Services\AI;
 
 use App\Models\AiRecommendation;
 use App\Models\Task;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 
 class TaskEstimationService
 {
-    /**
-     * Estimate hours and duration for a task based on historical data
-     * from similar tasks (same project, similar complexity/priority).
-     */
     public function estimate(Task $task): array
     {
         $input = [
@@ -22,72 +18,44 @@ class TaskEstimationService
             'project_id' => $task->project_id,
         ];
 
-        // Find completed similar tasks in the same project
-        $similarTasks = Task::where('project_id', $task->project_id)
+        $completed = Task::query()
             ->where('id', '!=', $task->id)
             ->where('progress_percent', 100)
-            ->whereNotNull('actual_hours')
-            ->where('actual_hours', '>', 0)
+            ->whereNotNull('planned_start')
+            ->whereNotNull('planned_end')
             ->get();
 
-        // Also gather tasks from all projects for broader sample
-        $allCompleted = Task::where('id', '!=', $task->id)
-            ->where('progress_percent', 100)
-            ->whereNotNull('actual_hours')
-            ->where('actual_hours', '>', 0)
-            ->get();
+        $sameProject = $completed->where('project_id', $task->project_id);
+        $similar = $this->similarTasks($task, $completed);
+        $similarProject = $similar->where('project_id', $task->project_id);
 
-        $confidence = 0.3; // Base confidence
-        $estimatedHours = null;
-        $estimatedDays = null;
-        $method = 'default';
+        $pool = $similarProject->count() >= 2
+            ? $similarProject
+            : ($similar->count() >= 3 ? $similar : $sameProject);
 
-        // Strategy 1: Same complexity in same project (highest confidence)
-        $sameComplexity = $similarTasks->where('complexity', $task->complexity);
-        if ($sameComplexity->count() >= 2) {
-            $estimatedHours = round($sameComplexity->avg('actual_hours'), 1);
-            $confidence = min(0.9, 0.6 + ($sameComplexity->count() * 0.05));
-            $method = 'same_complexity_same_project';
-        }
-        // Strategy 2: Same complexity across all projects
-        elseif ($allCompleted->where('complexity', $task->complexity)->count() >= 2) {
-            $pool = $allCompleted->where('complexity', $task->complexity);
-            $estimatedHours = round($pool->avg('actual_hours'), 1);
-            $confidence = min(0.75, 0.45 + ($pool->count() * 0.03));
-            $method = 'same_complexity_all_projects';
-        }
-        // Strategy 3: Same priority in same project
-        elseif ($similarTasks->where('priority', $task->priority)->count() >= 2) {
-            $pool = $similarTasks->where('priority', $task->priority);
-            $estimatedHours = round($pool->avg('actual_hours'), 1);
-            $confidence = min(0.65, 0.4 + ($pool->count() * 0.03));
-            $method = 'same_priority_same_project';
-        }
-        // Strategy 4: Global average scaled by complexity
-        elseif ($allCompleted->count() >= 3) {
-            $globalAvg = $allCompleted->avg('actual_hours');
-            $complexityFactor = $this->complexityFactor($task->complexity);
-            $estimatedHours = round($globalAvg * $complexityFactor, 1);
-            $confidence = 0.35;
-            $method = 'global_average_scaled';
-        }
-        // Fallback: Complexity-based default
-        else {
-            $estimatedHours = $this->defaultEstimate($task->complexity);
-            $confidence = 0.2;
-            $method = 'complexity_default';
-        }
-
-        // Estimate days (assuming 6h productive per day)
-        $estimatedDays = max(1, round($estimatedHours / 6, 1));
+        $estimatedHours = $this->estimateHoursFromPool($task, $pool);
+        $avgCompletionDays = round(max(1, $pool->avg(fn ($t) => $this->completionDays($t))), 1);
+        $estimatedDurationDays = max(1, round(($avgCompletionDays + ($estimatedHours / 6)) / 2, 1));
+        $confidence = $this->confidenceFromPool($pool);
+        $method = $pool === $similarProject
+            ? 'similar_tasks_same_project'
+            : ($pool === $similar ? 'similar_tasks_global' : 'project_historical_average');
 
         $result = [
             'estimated_hours' => $estimatedHours,
-            'estimated_days'  => $estimatedDays,
+            'estimated_days'  => $estimatedDurationDays,
+            'estimated_duration' => $estimatedDurationDays.' days',
+            'average_completion_time_days' => $avgCompletionDays,
             'confidence'      => round($confidence, 2),
             'method'          => $method,
-            'sample_size'     => $this->getSampleSize($method, $task, $similarTasks, $allCompleted),
-            'comparable_range' => $this->getRange($method, $task, $similarTasks, $allCompleted),
+            'sample_size'     => $pool->count(),
+            'comparable_tasks' => $pool->take(5)->map(fn ($t) => [
+                'id' => $t->id,
+                'title' => $t->title,
+                'actual_hours' => (float) ($t->actual_hours ?? 0),
+                'completion_days' => $this->completionDays($t),
+            ])->values(),
+            'comparable_range' => $this->getRange($pool),
         ];
 
         // Save recommendation
@@ -103,50 +71,46 @@ class TaskEstimationService
         return $result;
     }
 
-    private function complexityFactor(int $complexity): float
+    private function similarTasks(Task $target, Collection $tasks): Collection
     {
-        // Scale: complexity 1-10, factor 0.3x to 3.0x
-        return match(true) {
-            $complexity <= 2 => 0.4,
-            $complexity <= 4 => 0.7,
-            $complexity <= 6 => 1.0,
-            $complexity <= 8 => 1.6,
-            default => 2.5,
-        };
+        $targetTokens = $this->tokens($target->title.' '.($target->description ?? ''));
+
+        return $tasks->filter(function (Task $candidate) use ($target, $targetTokens) {
+            $complexityClose = abs((int) $candidate->complexity - (int) $target->complexity) <= 2;
+            $samePriority = $candidate->priority === $target->priority;
+            $candidateTokens = $this->tokens($candidate->title.' '.($candidate->description ?? ''));
+            $tokenOverlap = $targetTokens->intersect($candidateTokens)->count();
+
+            return $complexityClose || $samePriority || $tokenOverlap >= 2;
+        })->values();
     }
 
-    private function defaultEstimate(int $complexity): float
+    private function estimateHoursFromPool(Task $task, Collection $pool): float
     {
-        return match(true) {
-            $complexity <= 2 => 4,
-            $complexity <= 4 => 8,
-            $complexity <= 6 => 16,
-            $complexity <= 8 => 32,
-            default => 60,
-        };
+        if ($pool->isEmpty()) {
+            return $this->defaultEstimate((int) $task->complexity);
+        }
+
+        $values = $pool->pluck('actual_hours')->filter()->map(fn ($v) => (float) $v)->sort()->values();
+        if ($values->isEmpty()) {
+            return $this->defaultEstimate((int) $task->complexity);
+        }
+
+        $mid = (int) floor(($values->count() - 1) / 2);
+        $median = $values->count() % 2 === 0
+            ? ($values[$mid] + $values[$mid + 1]) / 2
+            : $values[$mid];
+
+        return round($median, 1);
     }
 
-    private function getSampleSize(string $method, Task $task, $similar, $all): int
+    private function confidenceFromPool(Collection $pool): float
     {
-        return match($method) {
-            'same_complexity_same_project' => $similar->where('complexity', $task->complexity)->count(),
-            'same_complexity_all_projects' => $all->where('complexity', $task->complexity)->count(),
-            'same_priority_same_project'   => $similar->where('priority', $task->priority)->count(),
-            'global_average_scaled'        => $all->count(),
-            default => 0,
-        };
+        return min(0.95, 0.35 + ($pool->count() * 0.06));
     }
 
-    private function getRange(string $method, Task $task, $similar, $all): ?array
+    private function getRange(Collection $pool): ?array
     {
-        $pool = match($method) {
-            'same_complexity_same_project' => $similar->where('complexity', $task->complexity),
-            'same_complexity_all_projects' => $all->where('complexity', $task->complexity),
-            'same_priority_same_project'   => $similar->where('priority', $task->priority),
-            'global_average_scaled'        => $all,
-            default => collect(),
-        };
-
         if ($pool->isEmpty()) {
             return null;
         }
@@ -155,5 +119,34 @@ class TaskEstimationService
             'min' => round($pool->min('actual_hours'), 1),
             'max' => round($pool->max('actual_hours'), 1),
         ];
+    }
+
+    private function completionDays(Task $task): int
+    {
+        $start = $task->planned_start ?? $task->created_at;
+        $end = $task->planned_end ?? $task->updated_at;
+        if (!$start || !$end) {
+            return 1;
+        }
+        return max(1, $start->diffInDays($end) + 1);
+    }
+
+    private function tokens(string $text): Collection
+    {
+        return collect(preg_split('/[^a-z0-9]+/i', mb_strtolower($text)))
+            ->filter(fn ($token) => mb_strlen($token) >= 3)
+            ->unique()
+            ->values();
+    }
+
+    private function defaultEstimate(int $complexity): float
+    {
+        return match(true) {
+            $complexity <= 2 => 4.0,
+            $complexity <= 4 => 8.0,
+            $complexity <= 6 => 16.0,
+            $complexity <= 8 => 28.0,
+            default => 48.0,
+        };
     }
 }

@@ -12,6 +12,7 @@ class ProjectResource extends JsonResource
         return [
             'id' => $this->id,
             'team_id' => $this->team_id,
+            'client_id' => $this->client_id,
             'name' => $this->name,
             'code' => $this->code,
             'description' => $this->description,
@@ -20,6 +21,10 @@ class ProjectResource extends JsonResource
             'end_date' => $this->end_date?->toDateString(),
             'owner' => new UserResource($this->whenLoaded('owner')),
             'team' => new TeamResource($this->whenLoaded('team')),
+            'client' => new ClientResource($this->whenLoaded('client')),
+            'estimated_cost' => $this->estimated_cost !== null ? (float) $this->estimated_cost : null,
+            'actual_cost' => $this->actual_cost !== null ? (float) $this->actual_cost : null,
+            'cost_per_hour' => $this->cost_per_hour !== null ? (float) $this->cost_per_hour : null,
             'members' => ProjectMemberResource::collection($this->whenLoaded('members')),
             'members_count' => $this->whenCounted('members'),
             'tasks_count' => $this->whenCounted('tasks'),

@@ -2,12 +2,15 @@
 
 use App\Http\Controllers\Api\AiController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\GanttController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\SprintController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TaskStatusController;
 use App\Http\Controllers\Api\TeamController;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -23,6 +26,8 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
+    Broadcast::routes(['middleware' => ['auth:sanctum']]);
+
     // Auth
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
@@ -32,12 +37,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('teams/{team}/members', [TeamController::class, 'addMember']);
     Route::delete('teams/{team}/members/{user}', [TeamController::class, 'removeMember']);
 
-    // Projects
+    // Projects / Clients
+    Route::apiResource('clients', ClientController::class);
     Route::apiResource('projects', ProjectController::class);
     Route::get('projects/{project}/dashboard', [ProjectController::class, 'dashboard']);
+    Route::get('projects/{project}/activity', [ProjectController::class, 'activity']);
     Route::get('projects/{project}/members', [ProjectController::class, 'members']);
     Route::post('projects/{project}/members', [ProjectController::class, 'addMember']);
     Route::delete('projects/{project}/members/{user}', [ProjectController::class, 'removeMember']);
+    Route::post('projects/{project}/recalculate-costs', [ProjectController::class, 'recalculateCosts']);
+
+    // Sprints / Backlog
+    Route::get('projects/{project}/sprints', [SprintController::class, 'index']);
+    Route::post('projects/{project}/sprints', [SprintController::class, 'store']);
+    Route::post('projects/{project}/sprints/{sprint}/start', [SprintController::class, 'start']);
+    Route::post('projects/{project}/sprints/{sprint}/end', [SprintController::class, 'end']);
+    Route::get('projects/{project}/backlog', [SprintController::class, 'backlog']);
+    Route::post('projects/{project}/sprints/{sprint}/tasks/{task}', [SprintController::class, 'assignTask']);
 
     // Task Statuses (scoped to project)
     Route::get('projects/{project}/statuses', [TaskStatusController::class, 'index']);
@@ -95,5 +111,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('delay-risk/project/{project}', [AiController::class, 'delayRiskProject']);
         Route::get('suggest-assignment/{task}', [AiController::class, 'suggestAssignment']);
         Route::get('optimize-assignments/{project}', [AiController::class, 'optimizeProjectAssignments']);
+        Route::get('recommendations/project/{project}', [AiController::class, 'projectRecommendations']);
     });
 });

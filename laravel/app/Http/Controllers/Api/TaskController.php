@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\TaskCommentCreated;
+use App\Events\TaskCommentDeleted;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AttachmentResource;
 use App\Http\Resources\CommentResource;
@@ -15,6 +17,9 @@ use App\Models\Task;
 use App\Models\TaskAssignment;
 use App\Models\TaskComment;
 use App\Models\TimeEntry;
+use App\Services\ActivityLogService;
+use App\Services\MentionService;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -23,6 +28,13 @@ use Illuminate\Support\Facades\Storage;
 
 class TaskController extends Controller
 {
+    public function __construct(
+        private readonly ActivityLogService $activityLogService,
+        private readonly MentionService $mentionService,
+        private readonly NotificationService $notificationService
+    ) {
+    }
+
     // ─── CRUD ────────────────────────────────────────────
 
     public function index(Request $request, Project $project): JsonResponse
@@ -30,7 +42,7 @@ class TaskController extends Controller
         Gate::authorize('view', $project);
 
         $query = $project->tasks()
-            ->with(['status', 'creator', 'assignees', 'parent']);
+            ->with(['status', 'creator', 'assignees', 'parent', 'sprint']);
 
         if ($request->filled('status_id')) {
             $query->where('status_id', $request->status_id);
@@ -43,6 +55,12 @@ class TaskController extends Controller
         }
         if ($request->filled('parent_id')) {
             $query->where('parent_id', $request->parent_id);
+        }
+        if ($request->boolean('backlog')) {
+            $query->whereNull('sprint_id');
+        }
+        if ($request->filled('sprint_id')) {
+            $query->where('sprint_id', $request->sprint_id);
         }
         if ($request->boolean('root_only')) {
             $query->whereNull('parent_id');
@@ -83,11 +101,13 @@ class TaskController extends Controller
             'status_id'       => 'required|exists:task_statuses,id',
             'priority'        => 'sometimes|in:low,medium,high,urgent',
             'complexity'      => 'nullable|integer|min:1|max:10',
+            'story_points'    => 'nullable|integer|min:0|max:1000',
             'planned_start'   => 'nullable|date',
             'planned_end'     => 'nullable|date|after_or_equal:planned_start',
             'due_date'        => 'nullable|date',
             'estimated_hours' => 'nullable|numeric|min:0',
             'parent_id'       => 'nullable|exists:tasks,id',
+            'sprint_id'       => 'nullable|exists:sprints,id',
         ]);
 
         $maxOrder = $project->tasks()
@@ -99,6 +119,10 @@ class TaskController extends Controller
 
         $task = $project->tasks()->create($data);
         $task->load(['status', 'creator', 'assignees']);
+        $this->activityLogService->log($project, Auth::user(), 'task.created', $task, [
+            'task_title' => $task->title,
+            'status_id' => $task->status_id,
+        ]);
 
         return response()->json([
             'message' => 'Tâche créée.',
@@ -130,6 +154,7 @@ class TaskController extends Controller
             'status_id'       => 'sometimes|exists:task_statuses,id',
             'priority'        => 'sometimes|in:low,medium,high,urgent',
             'complexity'      => 'nullable|integer|min:1|max:10',
+            'story_points'    => 'nullable|integer|min:0|max:1000',
             'planned_start'   => 'nullable|date',
             'planned_end'     => 'nullable|date|after_or_equal:planned_start',
             'due_date'        => 'nullable|date',
@@ -137,11 +162,17 @@ class TaskController extends Controller
             'actual_hours'    => 'nullable|numeric|min:0',
             'progress_percent'=> 'nullable|integer|min:0|max:100',
             'parent_id'       => 'nullable|exists:tasks,id',
+            'sprint_id'       => 'nullable|exists:sprints,id',
         ]);
 
         $data['updated_by'] = Auth::id();
         $task->update($data);
         $task->load(['status', 'creator', 'assignees']);
+        $this->activityLogService->log($task->project, Auth::user(), 'task.updated', $task, [
+            'status_id' => $task->status_id,
+            'progress_percent' => $task->progress_percent,
+        ]);
+        $this->notifyDelayIfNeeded($task);
 
         return response()->json([
             'message' => 'Tâche mise à jour.',
@@ -152,7 +183,12 @@ class TaskController extends Controller
     public function destroy(Task $task): JsonResponse
     {
         Gate::authorize('delete', $task);
+        $project = $task->project;
+        $title = $task->title;
         $task->delete();
+        $this->activityLogService->log($project, Auth::user(), 'task.deleted', $task, [
+            'task_title' => $title,
+        ]);
         return response()->json(['message' => 'Tâche supprimée.']);
     }
 
@@ -178,6 +214,11 @@ class TaskController extends Controller
             'kanban_order'   => $data['kanban_order'],
             'updated_by'     => Auth::id(),
         ]);
+        $this->activityLogService->log($task->project, Auth::user(), 'task.moved', $task, [
+            'status_id' => $task->status_id,
+            'kanban_order' => $task->kanban_order,
+        ]);
+        $this->notifyDelayIfNeeded($task);
 
         return response()->json([
             'message' => 'Tâche déplacée.',
@@ -213,6 +254,14 @@ class TaskController extends Controller
                 'assigned_at'        => now(),
             ]
         );
+        $this->activityLogService->log($task->project, Auth::user(), 'task.assigned', $task, [
+            'assigned_user_id' => $data['user_id'],
+            'allocation_percent' => $assignment->allocation_percent,
+        ]);
+        $assignee = $assignment->user()->first();
+        if ($assignee && $assignee->id !== Auth::id()) {
+            $this->notificationService->notifyTaskAssigned($task, $assignee, Auth::user());
+        }
 
         return response()->json([
             'message' => 'Assignation effectuée.',
@@ -227,6 +276,9 @@ class TaskController extends Controller
         TaskAssignment::where('task_id', $task->id)
             ->where('user_id', $userId)
             ->delete();
+        $this->activityLogService->log($task->project, Auth::user(), 'task.unassigned', $task, [
+            'unassigned_user_id' => $userId,
+        ]);
 
         return response()->json(['message' => 'Désassignation effectuée.']);
     }
@@ -268,6 +320,10 @@ class TaskController extends Controller
         $task->dependencies()->syncWithoutDetaching([
             $data['depends_on_task_id'] => ['type' => $data['type'] ?? 'FS'],
         ]);
+        $this->activityLogService->log($task->project, Auth::user(), 'task.dependency_added', $task, [
+            'depends_on_task_id' => $data['depends_on_task_id'],
+            'type' => $data['type'] ?? 'FS',
+        ]);
 
         return response()->json(['message' => 'Dépendance ajoutée.'], 201);
     }
@@ -276,6 +332,9 @@ class TaskController extends Controller
     {
         Gate::authorize('update', $task);
         $task->dependencies()->detach($dependencyId);
+        $this->activityLogService->log($task->project, Auth::user(), 'task.dependency_removed', $task, [
+            'depends_on_task_id' => $dependencyId,
+        ]);
         return response()->json(['message' => 'Dépendance supprimée.']);
     }
 
@@ -307,6 +366,13 @@ class TaskController extends Controller
             'user_id' => Auth::id(),
             'body'    => $data['body'],
         ]);
+        $comment->load('user', 'task');
+        $this->activityLogService->log($task->project, Auth::user(), 'task.comment_added', $comment, [
+            'task_id' => $task->id,
+            'comment_preview' => mb_substr($comment->body, 0, 120),
+        ]);
+        $this->mentionService->notifyMentions($comment);
+        broadcast(new TaskCommentCreated($comment))->toOthers();
 
         return response()->json([
             'message' => 'Commentaire ajouté.',
@@ -323,7 +389,14 @@ class TaskController extends Controller
             abort(403);
         }
 
+        $comment->load('task');
+        $event = TaskCommentDeleted::fromComment($comment);
+        $this->activityLogService->log($task->project, Auth::user(), 'task.comment_deleted', $comment, [
+            'task_id' => $task->id,
+            'comment_id' => $comment->id,
+        ]);
         $comment->delete();
+        broadcast($event)->toOthers();
         return response()->json(['message' => 'Commentaire supprimé.']);
     }
 
@@ -422,6 +495,10 @@ class TaskController extends Controller
         $data['user_id'] = Auth::id();
 
         $entry = $task->timeEntries()->create($data);
+        $this->activityLogService->log($task->project, Auth::user(), 'task.time_added', $entry, [
+            'minutes' => $entry->minutes,
+            'date' => $entry->date,
+        ]);
 
         return response()->json([
             'message' => 'Entrée de temps ajoutée.',
@@ -438,7 +515,20 @@ class TaskController extends Controller
             abort(403);
         }
 
+        $this->activityLogService->log($task->project, Auth::user(), 'task.time_deleted', $timeEntry, [
+            'time_entry_id' => $timeEntry->id,
+        ]);
         $timeEntry->delete();
         return response()->json(['message' => 'Entrée de temps supprimée.']);
+    }
+
+    private function notifyDelayIfNeeded(Task $task): void
+    {
+        $isOverdueByDueDate = $task->due_date && $task->due_date->isPast() && (int) $task->progress_percent < 100;
+        $isOverdueByPlan = $task->due_date && $task->planned_end && $task->planned_end->greaterThan($task->due_date);
+
+        if ($isOverdueByDueDate || $isOverdueByPlan) {
+            $this->notificationService->notifyTaskDelayed($task, Auth::user());
+        }
     }
 }

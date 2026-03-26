@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\NotificationUpdated;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\NotificationResource;
 use App\Models\Notification;
@@ -40,15 +41,24 @@ class NotificationController extends Controller
         }
 
         $notification->markAsRead();
+        broadcast(new NotificationUpdated($notification->fresh()))->toOthers();
 
         return response()->json(['message' => 'Notification lue.']);
     }
 
     public function markAllAsRead(): JsonResponse
     {
-        Notification::where('user_id', Auth::id())
+        $unread = Notification::where('user_id', Auth::id())
             ->whereNull('read_at')
+            ->get();
+
+        Notification::whereIn('id', $unread->pluck('id'))
             ->update(['read_at' => now()]);
+
+        foreach ($unread as $item) {
+            $item->read_at = now();
+            broadcast(new NotificationUpdated($item))->toOthers();
+        }
 
         return response()->json(['message' => 'Toutes les notifications marquées comme lues.']);
     }

@@ -12,11 +12,13 @@ class TaskResource extends JsonResource
         return [
             'id' => $this->id,
             'project_id' => $this->project_id,
+            'sprint_id' => $this->sprint_id,
             'parent_id' => $this->parent_id,
             'title' => $this->title,
             'description' => $this->description,
             'status_id' => $this->status_id,
             'status' => new TaskStatusResource($this->whenLoaded('status')),
+            'sprint' => new SprintResource($this->whenLoaded('sprint')),
             'priority' => $this->priority,
             'complexity' => $this->complexity,
             'story_points' => $this->story_points,

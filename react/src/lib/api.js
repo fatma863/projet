@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { disconnectEcho } from './echo';
 
 const api = axios.create({
   baseURL: '/api',
@@ -22,6 +23,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      disconnectEcho();
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';

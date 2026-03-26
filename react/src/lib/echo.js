@@ -1,0 +1,44 @@
+import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
+
+let echoInstance = null;
+
+function buildOptions() {
+  const token = localStorage.getItem('token');
+  const driver = import.meta.env.VITE_BROADCAST_DRIVER || 'reverb';
+  const useReverb = driver === 'reverb';
+
+  return {
+    broadcaster: 'pusher',
+    key: useReverb ? import.meta.env.VITE_REVERB_APP_KEY : import.meta.env.VITE_PUSHER_APP_KEY,
+    wsHost: useReverb
+      ? import.meta.env.VITE_REVERB_HOST || window.location.hostname
+      : import.meta.env.VITE_PUSHER_HOST || `ws-${import.meta.env.VITE_PUSHER_APP_CLUSTER}.pusher.com`,
+    wsPort: Number(useReverb ? import.meta.env.VITE_REVERB_PORT || 80 : import.meta.env.VITE_PUSHER_PORT || 443),
+    wssPort: Number(useReverb ? import.meta.env.VITE_REVERB_PORT || 443 : import.meta.env.VITE_PUSHER_PORT || 443),
+    forceTLS: (useReverb ? import.meta.env.VITE_REVERB_SCHEME : import.meta.env.VITE_PUSHER_SCHEME) === 'https',
+    enabledTransports: ['ws', 'wss'],
+    cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER || 'mt1',
+    authEndpoint: '/api/broadcasting/auth',
+    auth: {
+      headers: {
+        Authorization: token ? `Bearer ${token}` : '',
+        Accept: 'application/json',
+      },
+    },
+  };
+}
+
+export function getEcho() {
+  if (echoInstance) return echoInstance;
+
+  window.Pusher = Pusher;
+  echoInstance = new Echo(buildOptions());
+  return echoInstance;
+}
+
+export function disconnectEcho() {
+  if (!echoInstance) return;
+  echoInstance.disconnect();
+  echoInstance = null;
+}

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/api';
+import { getEcho } from '../../lib/echo';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -22,7 +23,7 @@ const PRIORITY_OPTIONS = [
 const EMPTY_FORM = {
   title: '', description: '', status_id: '', priority: 'medium',
   complexity: 5, planned_start: '', planned_end: '', due_date: '',
-  estimated_hours: '', progress_percent: 0,
+  estimated_hours: '', story_points: '', progress_percent: 0,
 };
 
 export default function TaskModal({ open, onClose, projectId, task, defaultStatusId, statuses }) {
@@ -41,6 +42,7 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
           status_id: task.status_id || '',
           priority: task.priority || 'medium',
           complexity: task.complexity || 5,
+          story_points: task.story_points ?? '',
           planned_start: task.planned_start || '',
           planned_end: task.planned_end || '',
           due_date: task.due_date || '',
@@ -82,6 +84,7 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
     if (!payload.planned_end) delete payload.planned_end;
     if (!payload.due_date) delete payload.due_date;
     if (!payload.estimated_hours) delete payload.estimated_hours;
+    if (payload.story_points === '' || payload.story_points === null) delete payload.story_points;
     saveMutation.mutate(payload);
   };
 
@@ -148,6 +151,10 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
               <label className="mb-1 block text-sm font-medium">Complexité (1-10)</label>
               <Input type="number" min={1} max={10} value={form.complexity} onChange={(e) => set('complexity', Number(e.target.value))} />
             </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Story points</label>
+              <Input type="number" min={0} value={form.story_points} onChange={(e) => set('story_points', e.target.value === '' ? '' : Number(e.target.value))} />
+            </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
@@ -197,14 +204,14 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
         </form>
       )}
 
-      {activeTab === 'comments' && isEdit && <CommentsTab taskId={task.id} />}
+      {activeTab === 'comments' && isEdit && <CommentsTab taskId={task.id} projectId={projectId} />}
       {activeTab === 'time' && isEdit && <TimeEntriesTab taskId={task.id} />}
       {activeTab === 'assignees' && isEdit && <AssigneesTab taskId={task.id} />}
     </Modal>
   );
 }
 
-function CommentsTab({ taskId }) {
+function CommentsTab({ taskId, projectId }) {
   const queryClient = useQueryClient();
   const [body, setBody] = useState('');
 
@@ -212,6 +219,33 @@ function CommentsTab({ taskId }) {
     queryKey: ['comments', taskId],
     queryFn: () => api.get(`/tasks/${taskId}/comments`).then((r) => r.data.data),
   });
+  const { data: members } = useQuery({
+    queryKey: ['project-members', projectId],
+    queryFn: () => api.get(`/projects/${projectId}/members`).then((r) => r.data.data || r.data.members || []),
+  });
+
+  useEffect(() => {
+    const echo = getEcho();
+    const channel = echo.private(`project.${projectId}`);
+
+    channel.listen('.task.comment.created', (payload) => {
+      if (payload.task_id !== taskId || !payload.comment) return;
+      queryClient.setQueryData(['comments', taskId], (current = []) => {
+        if (current.some((item) => item.id === payload.comment.id)) return current;
+        return [payload.comment, ...current];
+      });
+    });
+
+    channel.listen('.task.comment.deleted', (payload) => {
+      if (payload.task_id !== taskId) return;
+      queryClient.setQueryData(['comments', taskId], (current = []) =>
+        current.filter((item) => item.id !== payload.comment_id));
+    });
+
+    return () => {
+      echo.leave(`private-project.${projectId}`);
+    };
+  }, [projectId, queryClient, taskId]);
 
   const addMutation = useMutation({
     mutationFn: (text) => api.post(`/tasks/${taskId}/comments`, { body: text }),
@@ -225,6 +259,24 @@ function CommentsTab({ taskId }) {
     mutationFn: (commentId) => api.delete(`/tasks/${taskId}/comments/${commentId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['comments', taskId] }),
   });
+
+  const mentionCandidates = useMemo(() => {
+    const raw = members || [];
+    return raw
+      .map((m) => ({ id: m.id || m.user_id, name: m.name || m.user?.name, email: m.email || m.user?.email }))
+      .filter((u) => u.id && u.name);
+  }, [members]);
+
+  const mentionMatch = body.match(/@([A-Za-z0-9._-]*)$/);
+  const mentionSearch = mentionMatch?.[1]?.toLowerCase() || '';
+  const mentionSuggestions = mentionSearch
+    ? mentionCandidates.filter((u) =>
+      u.name.toLowerCase().includes(mentionSearch) || u.email?.toLowerCase().includes(mentionSearch)).slice(0, 5)
+    : [];
+
+  const insertMention = (user) => {
+    setBody((prev) => prev.replace(/@([A-Za-z0-9._-]*)$/, `@${(user.email || '').split('@')[0]} `));
+  };
 
   if (isLoading) return <div className="flex justify-center py-6"><Spinner /></div>;
 
@@ -247,7 +299,11 @@ function CommentsTab({ taskId }) {
                 </button>
               </div>
             </div>
-            <p className="text-sm text-foreground">{c.body}</p>
+            <p className="text-sm text-foreground">{c.body.split(/(\s+)/).map((token, idx) => (
+              token.startsWith('@')
+                ? <span key={`${c.id}-${idx}`} className="font-medium text-primary">{token}</span>
+                : <span key={`${c.id}-${idx}`}>{token}</span>
+            ))}</p>
           </div>
         ))}
         {comments?.length === 0 && (
@@ -255,13 +311,29 @@ function CommentsTab({ taskId }) {
         )}
       </div>
       <div className="flex gap-2">
-        <Textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Ajouter un commentaire..."
-          rows={2}
-          className="flex-1"
-        />
+        <div className="relative flex-1">
+          <Textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Ajouter un commentaire... (mention: @username)"
+            rows={2}
+            className="flex-1"
+          />
+          {mentionSuggestions.length > 0 && (
+            <div className="absolute bottom-full left-0 mb-1 w-full rounded-md border border-border bg-white shadow-lg">
+              {mentionSuggestions.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  onClick={() => insertMention(user)}
+                  className="block w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                >
+                  {user.name} <span className="text-xs text-muted-foreground">(@{(user.email || '').split('@')[0]})</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <Button
           size="sm"
           onClick={() => { if (body.trim()) addMutation.mutate(body.trim()); }}

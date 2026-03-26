@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\ActivityLogResource;
 use App\Http\Resources\ProjectResource;
 use App\Http\Resources\ProjectMemberResource;
 use App\Models\Project;
@@ -48,9 +49,11 @@ class ProjectController extends Controller
             'code' => 'required|string|max:10|unique:projects,code',
             'description' => 'nullable|string',
             'team_id' => 'nullable|exists:teams,id',
+            'client_id' => 'nullable|exists:clients,id',
             'status' => 'sometimes|in:planning,active,on_hold,completed,cancelled',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
+            'cost_per_hour' => 'sometimes|numeric|min:0',
         ]);
 
         $data['owner_id'] = $request->user()->id;
@@ -72,7 +75,8 @@ class ProjectController extends Controller
             $project->statuses()->create($status);
         }
 
-        $project->load('owner', 'members', 'statuses');
+        $this->recalculateProjectCosts($project);
+        $project->load('owner', 'members', 'statuses', 'client');
 
         return response()->json([
             'message' => 'Projet créé avec succès.',
@@ -84,7 +88,7 @@ class ProjectController extends Controller
     {
         Gate::authorize('view', $project);
 
-        $project->load('owner', 'team', 'members', 'statuses')
+        $project->load('owner', 'team', 'members', 'statuses', 'client')
                 ->loadCount('members', 'tasks');
 
         return response()->json(['project' => new ProjectResource($project)]);
@@ -99,14 +103,17 @@ class ProjectController extends Controller
             'code' => 'sometimes|required|string|max:10|unique:projects,code,' . $project->id,
             'description' => 'nullable|string',
             'team_id' => 'nullable|exists:teams,id',
+            'client_id' => 'nullable|exists:clients,id',
             'status' => 'sometimes|in:planning,active,on_hold,completed,cancelled',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'owner_id' => 'sometimes|exists:users,id',
+            'cost_per_hour' => 'sometimes|numeric|min:0',
         ]);
 
         $project->update($data);
-        $project->load('owner', 'team', 'members', 'statuses');
+        $this->recalculateProjectCosts($project);
+        $project->load('owner', 'team', 'members', 'statuses', 'client');
 
         return response()->json([
             'message' => 'Projet mis à jour.',
@@ -136,6 +143,8 @@ class ProjectController extends Controller
         $totalEstimated = $tasks->sum('estimated_hours');
         $totalActual = $tasks->sum('actual_hours');
         $avgProgress = $totalTasks > 0 ? round($tasks->avg('progress_percent'), 1) : 0;
+        $this->recalculateProjectCosts($project);
+        $project->refresh();
 
         $tasksByStatus = $statuses->map(fn ($s) => [
             'status' => $s->name,
@@ -155,8 +164,29 @@ class ProjectController extends Controller
             'avg_progress' => $avgProgress,
             'total_estimated_hours' => round($totalEstimated, 1),
             'total_actual_hours' => round($totalActual, 1),
+            'estimated_cost' => $project->estimated_cost !== null ? (float) $project->estimated_cost : null,
+            'actual_cost' => $project->actual_cost !== null ? (float) $project->actual_cost : null,
+            'cost_per_hour' => $project->cost_per_hour !== null ? (float) $project->cost_per_hour : null,
             'tasks_by_status' => $tasksByStatus,
             'tasks_by_priority' => $tasksByPriority,
+        ]);
+    }
+
+    public function activity(Request $request, Project $project): JsonResponse
+    {
+        Gate::authorize('view', $project);
+
+        $activities = $project->activityLogs()
+            ->with('actor')
+            ->paginate($request->integer('per_page', 30));
+
+        return response()->json([
+            'activities' => ActivityLogResource::collection($activities),
+            'meta' => [
+                'current_page' => $activities->currentPage(),
+                'last_page' => $activities->lastPage(),
+                'total' => $activities->total(),
+            ],
         ]);
     }
 
@@ -199,5 +229,32 @@ class ProjectController extends Controller
         $project->members()->detach($userId);
 
         return response()->json(['message' => 'Membre retiré du projet.']);
+    }
+
+    public function recalculateCosts(Request $request, Project $project): JsonResponse
+    {
+        Gate::authorize('update', $project);
+
+        $this->recalculateProjectCosts($project);
+        $project->refresh();
+
+        return response()->json([
+            'message' => 'Coûts projet recalculés.',
+            'estimated_cost' => (float) $project->estimated_cost,
+            'actual_cost' => (float) $project->actual_cost,
+            'cost_per_hour' => (float) $project->cost_per_hour,
+        ]);
+    }
+
+    private function recalculateProjectCosts(Project $project): void
+    {
+        $rate = (float) ($project->cost_per_hour ?? 50);
+        $estimatedHours = (float) $project->tasks()->sum('estimated_hours');
+        $actualHours = (float) $project->tasks()->sum('actual_hours');
+
+        $project->updateQuietly([
+            'estimated_cost' => round($estimatedHours * $rate, 2),
+            'actual_cost' => round($actualHours * $rate, 2),
+        ]);
     }
 }

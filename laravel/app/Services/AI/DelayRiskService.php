@@ -68,12 +68,43 @@ class DelayRiskService
             ];
         }
 
+        // Factor 2b: workload per assigned user
+        $assignees = $task->assignees()->get();
+        if ($assignees->isNotEmpty()) {
+            $avgWorkload = $assignees->avg(function ($user) {
+                return $user->assignedTasks()->where('progress_percent', '<', 100)->count();
+            });
+            if ($avgWorkload >= 6) {
+                $riskScore += 20;
+                $riskFactors[] = [
+                    'factor' => 'user_workload_high',
+                    'detail' => 'Charge élevée des assignés ('.round($avgWorkload, 1).' tâches actives en moyenne)',
+                    'impact' => 'high',
+                ];
+            } elseif ($avgWorkload >= 4) {
+                $riskScore += 10;
+                $riskFactors[] = [
+                    'factor' => 'user_workload_medium',
+                    'detail' => 'Charge modérée à élevée des assignés ('.round($avgWorkload, 1).' tâches actives en moyenne)',
+                    'impact' => 'medium',
+                ];
+            }
+        }
+
         // Factor 3: High complexity with no estimated hours
         if ($task->complexity >= 7 && !$task->estimated_hours) {
             $riskScore += 10;
             $riskFactors[] = [
                 'factor' => 'high_complexity_no_estimate',
                 'detail' => "Complexité élevée ({$task->complexity}/10) sans estimation d'heures",
+                'impact' => 'medium',
+            ];
+        }
+        if ($task->complexity >= 8) {
+            $riskScore += 12;
+            $riskFactors[] = [
+                'factor' => 'high_complexity',
+                'detail' => "Complexité élevée ({$task->complexity}/10)",
                 'impact' => 'medium',
             ];
         }
@@ -103,6 +134,33 @@ class DelayRiskService
                 'factor' => 'blocked_dependencies',
                 'detail' => "Bloquée par {$blockers->count()} dépendance(s) non terminée(s): {$names}",
                 'impact' => 'high',
+            ];
+        }
+
+        // Factor 6: historical delays on similar tasks
+        $pastDelayed = Task::query()
+            ->where('id', '!=', $task->id)
+            ->where('project_id', $task->project_id)
+            ->where('progress_percent', 100)
+            ->whereNotNull('due_date')
+            ->whereNotNull('planned_end')
+            ->get()
+            ->filter(fn ($t) => $t->planned_end->greaterThan($t->due_date))
+            ->filter(fn ($t) => abs((int) $t->complexity - (int) $task->complexity) <= 2);
+
+        if ($pastDelayed->count() >= 3) {
+            $riskScore += 18;
+            $riskFactors[] = [
+                'factor' => 'past_delays_pattern',
+                'detail' => "Historique de retards sur tâches similaires ({$pastDelayed->count()} cas)",
+                'impact' => 'high',
+            ];
+        } elseif ($pastDelayed->count() >= 1) {
+            $riskScore += 8;
+            $riskFactors[] = [
+                'factor' => 'past_delays_pattern',
+                'detail' => "Retards observés sur tâches similaires ({$pastDelayed->count()} cas)",
+                'impact' => 'medium',
             ];
         }
 
@@ -191,11 +249,9 @@ class DelayRiskService
     private function riskLevel(int $score): string
     {
         return match(true) {
-            $score >= 70 => 'critical',
-            $score >= 45 => 'high',
-            $score >= 20 => 'medium',
-            $score > 0   => 'low',
-            default      => 'none',
+            $score >= 70 => 'high',
+            $score >= 40 => 'medium',
+            default      => 'low',
         };
     }
 

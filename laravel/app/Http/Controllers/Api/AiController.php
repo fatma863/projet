@@ -7,6 +7,7 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Services\AI\AssignmentOptimizerService;
 use App\Services\AI\DelayRiskService;
+use App\Services\AI\ProjectRecommendationService;
 use App\Services\AI\TaskEstimationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
@@ -17,6 +18,7 @@ class AiController extends Controller
         private TaskEstimationService $estimationService,
         private DelayRiskService $delayRiskService,
         private AssignmentOptimizerService $assignmentService,
+        private ProjectRecommendationService $projectRecommendationService,
     ) {}
 
     // ─── ESTIMATION ─────────────────────────────────────
@@ -78,6 +80,15 @@ class AiController extends Controller
         Gate::authorize('update', $project);
 
         $result = $this->assignmentService->optimizeProject($project);
+
+        return response()->json($result);
+    }
+
+    public function projectRecommendations(Project $project): JsonResponse
+    {
+        Gate::authorize('view', $project);
+
+        $result = $this->projectRecommendationService->recommend($project);
 
         return response()->json($result);
     }

@@ -14,12 +14,16 @@ class Project extends Model
 
     protected $fillable = [
         'team_id',
+        'client_id',
         'name',
         'code',
         'description',
         'status',
         'start_date',
         'end_date',
+        'estimated_cost',
+        'actual_cost',
+        'cost_per_hour',
         'owner_id',
         'created_by',
     ];
@@ -29,12 +33,20 @@ class Project extends Model
         return [
             'start_date' => 'date',
             'end_date' => 'date',
+            'estimated_cost' => 'decimal:2',
+            'actual_cost' => 'decimal:2',
+            'cost_per_hour' => 'decimal:2',
         ];
     }
 
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
     }
 
     public function owner(): BelongsTo
@@ -64,8 +76,18 @@ class Project extends Model
         return $this->hasMany(Task::class);
     }
 
+    public function sprints(): HasMany
+    {
+        return $this->hasMany(Sprint::class);
+    }
+
     public function rootTasks(): HasMany
     {
         return $this->hasMany(Task::class)->whereNull('parent_id');
+    }
+
+    public function activityLogs(): HasMany
+    {
+        return $this->hasMany(ActivityLog::class)->latest();
     }
 }

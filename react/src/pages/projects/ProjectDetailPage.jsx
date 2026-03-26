@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/api';
+import { getEcho } from '../../lib/echo';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Spinner } from '../../components/ui/Spinner';
@@ -52,6 +53,31 @@ export default function ProjectDetailPage() {
     queryKey: ['project-dashboard', id],
     queryFn: () => api.get(`/projects/${id}/dashboard`).then((r) => r.data),
   });
+  const { data: activities } = useQuery({
+    queryKey: ['project-activity', id],
+    queryFn: () => api.get(`/projects/${id}/activity?per_page=30`).then((r) => r.data.activities?.data || r.data.activities || []),
+  });
+
+  useEffect(() => {
+    const echo = getEcho();
+    const channel = echo.private(`project.${id}`);
+
+    channel.listen('.activity.logged', (payload) => {
+      if (!payload.activity) return;
+      queryClient.setQueryData(['project-activity', id], (current = []) => {
+        if (current.some((item) => item.id === payload.activity.id)) return current;
+        return [payload.activity, ...current].slice(0, 30);
+      });
+    });
+
+    channel.listen('.task.comment.created', () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+    });
+
+    return () => {
+      echo.leave(`private-project.${id}`);
+    };
+  }, [id, queryClient]);
 
   const moveMutation = useMutation({
     mutationFn: ({ taskId, statusId, order }) =>
@@ -123,7 +149,9 @@ export default function ProjectDetailPage() {
       <div className="flex gap-1 border-b border-border">
         {[
           { key: 'kanban', label: 'Kanban' },
+          { key: 'agile', label: 'Agile' },
           { key: 'members', label: 'Membres' },
+          { key: 'activity', label: 'Activité' },
         ].map((t) => (
           <button
             key={t.key}
@@ -152,6 +180,8 @@ export default function ProjectDetailPage() {
       )}
 
       {tab === 'members' && <MembersTab projectId={id} />}
+      {tab === 'agile' && <AgileTab projectId={id} />}
+      {tab === 'activity' && <ActivityTab activities={activities || []} />}
 
       {/* Task Modal */}
       <TaskModal
@@ -162,6 +192,155 @@ export default function ProjectDetailPage() {
         defaultStatusId={taskModal.statusId}
         statuses={statuses || []}
       />
+    </div>
+  );
+}
+
+function ActivityTab({ activities }) {
+  if (!activities.length) {
+    return <p className="py-6 text-center text-sm text-muted-foreground">Aucune activité pour le moment</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {activities.map((entry) => (
+        <div key={entry.id} className="rounded-lg border border-border bg-card p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {entry.actor?.name || 'Système'} <span className="font-normal text-muted-foreground">{entry.action}</span>
+              </p>
+              {entry.meta?.task_title && (
+                <p className="text-xs text-muted-foreground">{entry.meta.task_title}</p>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {new Date(entry.created_at).toLocaleString('fr-FR')}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AgileTab({ projectId }) {
+  const queryClient = useQueryClient();
+  const [newSprint, setNewSprint] = useState({ name: '', goal: '', start_date: '', end_date: '' });
+
+  const { data: sprints } = useQuery({
+    queryKey: ['sprints', projectId],
+    queryFn: () => api.get(`/projects/${projectId}/sprints`).then((r) => r.data.sprints?.data || r.data.sprints || []),
+  });
+  const { data: backlog } = useQuery({
+    queryKey: ['backlog', projectId],
+    queryFn: () => api.get(`/projects/${projectId}/backlog`).then((r) => r.data.tasks?.data || r.data.tasks || []),
+  });
+
+  const createSprint = useMutation({
+    mutationFn: (payload) => api.post(`/projects/${projectId}/sprints`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sprints', projectId] });
+      setNewSprint({ name: '', goal: '', start_date: '', end_date: '' });
+    },
+  });
+  const startSprint = useMutation({
+    mutationFn: (sprintId) => api.post(`/projects/${projectId}/sprints/${sprintId}/start`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', projectId] }),
+  });
+  const endSprint = useMutation({
+    mutationFn: (sprintId) => api.post(`/projects/${projectId}/sprints/${sprintId}/end`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', projectId] }),
+  });
+  const assignToSprint = useMutation({
+    mutationFn: ({ sprintId, taskId }) => api.post(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['backlog', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['sprints', projectId] });
+    },
+  });
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="p-4">
+          <h3 className="mb-3 font-semibold text-foreground">Créer un sprint</h3>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <input className="h-10 rounded-md border border-input px-3 text-sm" placeholder="Nom sprint" value={newSprint.name} onChange={(e) => setNewSprint((s) => ({ ...s, name: e.target.value }))} />
+            <input className="h-10 rounded-md border border-input px-3 text-sm" placeholder="Objectif" value={newSprint.goal} onChange={(e) => setNewSprint((s) => ({ ...s, goal: e.target.value }))} />
+            <input className="h-10 rounded-md border border-input px-3 text-sm" type="date" value={newSprint.start_date} onChange={(e) => setNewSprint((s) => ({ ...s, start_date: e.target.value }))} />
+            <input className="h-10 rounded-md border border-input px-3 text-sm" type="date" value={newSprint.end_date} onChange={(e) => setNewSprint((s) => ({ ...s, end_date: e.target.value }))} />
+          </div>
+          <div className="mt-3">
+            <Button size="sm" onClick={() => createSprint.mutate(newSprint)} disabled={!newSprint.name || createSprint.isPending}>
+              Créer sprint
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="mb-3 font-semibold text-foreground">Sprints</h3>
+            <div className="space-y-2">
+              {(sprints || []).map((s) => (
+                <div key={s.id} className="rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-foreground">{s.name}</p>
+                      <p className="text-xs text-muted-foreground">{s.goal || 'Aucun objectif'}</p>
+                    </div>
+                    <Badge variant={s.status === 'active' ? 'success' : 'secondary'}>{s.status}</Badge>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    {s.status !== 'active' && s.status !== 'completed' && (
+                      <Button size="sm" variant="outline" onClick={() => startSprint.mutate(s.id)}>Démarrer</Button>
+                    )}
+                    {s.status === 'active' && (
+                      <Button size="sm" variant="outline" onClick={() => endSprint.mutate(s.id)}>Terminer</Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {(sprints || []).length === 0 && <p className="text-sm text-muted-foreground">Aucun sprint</p>}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="mb-3 font-semibold text-foreground">Backlog</h3>
+            <div className="space-y-2">
+              {(backlog || []).map((task) => (
+                <div key={task.id} className="rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">{task.title}</p>
+                      <p className="text-xs text-muted-foreground">SP: {task.story_points ?? 0}</p>
+                    </div>
+                    <select
+                      className="h-8 rounded-md border border-input bg-white px-2 text-xs"
+                      defaultValue=""
+                      onChange={(e) => {
+                        const sprintId = Number(e.target.value);
+                        if (sprintId) assignToSprint.mutate({ sprintId, taskId: task.id });
+                      }}
+                    >
+                      <option value="">Assigner sprint...</option>
+                      {(sprints || []).filter((s) => s.status !== 'completed').map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))}
+              {(backlog || []).length === 0 && <p className="text-sm text-muted-foreground">Backlog vide</p>}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
