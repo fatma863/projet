@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\AccessControl;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Task extends Model
 {
+    public const WORKFLOW_STATUSES = ['todo', 'in_progress', 'done', 'at_risk'];
+
     use SoftDeletes;
 
     protected $fillable = [
@@ -26,9 +30,13 @@ class Task extends Model
         'planned_end',
         'due_date',
         'estimated_hours',
+        'estimated_duration',
+        'risk_level',
+        'risk_score',
         'actual_hours',
         'progress_percent',
         'kanban_order',
+        'workflow_status',
         'created_by',
         'updated_by',
         'archived_at',
@@ -41,6 +49,8 @@ class Task extends Model
             'planned_end' => 'date',
             'due_date' => 'date',
             'estimated_hours' => 'decimal:2',
+            'estimated_duration' => 'integer',
+            'risk_score' => 'integer',
             'actual_hours' => 'decimal:2',
             'complexity' => 'integer',
             'story_points' => 'integer',
@@ -76,6 +86,11 @@ class Task extends Model
     }
 
     public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
@@ -129,5 +144,42 @@ class Task extends Model
     public function isOverdue(): bool
     {
         return $this->due_date && $this->due_date->isPast() && $this->progress_percent < 100;
+    }
+
+    public static function inferWorkflowStatus(self $task): string
+    {
+        $p = (int) ($task->progress_percent ?? 0);
+        if ($p >= 100) {
+            return 'done';
+        }
+        if (($task->risk_level ?? '') === 'high' || $task->isOverdue()) {
+            return 'at_risk';
+        }
+        if ($p > 0) {
+            return 'in_progress';
+        }
+
+        return 'todo';
+    }
+
+    public function refreshWorkflowStatus(): void
+    {
+        $this->workflow_status = self::inferWorkflowStatus($this);
+        $this->saveQuietly();
+    }
+
+    public function scopeAccessibleBy(Builder $query, User $user): Builder
+    {
+        if (AccessControl::isAdmin($user)) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($user) {
+            $q->where('tasks.created_by', $user->id)
+                ->orWhereHas('assignees', fn ($assignees) => $assignees->where('users.id', $user->id))
+                ->orWhereHas('project.users', fn ($projectUsers) => $projectUsers->where('users.id', $user->id))
+                ->orWhereHas('project.members', fn ($legacyMembers) => $legacyMembers->where('users.id', $user->id))
+                ->orWhereHas('project', fn ($pr) => $pr->where('owner_id', $user->id));
+        });
     }
 }

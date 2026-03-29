@@ -1,10 +1,13 @@
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatAppRole } from '../../lib/roles';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { User, Mail, Shield, Clock, Calendar } from 'lucide-react';
+import { User, Mail, Shield, Clock, Calendar, UserCog, Users, Brain, LayoutGrid, Bell } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const isAdmin = user?.roles?.includes('admin');
 
   return (
     <div className="space-y-6">
@@ -50,12 +53,15 @@ export default function SettingsPage() {
             <div>
               <p className="mb-2 text-sm font-medium text-foreground">Rôles</p>
               <div className="flex flex-wrap gap-2">
-                {(user?.roles || []).map((role) => (
-                  <Badge key={typeof role === 'string' ? role : role.name} variant="default">
-                    <Shield className="mr-1 h-3 w-3" />
-                    {typeof role === 'string' ? role : role.name}
-                  </Badge>
-                ))}
+                {(user?.roles || []).map((role) => {
+                  const name = typeof role === 'string' ? role : role.name;
+                  return (
+                    <Badge key={name} variant="default">
+                      <Shield className="mr-1 h-3 w-3" />
+                      {formatAppRole(name)}
+                    </Badge>
+                  );
+                })}
                 {(!user?.roles || user.roles.length === 0) && (
                   <span className="text-sm text-muted-foreground">Aucun rôle</span>
                 )}
@@ -77,7 +83,52 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {isAdmin && (
+        <>
+          <Card>
+            <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-lg">Gestion des utilisateurs</CardTitle>
+              <Link
+                to="/users"
+                className="inline-flex h-9 items-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <UserCog className="h-4 w-4" />
+                Ouvrir le CRUD
+              </Link>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Création, modification, suppression et rôles : utilisez la page dédiée (également accessible depuis le tableau de bord et le menu latéral).
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Raccourcis administration</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2 sm:grid-cols-2">
+              <AdminLink to="/users" icon={UserCog} label="Utilisateurs & rôles" />
+              <AdminLink to="/teams" icon={Users} label="Équipes" />
+              <AdminLink to="/projects" icon={LayoutGrid} label="Tous les projets" />
+              <AdminLink to="/ai" icon={Brain} label="IA & Analytics" />
+              <AdminLink to="/notifications" icon={Bell} label="Notifications" />
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
+  );
+}
+
+function AdminLink({ to, icon: Icon, label }) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+    >
+      <Icon className="h-4 w-4 text-muted-foreground" />
+      {label}
+    </Link>
   );
 }
 

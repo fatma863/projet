@@ -4,7 +4,7 @@ import api from '../../lib/api';
 import { Select } from '../../components/ui/Select';
 import { Spinner } from '../../components/ui/Spinner';
 import { Card, CardContent } from '../../components/ui/Card';
-import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 import { BarChart3 } from 'lucide-react';
 
 const PRIORITY_COLORS = {
@@ -15,36 +15,84 @@ const PRIORITY_COLORS = {
 };
 
 export default function GanttPage() {
+  const [mode, setMode] = useState('global');
   const [selectedProject, setSelectedProject] = useState('');
+  const [globalProjectFilter, setGlobalProjectFilter] = useState('');
 
   const { data: projects } = useQuery({
     queryKey: ['projects-for-gantt'],
     queryFn: () => api.get('/projects?per_page=100').then((r) => r.data.data),
   });
 
-  const { data: ganttData, isLoading } = useQuery({
+  const { data: ganttGlobal, isLoading: loadingGlobal } = useQuery({
+    queryKey: ['gantt-global', globalProjectFilter],
+    queryFn: () => {
+      const q = globalProjectFilter ? `?project_id=${globalProjectFilter}` : '';
+      return api.get(`/gantt${q}`).then((r) => r.data.gantt);
+    },
+    enabled: mode === 'global',
+  });
+
+  const { data: ganttProject, isLoading: loadingProject } = useQuery({
     queryKey: ['gantt', selectedProject],
     queryFn: () => api.get(`/projects/${selectedProject}/gantt`).then((r) => r.data.gantt),
-    enabled: !!selectedProject,
+    enabled: mode === 'project' && !!selectedProject,
   });
+
+  const ganttData = mode === 'global' ? ganttGlobal : ganttProject;
+  const isLoading = mode === 'global' ? loadingGlobal : loadingProject;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Diagramme de Gantt</h1>
-        <p className="text-muted-foreground">Visualisez la chronologie de vos projets</p>
+        <p className="text-muted-foreground">Chronologie des tâches (vue globale ou par projet)</p>
       </div>
 
-      <div className="max-w-xs">
-        <Select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)}>
-          <option value="">Sélectionner un projet</option>
-          {projects?.map((p) => (
-            <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
-          ))}
-        </Select>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant={mode === 'global' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setMode('global')}
+          >
+            Vue globale
+          </Button>
+          <Button
+            type="button"
+            variant={mode === 'project' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setMode('project')}
+          >
+            Un projet
+          </Button>
+        </div>
+        {mode === 'global' && (
+          <div className="max-w-xs">
+            <label className="mb-1 block text-xs text-muted-foreground">Filtrer par projet (optionnel)</label>
+            <Select value={globalProjectFilter} onChange={(e) => setGlobalProjectFilter(e.target.value)}>
+              <option value="">Tous les projets</option>
+              {projects?.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+              ))}
+            </Select>
+          </div>
+        )}
+        {mode === 'project' && (
+          <div className="max-w-xs">
+            <label className="mb-1 block text-xs text-muted-foreground">Projet</label>
+            <Select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)}>
+              <option value="">Sélectionner un projet</option>
+              {projects?.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+              ))}
+            </Select>
+          </div>
+        )}
       </div>
 
-      {!selectedProject ? (
+      {mode === 'project' && !selectedProject ? (
         <Card>
           <CardContent className="py-16 text-center">
             <BarChart3 className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
@@ -56,11 +104,11 @@ export default function GanttPage() {
       ) : !ganttData || ganttData.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">
-            Aucune tâche avec des dates planifiées
+            Aucune tâche avec des dates planifiées (début requis)
           </CardContent>
         </Card>
       ) : (
-        <GanttChart tasks={ganttData} />
+        <GanttChart tasks={ganttData} showProject={mode === 'global'} />
       )}
     </div>
   );
@@ -156,7 +204,7 @@ function GanttChart({ tasks }) {
       {/* Rows */}
       <div>
         <div className="relative">
-          <svg className="pointer-events-none absolute left-56 right-0 top-0 z-10" style={{ height: `${chartHeight}px` }}>
+          <svg className="pointer-events-none absolute left-64 right-0 top-0 z-10" style={{ height: `${chartHeight}px` }}>
             {dependencies.map((line) => (
               <line
                 key={line.key}
@@ -176,28 +224,33 @@ function GanttChart({ tasks }) {
           return (
             <div key={task.id} className="flex border-b border-border last:border-0">
               {/* Task name */}
-              <div className="flex w-56 flex-shrink-0 items-center gap-2 border-r border-border px-3 py-2">
-                <span
-                  className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
-                  style={{ backgroundColor: task.status_color || '#6b7280' }}
-                />
-                <span className="truncate text-sm text-foreground" title={task.name}>
-                  {task.name}
-                </span>
+              <div className="flex w-64 flex-shrink-0 flex-col justify-center gap-0.5 border-r border-border px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                    style={{ backgroundColor: task.status_color || '#6b7280' }}
+                  />
+                  <span className="truncate text-sm text-foreground" title={task.name}>
+                    {task.name}
+                  </span>
+                </div>
+                {showProject && task.project_name && (
+                  <span className="truncate pl-4 text-[11px] text-muted-foreground">{task.project_name}</span>
+                )}
               </div>
 
               {/* Bar area */}
               <div className="relative flex-1 py-2" style={{ minHeight: '36px' }}>
                 {metrics ? (
                   <div
-                    className={`absolute top-2 z-20 h-6 rounded ${task.is_critical ? 'ring-2 ring-red-600 ring-offset-1' : ''}`}
+                    className={`absolute top-2 z-20 h-6 rounded ${task.is_critical ? 'ring-2 ring-red-600 ring-offset-1' : ''} ${task.is_delayed ? 'ring-2 ring-amber-500 ring-offset-1' : ''}`}
                     style={{
                       left: `${metrics.left}%`,
                       width: `${metrics.width}%`,
-                      backgroundColor: task.is_critical ? '#dc2626' : (PRIORITY_COLORS[task.priority] || '#6366f1'),
+                      backgroundColor: task.is_critical ? '#dc2626' : task.is_delayed ? '#ea580c' : (PRIORITY_COLORS[task.priority] || '#6366f1'),
                       opacity: 0.85,
                     }}
-                    title={task.is_critical ? 'Chemin critique' : undefined}
+                    title={task.is_critical ? 'Chemin critique' : task.is_delayed ? 'Retard / échéance' : undefined}
                   >
                     {/* Progress fill */}
                     {task.progress > 0 && (

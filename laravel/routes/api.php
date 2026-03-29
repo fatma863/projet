@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AiController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CalendarController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\GanttController;
 use App\Http\Controllers\Api\NotificationController;
@@ -10,6 +11,7 @@ use App\Http\Controllers\Api\SprintController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TaskStatusController;
 use App\Http\Controllers\Api\TeamController;
+use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
@@ -36,35 +38,59 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('teams', TeamController::class);
     Route::post('teams/{team}/members', [TeamController::class, 'addMember']);
     Route::delete('teams/{team}/members/{user}', [TeamController::class, 'removeMember']);
+    Route::middleware('check.role:admin')->group(function () {
+        Route::apiResource('users', UserController::class)->except(['show']);
+    });
 
     // Projects / Clients
     Route::apiResource('clients', ClientController::class);
     Route::apiResource('projects', ProjectController::class);
-    Route::get('projects/{project}/dashboard', [ProjectController::class, 'dashboard']);
-    Route::get('projects/{project}/activity', [ProjectController::class, 'activity']);
-    Route::get('projects/{project}/members', [ProjectController::class, 'members']);
-    Route::post('projects/{project}/members', [ProjectController::class, 'addMember']);
-    Route::delete('projects/{project}/members/{user}', [ProjectController::class, 'removeMember']);
-    Route::post('projects/{project}/recalculate-costs', [ProjectController::class, 'recalculateCosts']);
+    Route::middleware('check.project:view')->group(function () {
+        Route::get('projects/{project}/dashboard', [ProjectController::class, 'dashboard']);
+        Route::get('projects/{project}/activity', [ProjectController::class, 'activity']);
+        Route::get('projects/{project}/members', [ProjectController::class, 'members']);
+        Route::post('projects/{project}/invite', [ProjectController::class, 'invite']);
+    });
+    Route::middleware('check.project:edit')->group(function () {
+        Route::post('projects/{project}/members', [ProjectController::class, 'addMember']);
+        Route::delete('projects/{project}/members/{user}', [ProjectController::class, 'removeMember']);
+        Route::post('projects/{project}/recalculate-costs', [ProjectController::class, 'recalculateCosts']);
+    });
 
     // Sprints / Backlog
-    Route::get('projects/{project}/sprints', [SprintController::class, 'index']);
-    Route::post('projects/{project}/sprints', [SprintController::class, 'store']);
-    Route::post('projects/{project}/sprints/{sprint}/start', [SprintController::class, 'start']);
-    Route::post('projects/{project}/sprints/{sprint}/end', [SprintController::class, 'end']);
-    Route::get('projects/{project}/backlog', [SprintController::class, 'backlog']);
-    Route::post('projects/{project}/sprints/{sprint}/tasks/{task}', [SprintController::class, 'assignTask']);
+    Route::middleware('check.project:view')->group(function () {
+        Route::get('projects/{project}/sprints', [SprintController::class, 'index']);
+        Route::get('projects/{project}/backlog', [SprintController::class, 'backlog']);
+    });
+    Route::middleware('check.project:edit')->group(function () {
+        Route::post('projects/{project}/sprints', [SprintController::class, 'store']);
+        Route::post('projects/{project}/sprints/{sprint}/start', [SprintController::class, 'start']);
+        Route::post('projects/{project}/sprints/{sprint}/end', [SprintController::class, 'end']);
+        Route::post('projects/{project}/sprints/{sprint}/tasks/{task}', [SprintController::class, 'assignTask']);
+    });
 
     // Task Statuses (scoped to project)
-    Route::get('projects/{project}/statuses', [TaskStatusController::class, 'index']);
-    Route::post('projects/{project}/statuses', [TaskStatusController::class, 'store']);
+    Route::middleware('check.project:view')->group(function () {
+        Route::get('projects/{project}/statuses', [TaskStatusController::class, 'index']);
+    });
+    Route::middleware('check.project:edit')->group(function () {
+        Route::post('projects/{project}/statuses', [TaskStatusController::class, 'store']);
+        Route::post('projects/{project}/statuses/reorder', [TaskStatusController::class, 'reorder']);
+    });
     Route::put('statuses/{status}', [TaskStatusController::class, 'update']);
     Route::delete('statuses/{status}', [TaskStatusController::class, 'destroy']);
-    Route::post('projects/{project}/statuses/reorder', [TaskStatusController::class, 'reorder']);
+
+    Route::get('calendar', [CalendarController::class, 'index']);
+    Route::get('gantt', [GanttController::class, 'globalIndex']);
 
     // Tasks (scoped to project)
-    Route::get('projects/{project}/tasks', [TaskController::class, 'index']);
-    Route::post('projects/{project}/tasks', [TaskController::class, 'store']);
+    Route::get('tasks', [TaskController::class, 'globalIndex']);
+    Route::middleware('check.project:view')->group(function () {
+        Route::get('projects/{project}/tasks', [TaskController::class, 'index']);
+    });
+    Route::middleware('check.project:view')->group(function () {
+        Route::post('projects/{project}/tasks', [TaskController::class, 'store']);
+    });
     Route::get('tasks/{task}', [TaskController::class, 'show']);
     Route::put('tasks/{task}', [TaskController::class, 'update']);
     Route::delete('tasks/{task}', [TaskController::class, 'destroy']);
@@ -96,8 +122,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('tasks/{task}/time-entries/{timeEntry}', [TaskController::class, 'deleteTimeEntry']);
 
     // Gantt
-    Route::get('projects/{project}/gantt', [GanttController::class, 'show']);
-    Route::put('projects/{project}/gantt', [GanttController::class, 'updateDates']);
+    Route::middleware('check.project:view')->group(function () {
+        Route::get('projects/{project}/gantt', [GanttController::class, 'show']);
+    });
+    Route::middleware('check.project:edit')->group(function () {
+        Route::put('projects/{project}/gantt', [GanttController::class, 'updateDates']);
+    });
 
     // Notifications
     Route::get('notifications', [NotificationController::class, 'index']);

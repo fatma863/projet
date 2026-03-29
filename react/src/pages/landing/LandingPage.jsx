@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import {
   FolderKanban, Brain, CalendarRange, Users, BarChart3,
-  CheckCircle2, ArrowRight, Zap, Shield, Clock,
+  ArrowRight, Zap, Shield,
 } from 'lucide-react';
 
 const features = [
@@ -91,8 +91,7 @@ export default function LandingPage() {
               </span>
             </h1>
             <p className="mt-6 text-lg text-muted-foreground sm:text-xl">
-              Une plateforme complète de gestion de projets inspirée de Monday.com, Trello et Gouti.
-              Kanban, Gantt, IA et collaboration en temps réel.
+              Une plateforme complète de gestion de projets
             </p>
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Link to="/register">
@@ -202,12 +201,8 @@ export default function LandingPage() {
               <span className="text-sm font-semibold text-foreground">Gestion Projets PFE</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} Fatma Rejeb — Projet de Fin d'Études
+              © {new Date().getFullYear()} Fatma Rjeb, ghofran ben mahmoud — Projet de Fin d'Études
             </p>
-            <div className="flex gap-4">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-            </div>
           </div>
         </div>
       </footer>

@@ -19,3 +19,16 @@ export function GuestRoute({ children }) {
 
   return children;
 }
+
+export function RoleRoute({ children, allow }) {
+  const { user, loading } = useAuth();
+
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/login" replace />;
+
+  const roles = user?.roles || [];
+  const authorized = roles.some((role) => allow.includes(role));
+  if (!authorized) return <Navigate to="/dashboard" replace />;
+
+  return children;
+}

@@ -9,11 +9,22 @@ import { Input } from '../../components/ui/Input';
 import { Textarea } from '../../components/ui/Textarea';
 import { Spinner } from '../../components/ui/Spinner';
 import { Modal } from '../../components/ui/Modal';
+import { Select } from '../../components/ui/Select';
 import {
-  Plus, Search, Users, MoreVertical, Pencil, Trash2, Eye,
+  Plus, Search, Users, MoreVertical, Pencil, Trash2, Eye, X,
 } from 'lucide-react';
 
-const EMPTY_FORM = { name: '', description: '' };
+const EMPTY_FORM = {
+  name: '',
+  description: '',
+  team_leader_id: '',
+  memberIds: [],
+};
+
+function parseUsersResponse(res) {
+  const raw = res.data.data;
+  return Array.isArray(raw) ? raw : raw?.data || [];
+}
 
 export default function TeamsPage() {
   const queryClient = useQueryClient();
@@ -21,6 +32,7 @@ export default function TeamsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
+  const [notice, setNotice] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['teams', { search }],
@@ -39,6 +51,15 @@ export default function TeamsPage() {
 
   return (
     <div className="space-y-6">
+      {notice && (
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 shadow-sm"
+        >
+          {notice}
+        </div>
+      )}
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Équipes</h1>
@@ -75,6 +96,7 @@ export default function TeamsPage() {
               <CardContent className="p-5">
                 <div className="absolute right-3 top-3">
                   <button
+                    type="button"
                     onClick={() => setMenuOpen(menuOpen === team.id ? null : team.id)}
                     className="rounded-md p-1 opacity-0 hover:bg-accent group-hover:opacity-100"
                   >
@@ -89,12 +111,14 @@ export default function TeamsPage() {
                         <Eye className="h-4 w-4" /> Voir
                       </Link>
                       <button
+                        type="button"
                         onClick={() => { setEditingTeam(team); setShowForm(true); setMenuOpen(null); }}
                         className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
                       >
                         <Pencil className="h-4 w-4" /> Modifier
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
                           if (window.confirm('Supprimer cette équipe ?')) deleteMutation.mutate(team.id);
                           setMenuOpen(null);
@@ -115,6 +139,11 @@ export default function TeamsPage() {
                   {team.description && (
                     <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">{team.description}</p>
                   )}
+                  {team.team_leader?.name && (
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      Chef : <span className="font-medium text-foreground">{team.team_leader.name}</span>
+                    </p>
+                  )}
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Users className="h-3.5 w-3.5" /> {team.members_count || 0} membres
@@ -132,59 +161,213 @@ export default function TeamsPage() {
         open={showForm}
         onClose={() => { setShowForm(false); setEditingTeam(null); }}
         team={editingTeam}
+        onSuccess={(message) => {
+          setNotice(message);
+          window.setTimeout(() => setNotice(null), 6000);
+        }}
       />
     </div>
   );
 }
 
-function TeamFormModal({ open, onClose, team }) {
+function TeamFormModal({ open, onClose, team, onSuccess }) {
   const queryClient = useQueryClient();
   const isEdit = !!team;
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
 
+  const { data: users = [], isLoading: loadingUsers } = useQuery({
+    queryKey: ['users', 'team-form'],
+    queryFn: () => api.get('/users?per_page=200').then(parseUsersResponse),
+    enabled: open,
+  });
+
   useEffect(() => {
-    if (open) {
-      setForm(team ? { name: team.name || '', description: team.description || '' } : { ...EMPTY_FORM });
-      setErrors({});
+    if (!open) return;
+    if (team) {
+      const leaderId = team.team_leader_id ?? team.team_leader?.id ?? '';
+      const extraIds = (team.members || [])
+        .map((m) => m.id)
+        .filter((id) => leaderId && Number(id) !== Number(leaderId));
+      setForm({
+        name: team.name || '',
+        description: team.description || '',
+        team_leader_id: leaderId ? String(leaderId) : '',
+        memberIds: extraIds,
+      });
+    } else {
+      setForm({ ...EMPTY_FORM });
     }
+    setErrors({});
   }, [open, team]);
 
+  const leaderIdNum = form.team_leader_id ? Number(form.team_leader_id) : null;
+
+  const availableToAdd = users.filter(
+    (u) => u.id !== leaderIdNum && !form.memberIds.includes(u.id)
+  );
+
+  const addMember = (userId) => {
+    const id = Number(userId);
+    if (!id || id === leaderIdNum || form.memberIds.includes(id)) return;
+    setForm((f) => ({ ...f, memberIds: [...f.memberIds, id] }));
+  };
+
+  const removeMember = (userId) => {
+    setForm((f) => ({ ...f, memberIds: f.memberIds.filter((id) => id !== userId) }));
+  };
+
   const mutation = useMutation({
-    mutationFn: (data) => isEdit ? api.put(`/teams/${team.id}`, data) : api.post('/teams', data),
-    onSuccess: () => {
+    mutationFn: (payload) => (isEdit ? api.put(`/teams/${team.id}`, payload) : api.post('/teams', payload)),
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['teams'] });
+      onSuccess?.(res.data?.message || (isEdit ? 'Équipe mise à jour.' : 'Équipe créée.'));
       onClose();
     },
     onError: (err) => {
       if (err.response?.status === 422) setErrors(err.response.data.errors || {});
+      else setErrors({ _form: [err.response?.data?.message || 'Une erreur est survenue.'] });
     },
   });
 
+  const validateClient = () => {
+    const next = {};
+    if (!form.name.trim()) next.name = ['Le nom est obligatoire.'];
+    if (!form.team_leader_id) next.team_leader_id = ['Le chef d\'équipe est obligatoire.'];
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    mutation.mutate(form);
+    if (!validateClient()) return;
+    const payload = {
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      team_leader_id: Number(form.team_leader_id),
+      members: form.memberIds,
+    };
+    mutation.mutate(payload);
   };
+
+  const selectedMemberUsers = form.memberIds
+    .map((id) => users.find((u) => u.id === id))
+    .filter(Boolean);
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Modifier l\'équipe' : 'Nouvelle équipe'}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium">Nom *</label>
-          <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
-          {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name[0]}</p>}
+      {loadingUsers && open ? (
+        <div className="flex justify-center py-10">
+          <Spinner />
         </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium">Description</label>
-          <Textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} />
-        </div>
-        <div className="flex justify-end gap-3 pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-          <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? 'Enregistrement...' : isEdit ? 'Modifier' : 'Créer'}
-          </Button>
-        </div>
-      </form>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {errors._form && (
+            <p className="text-sm text-destructive">{errors._form[0]}</p>
+          )}
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">Nom *</label>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              autoComplete="off"
+            />
+            {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name[0]}</p>}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">Description</label>
+            <Textarea
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              rows={3}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">Chef d&apos;équipe *</label>
+            <Select
+              value={form.team_leader_id}
+              onChange={(e) => {
+                const next = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  team_leader_id: next,
+                  memberIds: f.memberIds.filter((id) => Number(id) !== Number(next)),
+                }));
+              }}
+            >
+              <option value="">Sélectionner un utilisateur</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} ({u.email})
+                </option>
+              ))}
+            </Select>
+            {errors.team_leader_id && (
+              <p className="mt-1 text-xs text-destructive">{errors.team_leader_id[0]}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">Membres</label>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Le chef d&apos;équipe est déjà membre ; ajoutez d&apos;autres collaborateurs ci-dessous.
+            </p>
+
+            {selectedMemberUsers.length > 0 && (
+              <ul className="mb-3 flex flex-wrap gap-2">
+                {selectedMemberUsers.map((u) => (
+                  <li key={u.id}>
+                    <Badge variant="secondary" className="flex items-center gap-1 pr-1 font-normal">
+                      <span className="max-w-[180px] truncate">{u.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeMember(u.id)}
+                        className="rounded p-0.5 hover:bg-black/10"
+                        aria-label={`Retirer ${u.name}`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <Select
+              key={form.memberIds.join('-')}
+              value=""
+              onChange={(e) => {
+                addMember(e.target.value);
+              }}
+              disabled={!leaderIdNum || availableToAdd.length === 0}
+            >
+              <option value="">
+                {!leaderIdNum ? 'Choisissez d&apos;abord un chef d&apos;équipe' : 'Ajouter un membre…'}
+              </option>
+              {availableToAdd.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} ({u.email})
+                </option>
+              ))}
+            </Select>
+            {leaderIdNum && availableToAdd.length === 0 && form.memberIds.length === 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">Aucun autre utilisateur à ajouter.</p>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Annuler
+            </Button>
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending ? 'Enregistrement...' : isEdit ? 'Modifier' : 'Créer'}
+            </Button>
+          </div>
+        </form>
+      )}
     </Modal>
   );
 }

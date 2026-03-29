@@ -28,7 +28,7 @@ class DemoDataSeeder extends Seeder
         );
         $admin->assignRole('admin');
 
-        $manager = User::firstOrCreate(
+        $coordinator = User::firstOrCreate(
             ['email' => 'manager@gestion-projets.local'],
             [
                 'name' => 'Ahmed Ben Ali',
@@ -36,7 +36,7 @@ class DemoDataSeeder extends Seeder
                 'timezone' => 'Africa/Tunis',
             ]
         );
-        $manager->assignRole('manager');
+        $coordinator->assignRole('member');
 
         $dev1 = User::firstOrCreate(
             ['email' => 'dev1@gestion-projets.local'],
@@ -76,7 +76,7 @@ class DemoDataSeeder extends Seeder
 
         $team->members()->syncWithoutDetaching([
             $admin->id => ['role_in_team' => 'lead', 'capacity_hours_per_week' => 40, 'skills' => json_encode(['PHP', 'React', 'MySQL', 'DevOps'])],
-            $manager->id => ['role_in_team' => 'manager', 'capacity_hours_per_week' => 35, 'skills' => json_encode(['Gestion', 'Scrum', 'PHP'])],
+            $coordinator->id => ['role_in_team' => 'member', 'capacity_hours_per_week' => 35, 'skills' => json_encode(['Gestion', 'Scrum', 'PHP'])],
             $dev1->id => ['role_in_team' => 'developer', 'capacity_hours_per_week' => 40, 'skills' => json_encode(['PHP', 'Laravel', 'MySQL'])],
             $dev2->id => ['role_in_team' => 'developer', 'capacity_hours_per_week' => 35, 'skills' => json_encode(['React', 'TypeScript', 'CSS'])],
             $dev3->id => ['role_in_team' => 'developer', 'capacity_hours_per_week' => 40, 'skills' => json_encode(['PHP', 'React', 'Testing'])],
@@ -98,11 +98,11 @@ class DemoDataSeeder extends Seeder
         );
 
         $project1->members()->syncWithoutDetaching([
-            $admin->id => ['project_role' => 'owner'],
-            $manager->id => ['project_role' => 'manager'],
-            $dev1->id => ['project_role' => 'developer'],
-            $dev2->id => ['project_role' => 'developer'],
-            $dev3->id => ['project_role' => 'developer'],
+            $admin->id => ['project_role' => 'admin'],
+            $coordinator->id => ['project_role' => 'member'],
+            $dev1->id => ['project_role' => 'member'],
+            $dev2->id => ['project_role' => 'member'],
+            $dev3->id => ['project_role' => 'member'],
         ]);
 
         // ── Task Statuses (Kanban columns) ──────────────
@@ -181,7 +181,7 @@ class DemoDataSeeder extends Seeder
                 'due_date' => '2026-02-20',
                 'estimated_hours' => 12,
                 'progress_percent' => 0,
-                'created_by' => $manager->id,
+                'created_by' => $coordinator->id,
                 'assignees' => [$dev1->id, $dev3->id],
             ],
             [
@@ -195,7 +195,7 @@ class DemoDataSeeder extends Seeder
                 'due_date' => '2026-03-01',
                 'estimated_hours' => 20,
                 'progress_percent' => 0,
-                'created_by' => $manager->id,
+                'created_by' => $coordinator->id,
                 'assignees' => [$dev3->id],
             ],
             [
@@ -209,7 +209,7 @@ class DemoDataSeeder extends Seeder
                 'due_date' => '2026-03-15',
                 'estimated_hours' => 24,
                 'progress_percent' => 0,
-                'created_by' => $manager->id,
+                'created_by' => $coordinator->id,
                 'assignees' => [$dev2->id],
             ],
             [
@@ -223,7 +223,7 @@ class DemoDataSeeder extends Seeder
                 'due_date' => '2026-03-25',
                 'estimated_hours' => 32,
                 'progress_percent' => 0,
-                'created_by' => $manager->id,
+                'created_by' => $coordinator->id,
                 'assignees' => [$dev2->id],
             ],
             [
@@ -279,7 +279,7 @@ class DemoDataSeeder extends Seeder
                 'due_date' => '2026-05-01',
                 'estimated_hours' => 16,
                 'progress_percent' => 0,
-                'created_by' => $manager->id,
+                'created_by' => $coordinator->id,
                 'assignees' => [$dev2->id],
             ],
             [
@@ -293,7 +293,7 @@ class DemoDataSeeder extends Seeder
                 'due_date' => '2026-05-10',
                 'estimated_hours' => 12,
                 'progress_percent' => 0,
-                'created_by' => $manager->id,
+                'created_by' => $coordinator->id,
                 'assignees' => [$dev2->id, $dev3->id],
             ],
         ];
@@ -388,14 +388,14 @@ class DemoDataSeeder extends Seeder
                 'status' => 'planning',
                 'start_date' => '2026-04-01',
                 'end_date' => '2026-08-31',
-                'owner_id' => $manager->id,
-                'created_by' => $manager->id,
+                'owner_id' => $coordinator->id,
+                'created_by' => $coordinator->id,
             ]
         );
 
         $project2->members()->syncWithoutDetaching([
-            $manager->id => ['project_role' => 'owner'],
-            $dev2->id => ['project_role' => 'developer'],
+            $coordinator->id => ['project_role' => 'admin'],
+            $dev2->id => ['project_role' => 'member'],
         ]);
 
         $p2StatusTodo = TaskStatus::firstOrCreate(
@@ -422,7 +422,7 @@ class DemoDataSeeder extends Seeder
                 'planned_end' => '2026-04-15',
                 'due_date' => '2026-04-15',
                 'estimated_hours' => 16,
-                'created_by' => $manager->id,
+                'created_by' => $coordinator->id,
                 'kanban_order' => 0,
             ]
         );

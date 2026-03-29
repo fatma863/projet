@@ -12,7 +12,6 @@ import { ArrowLeft, Plus, Trash2, Users } from 'lucide-react';
 
 const ROLES = [
   { value: 'lead', label: 'Lead' },
-  { value: 'manager', label: 'Manager' },
   { value: 'developer', label: 'Développeur' },
   { value: 'designer', label: 'Designer' },
   { value: 'tester', label: 'Testeur' },
@@ -29,8 +28,19 @@ export default function TeamDetailPage() {
 
   const { data: team, isLoading } = useQuery({
     queryKey: ['team', id],
-    queryFn: () => api.get(`/teams/${id}`).then((r) => r.data.data),
+    queryFn: () => api.get(`/teams/${id}`).then((r) => (
+      r.data?.data ?? r.data?.team ?? r.data?.team?.data ?? r.data
+    )),
   });
+
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['users-for-team-add'],
+    enabled: Boolean(showAdd && team),
+    queryFn: () => api.get('/users?per_page=500').then((r) => r.data?.data ?? []),
+  });
+
+  const memberIds = new Set((team?.members || []).map((m) => m.id));
+  const availableUsers = allUsers.filter((u) => !memberIds.has(u.id));
 
   const addMutation = useMutation({
     mutationFn: (data) => api.post(`/teams/${id}/members`, data),
@@ -63,6 +73,11 @@ export default function TeamDetailPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">{team.name}</h1>
           {team.description && <p className="mt-1 text-sm text-muted-foreground">{team.description}</p>}
+          {team.team_leader?.name && (
+            <p className="mt-1 text-sm text-foreground">
+              Chef d&apos;équipe : <span className="font-medium">{team.team_leader.name}</span>
+            </p>
+          )}
           <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
             <span>{team.members_count || team.members?.length || 0} membres</span>
             <span>{team.projects_count || 0} projets</span>
@@ -82,9 +97,23 @@ export default function TeamDetailPage() {
         {showAdd && (
           <Card>
             <CardContent className="flex flex-wrap items-end gap-3 p-4">
-              <div>
-                <label className="mb-1 block text-xs font-medium">ID utilisateur</label>
-                <Input type="number" value={userId} onChange={(e) => setUserId(e.target.value)} className="w-24" placeholder="ID" />
+              <div className="min-w-[220px] flex-1">
+                <label className="mb-1 block text-xs font-medium">Utilisateur</label>
+                <Select
+                  value={userId}
+                  onChange={(e) => setUserId(e.target.value)}
+                  className="w-full min-w-[200px]"
+                >
+                  <option value="">Choisir un utilisateur…</option>
+                  {availableUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.email})
+                    </option>
+                  ))}
+                </Select>
+                {availableUsers.length === 0 && allUsers.length > 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">Tous les utilisateurs sont déjà dans cette équipe.</p>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium">Rôle</label>

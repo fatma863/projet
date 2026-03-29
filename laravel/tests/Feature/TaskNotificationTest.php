@@ -16,11 +16,11 @@ class TaskNotificationTest extends TestCase
 
     public function test_notifies_user_when_assigned_to_task(): void
     {
-        [$manager, $task, $project] = $this->seedProjectTask();
+        [$actor, $task, $project] = $this->seedProjectTask();
         $assignee = User::factory()->create();
         $project->members()->syncWithoutDetaching([$assignee->id => ['project_role' => 'developer']]);
 
-        Sanctum::actingAs($manager);
+        Sanctum::actingAs($actor);
         $this->postJson("/api/tasks/{$task->id}/assign", ['user_id' => $assignee->id])->assertOk();
 
         $this->assertDatabaseHas('notifications', [
@@ -31,11 +31,11 @@ class TaskNotificationTest extends TestCase
 
     public function test_notifies_assignees_when_task_is_delayed(): void
     {
-        [$manager, $task, $project] = $this->seedProjectTask();
+        [$actor, $task, $project] = $this->seedProjectTask();
         $assignee = User::factory()->create();
         $project->members()->syncWithoutDetaching([$assignee->id => ['project_role' => 'developer']]);
 
-        Sanctum::actingAs($manager);
+        Sanctum::actingAs($actor);
         $this->postJson("/api/tasks/{$task->id}/assign", ['user_id' => $assignee->id])->assertOk();
         $this->putJson("/api/tasks/{$task->id}", [
             'due_date' => now()->subDay()->toDateString(),

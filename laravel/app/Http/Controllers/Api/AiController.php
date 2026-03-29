@@ -5,49 +5,37 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\Task;
-use App\Services\AI\AssignmentOptimizerService;
-use App\Services\AI\DelayRiskService;
 use App\Services\AI\ProjectRecommendationService;
-use App\Services\AI\TaskEstimationService;
+use App\Services\AIService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Gate;
 
 class AiController extends Controller
 {
     public function __construct(
-        private TaskEstimationService $estimationService,
-        private DelayRiskService $delayRiskService,
-        private AssignmentOptimizerService $assignmentService,
-        private ProjectRecommendationService $projectRecommendationService,
+        private readonly AIService $aiService,
+        private readonly ProjectRecommendationService $projectRecommendationService,
     ) {}
-
-    // ─── ESTIMATION ─────────────────────────────────────
 
     public function estimateTask(Task $task): JsonResponse
     {
         Gate::authorize('view', $task);
 
-        $result = $this->estimationService->estimate($task);
+        $payload = $this->aiService->buildEstimatePayload($task);
 
-        return response()->json([
-            'task_id' => $task->id,
-            'title'   => $task->title,
-            ...$result,
-        ]);
+        return response()->json($payload);
     }
-
-    // ─── DELAY RISK ─────────────────────────────────────
 
     public function delayRiskTask(Task $task): JsonResponse
     {
         Gate::authorize('view', $task);
 
-        $result = $this->delayRiskService->analyzeTask($task);
+        $payload = $this->aiService->buildDelayRiskTaskPayload($task);
 
         return response()->json([
             'task_id' => $task->id,
-            'title'   => $task->title,
-            ...$result,
+            'title' => $task->title,
+            ...$payload,
         ]);
     }
 
@@ -55,23 +43,20 @@ class AiController extends Controller
     {
         Gate::authorize('view', $project);
 
-        $result = $this->delayRiskService->analyzeProject($project);
-
-        return response()->json($result);
+        return response()->json($this->aiService->analyzeProject($project));
     }
-
-    // ─── ASSIGNMENT OPTIMIZER ───────────────────────────
 
     public function suggestAssignment(Task $task): JsonResponse
     {
         Gate::authorize('update', $task);
 
-        $result = $this->assignmentService->suggest($task);
+        $detail = $this->aiService->suggestAssignmentDetails($task);
 
         return response()->json([
             'task_id' => $task->id,
-            'title'   => $task->title,
-            ...$result,
+            'title' => $task->title,
+            'suggested_user' => $detail['suggested_user'],
+            'score' => $detail['score'],
         ]);
     }
 
@@ -79,17 +64,13 @@ class AiController extends Controller
     {
         Gate::authorize('update', $project);
 
-        $result = $this->assignmentService->optimizeProject($project);
-
-        return response()->json($result);
+        return response()->json($this->aiService->buildOptimizeAssignmentsPayload($project));
     }
 
     public function projectRecommendations(Project $project): JsonResponse
     {
         Gate::authorize('view', $project);
 
-        $result = $this->projectRecommendationService->recommend($project);
-
-        return response()->json($result);
+        return response()->json($this->projectRecommendationService->recommend($project));
     }
 }

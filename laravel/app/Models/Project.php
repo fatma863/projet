@@ -15,12 +15,15 @@ class Project extends Model
     protected $fillable = [
         'team_id',
         'client_id',
+        'project_manager_id',
         'name',
         'code',
         'description',
         'status',
+        'priority',
         'start_date',
         'end_date',
+        'budget',
         'estimated_cost',
         'actual_cost',
         'cost_per_hour',
@@ -33,6 +36,7 @@ class Project extends Model
         return [
             'start_date' => 'date',
             'end_date' => 'date',
+            'budget' => 'decimal:2',
             'estimated_cost' => 'decimal:2',
             'actual_cost' => 'decimal:2',
             'cost_per_hour' => 'decimal:2',
@@ -59,10 +63,22 @@ class Project extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function manager(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'project_manager_id');
+    }
+
     public function members(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'project_members')
             ->withPivot('project_role')
+            ->withTimestamps();
+    }
+
+    public function users(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'project_user')
+            ->withPivot('role')
             ->withTimestamps();
     }
 
@@ -89,5 +105,10 @@ class Project extends Model
     public function activityLogs(): HasMany
     {
         return $this->hasMany(ActivityLog::class)->latest();
+    }
+
+    public function invitations(): HasMany
+    {
+        return $this->hasMany(ProjectInvitation::class);
     }
 }

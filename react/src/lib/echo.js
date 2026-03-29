@@ -2,15 +2,30 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 
 let echoInstance = null;
+let echoDisabled = false;
+
+function createNoopEcho() {
+  const noopChannel = {
+    listen: () => noopChannel,
+    stopListening: () => noopChannel,
+  };
+
+  return {
+    private: () => noopChannel,
+    leave: () => {},
+    disconnect: () => {},
+  };
+}
 
 function buildOptions() {
   const token = localStorage.getItem('token');
   const driver = import.meta.env.VITE_BROADCAST_DRIVER || 'reverb';
   const useReverb = driver === 'reverb';
+  const key = useReverb ? import.meta.env.VITE_REVERB_APP_KEY : import.meta.env.VITE_PUSHER_APP_KEY;
 
   return {
     broadcaster: 'pusher',
-    key: useReverb ? import.meta.env.VITE_REVERB_APP_KEY : import.meta.env.VITE_PUSHER_APP_KEY,
+    key,
     wsHost: useReverb
       ? import.meta.env.VITE_REVERB_HOST || window.location.hostname
       : import.meta.env.VITE_PUSHER_HOST || `ws-${import.meta.env.VITE_PUSHER_APP_CLUSTER}.pusher.com`,
@@ -31,9 +46,22 @@ function buildOptions() {
 
 export function getEcho() {
   if (echoInstance) return echoInstance;
+  if (echoDisabled) return createNoopEcho();
 
-  window.Pusher = Pusher;
-  echoInstance = new Echo(buildOptions());
+  const options = buildOptions();
+  if (!options.key) {
+    echoDisabled = true;
+    return createNoopEcho();
+  }
+
+  try {
+    window.Pusher = Pusher;
+    echoInstance = new Echo(options);
+  } catch {
+    echoDisabled = true;
+    return createNoopEcho();
+  }
+
   return echoInstance;
 }
 

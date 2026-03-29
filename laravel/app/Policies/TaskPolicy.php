@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Task;
 use App\Models\User;
+use App\Support\AccessControl;
 
 class TaskPolicy
 {
@@ -14,48 +15,34 @@ class TaskPolicy
 
     public function view(User $user, Task $task): bool
     {
-        if ($user->hasRole('admin')) {
+        if (AccessControl::isAdmin($user)) {
             return true;
         }
 
-        return $task->project->members()->where('user_id', $user->id)->exists();
+        $projectRole = AccessControl::projectRole($user, $task->project);
+        if ($projectRole !== null) {
+            return true;
+        }
+
+        return $task->assignees()->where('users.id', $user->id)->exists();
     }
 
     public function create(User $user): bool
     {
-        return $user->hasPermissionTo('manage-tasks');
+        if ($user->hasRole('viewer')) {
+            return false;
+        }
+
+        return $user->hasRole('admin') || $user->hasRole('member');
     }
 
     public function update(User $user, Task $task): bool
     {
-        if ($user->hasRole('admin')) {
-            return true;
-        }
-
-        $project = $task->project;
-        $member = $project->members()->where('user_id', $user->id)->first();
-
-        if (!$member) {
-            return false;
-        }
-
-        return in_array($member->pivot->project_role, ['owner', 'manager'])
-            || $task->assignees()->where('user_id', $user->id)->exists()
-            || $task->created_by === $user->id;
+        return AccessControl::canEditTask($user, $task);
     }
 
     public function delete(User $user, Task $task): bool
     {
-        if ($user->hasRole('admin')) {
-            return true;
-        }
-
-        $project = $task->project;
-        $memberRole = $project->members()
-            ->where('user_id', $user->id)
-            ->first()?->pivot?->project_role;
-
-        return in_array($memberRole, ['owner', 'manager'])
-            || $task->created_by === $user->id;
+        return AccessControl::canDeleteTask($user, $task);
     }
 }

@@ -12,6 +12,52 @@ use Illuminate\Support\Facades\Gate;
 
 class GanttController extends Controller
 {
+    /**
+     * All accessible tasks with planned_start (cross-project), for timeline / Gantt.
+     */
+    public function globalIndex(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $query = Task::query()->accessibleBy($user)->with(['status', 'assignees', 'dependencies', 'dependents', 'project']);
+
+        if ($request->filled('project_id')) {
+            $query->where('project_id', $request->integer('project_id'));
+        }
+
+        $taskCollection = $query->whereNotNull('planned_start')
+            ->orderBy('planned_start')
+            ->get();
+
+        $criticalIds = $this->computeCriticalPathTaskIds($taskCollection);
+
+        $tasks = $taskCollection->map(function ($task) use ($criticalIds) {
+            return [
+                'id' => $task->id,
+                'project_id' => $task->project_id,
+                'project_name' => $task->project?->name,
+                'name' => $task->title,
+                'start' => $task->planned_start?->toDateString(),
+                'end' => $task->planned_end?->toDateString() ?? $task->planned_start?->toDateString(),
+                'progress' => $task->progress_percent ?? 0,
+                'priority' => $task->priority,
+                'status' => $task->status?->name,
+                'status_color' => $task->status?->color,
+                'workflow_status' => $task->workflow_status ?? Task::inferWorkflowStatus($task),
+                'parent_id' => $task->parent_id,
+                'assignees' => $task->assignees->pluck('name'),
+                'is_critical' => $criticalIds->contains($task->id),
+                'is_delayed' => $task->isOverdue()
+                    || ($task->planned_end && $task->due_date && $task->planned_end->greaterThan($task->due_date)),
+                'dependencies' => $task->dependencies->map(fn ($d) => [
+                    'id' => $d->id,
+                    'type' => $d->pivot->type,
+                ])->values(),
+            ];
+        })->values();
+
+        return response()->json(['gantt' => $tasks]);
+    }
+
     public function show(Project $project): JsonResponse
     {
         Gate::authorize('view', $project);
@@ -34,9 +80,12 @@ class GanttController extends Controller
                 'priority' => $task->priority,
                 'status' => $task->status?->name,
                 'status_color' => $task->status?->color,
+                'workflow_status' => $task->workflow_status ?? Task::inferWorkflowStatus($task),
                 'parent_id' => $task->parent_id,
                 'assignees' => $task->assignees->pluck('name'),
                 'is_critical' => $criticalIds->contains($task->id),
+                'is_delayed' => $task->isOverdue()
+                    || ($task->planned_end && $task->due_date && $task->planned_end->greaterThan($task->due_date)),
                 'dependencies' => $task->dependencies->map(fn ($d) => [
                     'id' => $d->id,
                     'type' => $d->pivot->type,

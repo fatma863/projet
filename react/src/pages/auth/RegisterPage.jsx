@@ -19,9 +19,23 @@ export default function RegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrors({});
+
+    const clientErrors = {};
+    if (!form.name.trim()) clientErrors.name = ['Le nom est obligatoire.'];
+    if (!form.email.trim()) clientErrors.email = ['L\'email est obligatoire.'];
+    if (!form.password) clientErrors.password = ['Le mot de passe est obligatoire.'];
+    if (form.password && form.password.length < 8) clientErrors.password = ['Le mot de passe doit contenir au moins 8 caractères.'];
+    if (form.password !== form.password_confirmation) {
+      clientErrors.password_confirmation = ['La confirmation du mot de passe ne correspond pas.'];
+    }
+    if (Object.keys(clientErrors).length > 0) {
+      setErrors(clientErrors);
+      return;
+    }
+
     setLoading(true);
     try {
-      await register(form.name, form.email, form.password, form.password_confirmation);
+      await register(form.name.trim(), form.email.trim(), form.password, form.password_confirmation);
       navigate('/dashboard');
     } catch (err) {
       if (err.response?.data?.errors) {
@@ -47,7 +61,7 @@ export default function RegisterPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" noValidate>
             {errors.general && (
               <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {errors.general[0]}
@@ -56,25 +70,53 @@ export default function RegisterPage() {
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Nom complet</label>
-              <Input placeholder="Votre nom" value={form.name} onChange={update('name')} required />
+              <Input
+                name="register_name"
+                autoComplete="off"
+                placeholder="Votre nom"
+                value={form.name}
+                onChange={update('name')}
+              />
               {errors.name && <p className="text-xs text-destructive">{errors.name[0]}</p>}
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Email</label>
-              <Input type="email" placeholder="votre@email.com" value={form.email} onChange={update('email')} required />
+              <Input
+                type="email"
+                name="register_email"
+                autoComplete="off"
+                placeholder="votre@email.com"
+                value={form.email}
+                onChange={update('email')}
+              />
               {errors.email && <p className="text-xs text-destructive">{errors.email[0]}</p>}
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Mot de passe</label>
-              <Input type="password" placeholder="••••••••" value={form.password} onChange={update('password')} required />
+              <Input
+                type="password"
+                name="register_password"
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={form.password}
+                onChange={update('password')}
+              />
               {errors.password && <p className="text-xs text-destructive">{errors.password[0]}</p>}
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Confirmer le mot de passe</label>
-              <Input type="password" placeholder="••••••••" value={form.password_confirmation} onChange={update('password_confirmation')} required />
+              <Input
+                type="password"
+                name="register_password_confirmation"
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={form.password_confirmation}
+                onChange={update('password_confirmation')}
+              />
+              {errors.password_confirmation && <p className="text-xs text-destructive">{errors.password_confirmation[0]}</p>}
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
 import { getEcho } from '../../lib/echo';
 import { Modal } from '../../components/ui/Modal';
@@ -24,14 +25,20 @@ const EMPTY_FORM = {
   title: '', description: '', status_id: '', priority: 'medium',
   complexity: 5, planned_start: '', planned_end: '', due_date: '',
   estimated_hours: '', story_points: '', progress_percent: 0,
+  ai_auto_assign: false,
 };
 
-export default function TaskModal({ open, onClose, projectId, task, defaultStatusId, statuses }) {
+export default function TaskModal({ open, onClose, projectId, task, defaultStatusId, statuses, canWriteProject = true, isAdmin: isAdminProp }) {
+  const { user } = useAuth();
+  const isAdmin = isAdminProp ?? user?.roles?.includes('admin');
   const queryClient = useQueryClient();
   const isEdit = !!task;
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
+  const [generalError, setGeneralError] = useState(null);
   const [activeTab, setActiveTab] = useState('details');
+  const canEditTask = isEdit ? (isAdmin || Boolean(task?.access?.can_edit)) : canWriteProject;
+  const canDeleteTask = isEdit && (isAdmin || Boolean(task?.access?.can_delete));
 
   useEffect(() => {
     if (open) {
@@ -53,6 +60,7 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
         setForm({ ...EMPTY_FORM, status_id: defaultStatusId || '' });
       }
       setErrors({});
+      setGeneralError(null);
       setActiveTab('details');
     }
   }, [open, task, defaultStatusId]);
@@ -65,7 +73,14 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
       onClose();
     },
     onError: (err) => {
-      if (err.response?.status === 422) setErrors(err.response.data.errors || {});
+      if (err.response?.status === 422) {
+        setErrors(err.response.data.errors || {});
+        setGeneralError(null);
+        return;
+      }
+
+      setErrors({});
+      setGeneralError(err.response?.data?.message || err.message || 'Erreur lors de la sauvegarde');
     },
   });
 
@@ -79,7 +94,19 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (!form.status_id) {
+      setErrors((prev) => ({ ...prev, status_id: ['Statut requis.'] }));
+      setGeneralError(null);
+      return;
+    }
+
     const payload = { ...form };
+    const autoAssign = payload.ai_auto_assign;
+    delete payload.ai_auto_assign;
+    if (!isEdit && autoAssign) {
+      payload.ai_auto_assign = true;
+    }
     if (!payload.planned_start) delete payload.planned_start;
     if (!payload.planned_end) delete payload.planned_end;
     if (!payload.due_date) delete payload.due_date;
@@ -94,7 +121,7 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
     <Modal
       open={open}
       onClose={onClose}
-      title={isEdit ? `Modifier: ${task.title}` : 'Nouvelle tâche'}
+      title={isEdit ? (canEditTask ? `Modifier : ${task.title}` : task.title) : 'Nouvelle tâche'}
       size="xl"
     >
       {/* Tabs */}
@@ -123,68 +150,133 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
       </div>
 
       {activeTab === 'details' && (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={canEditTask ? handleSubmit : (e) => e.preventDefault()} className="space-y-4">
+          {generalError && (
+            <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {generalError}
+            </div>
+          )}
+
+          {errors && Object.keys(errors).length > 0 && (
+            <div className="space-y-1 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <p className="font-medium">Erreurs de validation :</p>
+              {Object.entries(errors).map(([key, value]) => (
+                <p key={key}>
+                  {Array.isArray(value) ? value[0] : String(value)}
+                </p>
+              ))}
+            </div>
+          )}
+
           <div>
             <label className="mb-1 block text-sm font-medium">Titre *</label>
-            <Input value={form.title} onChange={(e) => set('title', e.target.value)} />
+            <Input value={form.title} onChange={(e) => set('title', e.target.value)} disabled={!canEditTask} />
             {errors.title && <p className="mt-1 text-xs text-destructive">{errors.title[0]}</p>}
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">Description</label>
-            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3} />
+            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3} disabled={!canEditTask} />
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium">Statut *</label>
-              <Select value={form.status_id} onChange={(e) => set('status_id', Number(e.target.value))}>
+              <Select value={form.status_id} onChange={(e) => set('status_id', Number(e.target.value))} disabled={!canEditTask}>
                 <option value="">Choisir...</option>
                 {statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
+              {errors.status_id && <p className="mt-1 text-xs text-destructive">{errors.status_id[0]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Priorité</label>
-              <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
+              <Select value={form.priority} onChange={(e) => set('priority', e.target.value)} disabled={!canEditTask}>
                 {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
               </Select>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Complexité (1-10)</label>
-              <Input type="number" min={1} max={10} value={form.complexity} onChange={(e) => set('complexity', Number(e.target.value))} />
+              <Input type="number" min={1} max={10} value={form.complexity} onChange={(e) => set('complexity', Number(e.target.value))} disabled={!canEditTask} />
+              {errors.complexity && <p className="mt-1 text-xs text-destructive">{errors.complexity[0]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Story points</label>
-              <Input type="number" min={0} value={form.story_points} onChange={(e) => set('story_points', e.target.value === '' ? '' : Number(e.target.value))} />
+              <Input type="number" min={0} value={form.story_points} onChange={(e) => set('story_points', e.target.value === '' ? '' : Number(e.target.value))} disabled={!canEditTask} />
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium">Début planifié</label>
-              <Input type="date" value={form.planned_start} onChange={(e) => set('planned_start', e.target.value)} />
+              <Input type="date" value={form.planned_start} onChange={(e) => set('planned_start', e.target.value)} disabled={!canEditTask} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Fin planifiée</label>
-              <Input type="date" value={form.planned_end} onChange={(e) => set('planned_end', e.target.value)} />
+              <Input type="date" value={form.planned_end} onChange={(e) => set('planned_end', e.target.value)} disabled={!canEditTask} />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Échéance</label>
-              <Input type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)} />
+              <Input type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)} disabled={!canEditTask} />
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium">Heures estimées</label>
-              <Input type="number" step="0.5" value={form.estimated_hours} onChange={(e) => set('estimated_hours', e.target.value)} />
+              <Input type="number" step="0.5" value={form.estimated_hours} onChange={(e) => set('estimated_hours', e.target.value)} disabled={!canEditTask} />
             </div>
             {isEdit && (
               <div>
                 <label className="mb-1 block text-sm font-medium">Progression (%)</label>
-                <Input type="number" min={0} max={100} value={form.progress_percent} onChange={(e) => set('progress_percent', Number(e.target.value))} />
+                <Input type="number" min={0} max={100} value={form.progress_percent} onChange={(e) => set('progress_percent', Number(e.target.value))} disabled={!canEditTask} />
               </div>
             )}
           </div>
+          {isEdit && task && (task.estimated_duration != null || task.risk_level) && (
+            <div className="flex flex-wrap gap-3 rounded-lg border border-dashed border-border bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
+              {task.estimated_duration != null && (
+                <span>
+                  Durée estimée (IA) :{' '}
+                  <span className="font-medium text-foreground">
+                    {(task.estimated_duration / 60).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h
+                    {' '}({task.estimated_duration} min)
+                  </span>
+                </span>
+              )}
+              {task.risk_level && (
+                <span>
+                  Risque :{' '}
+                  <span
+                    className={`font-medium ${
+                      task.risk_level === 'high'
+                        ? 'text-red-700'
+                        : task.risk_level === 'medium'
+                          ? 'text-amber-800'
+                          : 'text-emerald-800'
+                    }`}
+                  >
+                    {task.risk_level}
+                    {task.risk_score != null ? ` (${task.risk_score})` : ''}
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
+          {!isEdit && canEditTask && (
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={Boolean(form.ai_auto_assign)}
+                onChange={(e) => set('ai_auto_assign', e.target.checked)}
+              />
+              <span>
+                <span className="font-medium text-foreground">Assignation automatique (IA)</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  Propose le membre le plus disponible selon la charge et l’historique.
+                </span>
+              </span>
+            </label>
+          )}
           <div className="flex items-center justify-between pt-2">
             <div>
-              {isEdit && (
+              {isEdit && canDeleteTask && canEditTask && (
                 <Button
                   type="button"
                   variant="destructive"
@@ -195,23 +287,29 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
               )}
             </div>
             <div className="flex gap-3">
-              <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-              <Button type="submit" disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? 'Enregistrement...' : isEdit ? 'Modifier' : 'Créer'}
-              </Button>
+              {canEditTask ? (
+                <>
+                  <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+                  <Button type="submit" disabled={saveMutation.isPending}>
+                    {saveMutation.isPending ? 'Enregistrement...' : isEdit ? 'Enregistrer' : 'Créer'}
+                  </Button>
+                </>
+              ) : (
+                <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+              )}
             </div>
           </div>
         </form>
       )}
 
-      {activeTab === 'comments' && isEdit && <CommentsTab taskId={task.id} projectId={projectId} />}
-      {activeTab === 'time' && isEdit && <TimeEntriesTab taskId={task.id} />}
-      {activeTab === 'assignees' && isEdit && <AssigneesTab taskId={task.id} />}
+      {activeTab === 'comments' && isEdit && <CommentsTab taskId={task.id} projectId={projectId} canWriteProject={canWriteProject} />}
+      {activeTab === 'time' && isEdit && <TimeEntriesTab taskId={task.id} canEdit={canEditTask} />}
+      {activeTab === 'assignees' && isEdit && <AssigneesTab taskId={task.id} isAdmin={isAdmin} canEdit={canEditTask} />}
     </Modal>
   );
 }
 
-function CommentsTab({ taskId, projectId }) {
+function CommentsTab({ taskId, projectId, canWriteProject }) {
   const queryClient = useQueryClient();
   const [body, setBody] = useState('');
 
@@ -221,7 +319,9 @@ function CommentsTab({ taskId, projectId }) {
   });
   const { data: members } = useQuery({
     queryKey: ['project-members', projectId],
-    queryFn: () => api.get(`/projects/${projectId}/members`).then((r) => r.data.data || r.data.members || []),
+    queryFn: () => api.get(`/projects/${projectId}/members`).then((r) => (
+      r.data?.members?.data ?? r.data?.members ?? r.data?.data ?? []
+    )),
   });
 
   useEffect(() => {
@@ -291,12 +391,14 @@ function CommentsTab({ taskId, projectId }) {
                 <span className="text-xs text-muted-foreground">
                   {new Date(c.created_at).toLocaleDateString('fr-FR')}
                 </span>
-                <button
-                  onClick={() => deleteMutation.mutate(c.id)}
-                  className="text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {canWriteProject && (
+                  <button
+                    onClick={() => deleteMutation.mutate(c.id)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             </div>
             <p className="text-sm text-foreground">{c.body.split(/(\s+)/).map((token, idx) => (
@@ -318,6 +420,7 @@ function CommentsTab({ taskId, projectId }) {
             placeholder="Ajouter un commentaire... (mention: @username)"
             rows={2}
             className="flex-1"
+            disabled={!canWriteProject}
           />
           {mentionSuggestions.length > 0 && (
             <div className="absolute bottom-full left-0 mb-1 w-full rounded-md border border-border bg-white shadow-lg">
@@ -337,7 +440,7 @@ function CommentsTab({ taskId, projectId }) {
         <Button
           size="sm"
           onClick={() => { if (body.trim()) addMutation.mutate(body.trim()); }}
-          disabled={!body.trim() || addMutation.isPending}
+          disabled={!canWriteProject || !body.trim() || addMutation.isPending}
           className="self-end"
         >
           <Send className="h-4 w-4" />
@@ -347,7 +450,7 @@ function CommentsTab({ taskId, projectId }) {
   );
 }
 
-function TimeEntriesTab({ taskId }) {
+function TimeEntriesTab({ taskId, canEdit = true }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), minutes: '', note: '' });
 
@@ -381,27 +484,29 @@ function TimeEntriesTab({ taskId }) {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div>
-          <label className="mb-1 block text-xs font-medium">Date</label>
-          <Input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} className="w-36" />
+      {canEdit && (
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium">Date</label>
+            <Input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} className="w-36" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium">Minutes</label>
+            <Input type="number" min={1} value={form.minutes} onChange={(e) => setForm((f) => ({ ...f, minutes: e.target.value }))} className="w-24" placeholder="60" />
+          </div>
+          <div className="flex-1">
+            <label className="mb-1 block text-xs font-medium">Note</label>
+            <Input value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="Optionnel" />
+          </div>
+          <Button
+            size="sm"
+            onClick={() => addMutation.mutate({ date: form.date, minutes: parseInt(form.minutes), note: form.note || undefined })}
+            disabled={!form.minutes || addMutation.isPending}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium">Minutes</label>
-          <Input type="number" min={1} value={form.minutes} onChange={(e) => setForm((f) => ({ ...f, minutes: e.target.value }))} className="w-24" placeholder="60" />
-        </div>
-        <div className="flex-1">
-          <label className="mb-1 block text-xs font-medium">Note</label>
-          <Input value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="Optionnel" />
-        </div>
-        <Button
-          size="sm"
-          onClick={() => addMutation.mutate({ date: form.date, minutes: parseInt(form.minutes), note: form.note || undefined })}
-          disabled={!form.minutes || addMutation.isPending}
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
+      )}
 
       <div className="max-h-48 space-y-2 overflow-y-auto">
         {entries?.map((e) => (
@@ -411,9 +516,11 @@ function TimeEntriesTab({ taskId }) {
               <span className="text-xs text-muted-foreground">{new Date(e.date).toLocaleDateString('fr-FR')}</span>
               {e.note && <span className="text-xs text-muted-foreground">— {e.note}</span>}
             </div>
-            <button onClick={() => deleteMutation.mutate(e.id)} className="text-muted-foreground hover:text-destructive">
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            {canEdit && (
+              <button type="button" onClick={() => deleteMutation.mutate(e.id)} className="text-muted-foreground hover:text-destructive">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -421,9 +528,15 @@ function TimeEntriesTab({ taskId }) {
   );
 }
 
-function AssigneesTab({ taskId }) {
+function AssigneesTab({ taskId, isAdmin, canEdit = true }) {
   const queryClient = useQueryClient();
   const [userId, setUserId] = useState('');
+
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['users-for-assign', isAdmin],
+    enabled: Boolean(isAdmin),
+    queryFn: () => api.get('/users?per_page=500').then((r) => r.data.data || []),
+  });
 
   const { data: assignees, isLoading } = useQuery({
     queryKey: ['assignees', taskId],
@@ -451,19 +564,31 @@ function AssigneesTab({ taskId }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-end gap-2">
-        <div className="flex-1">
-          <label className="mb-1 block text-sm font-medium">ID utilisateur</label>
-          <Input type="number" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="ID" />
+      {canEdit && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <div className="flex-1">
+            <label className="mb-1 block text-sm font-medium">{isAdmin ? 'Utilisateur' : 'ID utilisateur'}</label>
+            {isAdmin ? (
+              <Select value={userId} onChange={(e) => setUserId(e.target.value)}>
+                <option value="">Choisir…</option>
+                {allUsers.map((u) => (
+                  <option key={u.id} value={String(u.id)}>{u.name} — {u.email}</option>
+                ))}
+              </Select>
+            ) : (
+              <Input type="number" value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="ID" />
+            )}
+          </div>
+          <Button
+            size="sm"
+            className="shrink-0"
+            onClick={() => assignMutation.mutate({ user_id: parseInt(userId, 10) })}
+            disabled={!userId || assignMutation.isPending}
+          >
+            <Plus className="mr-1 h-4 w-4" /> Assigner
+          </Button>
         </div>
-        <Button
-          size="sm"
-          onClick={() => assignMutation.mutate({ user_id: parseInt(userId) })}
-          disabled={!userId || assignMutation.isPending}
-        >
-          <Plus className="mr-1 h-4 w-4" /> Assigner
-        </Button>
-      </div>
+      )}
 
       <div className="space-y-2">
         {assignees?.map((a) => (
@@ -477,12 +602,15 @@ function AssigneesTab({ taskId }) {
                 <p className="text-xs text-muted-foreground">{a.allocation_percent}% allocation</p>
               </div>
             </div>
-            <button
-              onClick={() => unassignMutation.mutate(a.user?.id || a.user_id)}
-              className="rounded p-1 text-muted-foreground hover:text-destructive"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => unassignMutation.mutate(a.user?.id || a.user_id)}
+                className="rounded p-1 text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
           </div>
         ))}
         {assignees?.length === 0 && (

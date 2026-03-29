@@ -16,7 +16,8 @@ Broadcast::channel('project.{projectId}', function ($user, int $projectId) {
         ->where('id', $projectId)
         ->where(function ($q) use ($user) {
             $q->where('owner_id', $user->id)
-                ->orWhereHas('members', fn ($qm) => $qm->where('users.id', $user->id));
+                ->orWhereHas('members', fn ($qm) => $qm->where('users.id', $user->id))
+                ->orWhereHas('users', fn ($qu) => $qu->where('users.id', $user->id));
         })
         ->exists();
 });

@@ -18,8 +18,10 @@ use App\Models\TaskAssignment;
 use App\Models\TaskComment;
 use App\Models\TimeEntry;
 use App\Services\ActivityLogService;
+use App\Services\AIService;
 use App\Services\MentionService;
 use App\Services\NotificationService;
+use App\Support\AccessControl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -31,11 +33,52 @@ class TaskController extends Controller
     public function __construct(
         private readonly ActivityLogService $activityLogService,
         private readonly MentionService $mentionService,
-        private readonly NotificationService $notificationService
+        private readonly NotificationService $notificationService,
+        private readonly AIService $aiService,
     ) {
     }
 
     // ─── CRUD ────────────────────────────────────────────
+
+    public function globalIndex(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $query = Task::query()->accessibleBy($user)->with(['status', 'creator', 'assignees', 'project', 'sprint']);
+
+        if ($request->filled('project_id')) {
+            $query->where('project_id', $request->integer('project_id'));
+        }
+        if ($request->filled('workflow_status')) {
+            $query->where('workflow_status', $request->string('workflow_status'));
+        }
+        if ($request->filled('priority')) {
+            $query->where('priority', $request->string('priority'));
+        }
+        if ($request->filled('assignee_id')) {
+            $query->whereHas('assignees', fn ($q) => $q->where('users.id', $request->integer('assignee_id')));
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->string('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        $tasks = $request->boolean('all')
+            ? $query->orderByDesc('updated_at')->get()
+            : $query->orderByDesc('updated_at')->paginate($request->input('per_page', 20));
+
+        return response()->json([
+            'tasks' => TaskResource::collection($tasks),
+            'meta' => $request->boolean('all') ? null : [
+                'current_page' => $tasks->currentPage(),
+                'last_page' => $tasks->lastPage(),
+                'total' => $tasks->total(),
+            ],
+        ]);
+    }
 
     public function index(Request $request, Project $project): JsonResponse
     {
@@ -93,7 +136,8 @@ class TaskController extends Controller
 
     public function store(Request $request, Project $project): JsonResponse
     {
-        Gate::authorize('update', $project);
+        Gate::authorize('view', $project);
+        $this->authorizeProjectWrite($request->user(), $project);
 
         $data = $request->validate([
             'title'           => 'required|string|max:255',
@@ -106,8 +150,11 @@ class TaskController extends Controller
             'planned_end'     => 'nullable|date|after_or_equal:planned_start',
             'due_date'        => 'nullable|date',
             'estimated_hours' => 'nullable|numeric|min:0',
+            'estimated_duration' => 'nullable|integer|min:0',
+            'workflow_status' => 'sometimes|in:todo,in_progress,done,at_risk',
             'parent_id'       => 'nullable|exists:tasks,id',
             'sprint_id'       => 'nullable|exists:sprints,id',
+            'ai_auto_assign'  => 'sometimes|boolean',
         ]);
 
         $maxOrder = $project->tasks()
@@ -118,6 +165,11 @@ class TaskController extends Controller
         $data['kanban_order'] = $maxOrder + 1;
 
         $task = $project->tasks()->create($data);
+        if (! isset($data['workflow_status'])) {
+            $task->refreshWorkflowStatus();
+        }
+        $this->aiService->applyOnTaskCreate($task, $request->boolean('ai_auto_assign'));
+        $task->refresh();
         $task->load(['status', 'creator', 'assignees']);
         $this->activityLogService->log($project, Auth::user(), 'task.created', $task, [
             'task_title' => $task->title,
@@ -148,6 +200,8 @@ class TaskController extends Controller
     {
         Gate::authorize('update', $task);
 
+        $hasWorkflow = $request->has('workflow_status');
+
         $data = $request->validate([
             'title'           => 'sometimes|required|string|max:255',
             'description'     => 'nullable|string',
@@ -159,14 +213,21 @@ class TaskController extends Controller
             'planned_end'     => 'nullable|date|after_or_equal:planned_start',
             'due_date'        => 'nullable|date',
             'estimated_hours' => 'nullable|numeric|min:0',
+            'estimated_duration' => 'nullable|integer|min:0',
             'actual_hours'    => 'nullable|numeric|min:0',
             'progress_percent'=> 'nullable|integer|min:0|max:100',
+            'workflow_status' => 'sometimes|in:todo,in_progress,done,at_risk',
             'parent_id'       => 'nullable|exists:tasks,id',
             'sprint_id'       => 'nullable|exists:sprints,id',
         ]);
 
         $data['updated_by'] = Auth::id();
         $task->update($data);
+        $this->aiService->refreshRiskAfterUpdate($task);
+        $task->refresh();
+        if (! $hasWorkflow) {
+            $task->refreshWorkflowStatus();
+        }
         $task->load(['status', 'creator', 'assignees']);
         $this->activityLogService->log($task->project, Auth::user(), 'task.updated', $task, [
             'status_id' => $task->status_id,
@@ -219,10 +280,15 @@ class TaskController extends Controller
             'kanban_order' => $task->kanban_order,
         ]);
         $this->notifyDelayIfNeeded($task);
+        $this->aiService->refreshRiskAfterUpdate($task);
+        $moved = $task->fresh();
+        if ($moved) {
+            $moved->refreshWorkflowStatus();
+        }
 
         return response()->json([
             'message' => 'Tâche déplacée.',
-            'task' => new TaskResource($task->fresh(['status', 'assignees'])),
+            'task' => new TaskResource($task->fresh(['status', 'assignees', 'project'])),
         ]);
     }
 
@@ -263,6 +329,8 @@ class TaskController extends Controller
             $this->notificationService->notifyTaskAssigned($task, $assignee, Auth::user());
         }
 
+        $this->aiService->refreshRiskAfterUpdate($task);
+
         return response()->json([
             'message' => 'Assignation effectuée.',
             'assignment' => new TaskAssigneeResource($assignment->load('user')),
@@ -279,6 +347,8 @@ class TaskController extends Controller
         $this->activityLogService->log($task->project, Auth::user(), 'task.unassigned', $task, [
             'unassigned_user_id' => $userId,
         ]);
+
+        $this->aiService->refreshRiskAfterUpdate($task);
 
         return response()->json(['message' => 'Désassignation effectuée.']);
     }
@@ -357,6 +427,7 @@ class TaskController extends Controller
     public function addComment(Request $request, Task $task): JsonResponse
     {
         Gate::authorize('view', $task);
+        $this->authorizeProjectComment($request->user(), $task->project);
 
         $data = $request->validate([
             'body' => 'required|string',
@@ -416,6 +487,7 @@ class TaskController extends Controller
     public function addAttachment(Request $request, Task $task): JsonResponse
     {
         Gate::authorize('view', $task);
+        $this->authorizeProjectWrite($request->user(), $task->project);
 
         $data = $request->validate([
             'type' => 'required|in:file,link',
@@ -484,6 +556,7 @@ class TaskController extends Controller
     public function addTimeEntry(Request $request, Task $task): JsonResponse
     {
         Gate::authorize('view', $task);
+        $this->authorizeProjectWrite($request->user(), $task->project);
 
         $data = $request->validate([
             'source'  => 'sometimes|in:manual,timer',
@@ -529,6 +602,20 @@ class TaskController extends Controller
 
         if ($isOverdueByDueDate || $isOverdueByPlan) {
             $this->notificationService->notifyTaskDelayed($task, Auth::user());
+        }
+    }
+
+    private function authorizeProjectWrite($user, Project $project): void
+    {
+        if (! AccessControl::canCreateTaskInProject($user, $project)) {
+            abort(403, 'Accès en écriture refusé.');
+        }
+    }
+
+    private function authorizeProjectComment($user, Project $project): void
+    {
+        if (! AccessControl::canCommentOnProject($user, $project)) {
+            abort(403, 'Commentaire non autorisé pour ce rôle.');
         }
     }
 }

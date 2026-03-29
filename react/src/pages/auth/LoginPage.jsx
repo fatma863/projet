@@ -42,7 +42,10 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" noValidate>
+            {/* Decoy fields to prevent browser autofill on actual inputs */}
+            <input type="text" name="fake_username" autoComplete="username" tabIndex={-1} className="hidden" />
+            <input type="password" name="fake_password" autoComplete="current-password" tabIndex={-1} className="hidden" />
             {error && (
               <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {error}
@@ -53,6 +56,8 @@ export default function LoginPage() {
               <label className="text-sm font-medium text-foreground">Email</label>
               <Input
                 type="email"
+                name="login_email"
+                autoComplete="off"
                 placeholder="votre@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -64,6 +69,8 @@ export default function LoginPage() {
               <label className="text-sm font-medium text-foreground">Mot de passe</label>
               <Input
                 type="password"
+                name="login_password"
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

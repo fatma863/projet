@@ -34,18 +34,6 @@ class RoleAndPermissionSeeder extends Seeder
         $admin = Role::firstOrCreate(['name' => 'admin']);
         $admin->syncPermissions($permissions);
 
-        $manager = Role::firstOrCreate(['name' => 'manager']);
-        $manager->syncPermissions([
-            'manage-teams',
-            'manage-projects',
-            'view-projects',
-            'manage-tasks',
-            'view-tasks',
-            'manage-time-entries',
-            'view-reports',
-            'use-ai-features',
-        ]);
-
         $member = Role::firstOrCreate(['name' => 'member']);
         $member->syncPermissions([
             'view-projects',

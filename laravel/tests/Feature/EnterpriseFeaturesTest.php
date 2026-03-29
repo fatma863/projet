@@ -32,6 +32,7 @@ class EnterpriseFeaturesTest extends TestCase
             'name' => 'Proj Client',
             'code' => 'CLT101',
             'client_id' => $clientId,
+            'project_manager_id' => $user->id,
         ])->assertCreated();
 
         $this->assertEquals($clientId, $project->json('project.client_id'));

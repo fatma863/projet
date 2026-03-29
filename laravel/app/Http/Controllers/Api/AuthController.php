@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Models\Role;
 
 class AuthController extends Controller
 {
@@ -23,6 +24,8 @@ class AuthController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
+        // Keep register resilient even if roles were not seeded yet.
+        Role::findOrCreate('member', 'web');
         $user->assignRole('member');
 
         $token = $user->createToken('auth-token')->plainTextToken;

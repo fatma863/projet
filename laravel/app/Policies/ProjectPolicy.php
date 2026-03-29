@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Project;
 use App\Models\User;
+use App\Support\AccessControl;
 
 class ProjectPolicy
 {
@@ -14,39 +15,50 @@ class ProjectPolicy
 
     public function view(User $user, Project $project): bool
     {
-        if ($user->hasRole('admin')) {
-            return true;
-        }
-
-        return $project->members()->where('user_id', $user->id)->exists()
-            || $project->owner_id === $user->id;
+        return AccessControl::canViewProject($user, $project);
     }
 
     public function create(User $user): bool
     {
-        return $user->hasPermissionTo('manage-projects');
+        if (AccessControl::isAdmin($user)) {
+            return true;
+        }
+
+        try {
+            return $user->hasPermissionTo('manage-projects') || $user->hasPermissionTo('manage-all-projects');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public function update(User $user, Project $project): bool
     {
-        if ($user->hasRole('admin') || $user->hasPermissionTo('manage-all-projects')) {
+        if (AccessControl::isAdmin($user)) {
             return true;
         }
 
-        $memberRole = $project->members()
-            ->where('user_id', $user->id)
-            ->first()?->pivot?->project_role;
+        try {
+            if ($user->hasPermissionTo('manage-all-projects')) {
+                return true;
+            }
+        } catch (\Throwable) {
+            // continue
+        }
 
-        return in_array($memberRole, ['owner', 'manager'])
-            || $project->owner_id === $user->id;
+        // Propriétaire / rôle projet admin (hors compte admin global)
+        return AccessControl::canEditProject($user, $project);
     }
 
     public function delete(User $user, Project $project): bool
     {
-        if ($user->hasRole('admin')) {
+        if (AccessControl::isAdmin($user)) {
             return true;
         }
 
-        return $project->owner_id === $user->id;
+        try {
+            return $user->hasPermissionTo('manage-all-projects');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }
