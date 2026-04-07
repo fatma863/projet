@@ -305,10 +305,25 @@ class AIService
             return null;
         }
 
+        $adminIds = User::query()
+            ->whereIn('id', $unique->all())
+            ->whereHas('roles', fn ($q) => $q->where('name', 'admin'))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $eligibleIds = $unique
+            ->reject(fn ($id) => in_array((int) $id, $adminIds, true))
+            ->values();
+
+        if ($eligibleIds->isEmpty()) {
+            return null;
+        }
+
         $bestId = null;
         $bestScore = null;
 
-        foreach ($unique as $uid) {
+        foreach ($eligibleIds as $uid) {
             $uid = (int) $uid;
             $score = $this->workloadCompositeScore($uid, (int) $project->id);
 

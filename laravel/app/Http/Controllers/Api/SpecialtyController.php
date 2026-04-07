@@ -90,6 +90,7 @@ class SpecialtyController extends Controller
             ->unique();
 
         $members = User::whereIn('id', $projectMemberIds)
+            ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'admin'))
             ->with('specialties')
             ->get()
             ->map(function ($user) use ($requiredIds) {
@@ -144,6 +145,7 @@ class SpecialtyController extends Controller
         }
 
         $members = User::whereIn('id', $projectMemberIds)
+            ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'admin'))
             ->with('specialties')
             ->get();
 

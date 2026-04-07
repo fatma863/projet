@@ -29,6 +29,10 @@ class ProjectInviteService
         $existing = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
 
         if ($existing) {
+            if ($existing->hasRole('admin')) {
+                throw new \InvalidArgumentException('Les utilisateurs avec le role admin ne peuvent pas etre invites sur un projet.');
+            }
+
             if ($project->users()->where('users.id', $existing->id)->exists()
                 || $project->members()->where('users.id', $existing->id)->exists()) {
                 throw new \InvalidArgumentException('Cet utilisateur est déjà membre du projet.');

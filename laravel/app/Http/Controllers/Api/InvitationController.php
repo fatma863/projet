@@ -137,6 +137,12 @@ class InvitationController extends Controller
             ], 403);
         }
 
+        if ($user->hasRole('admin')) {
+            return response()->json([
+                'message' => 'Les utilisateurs avec le role admin ne peuvent pas rejoindre un projet via invitation.',
+            ], 422);
+        }
+
         $project = $invitation->project()->first();
         if (! $project) {
             return response()->json(['message' => 'Projet introuvable.'], 404);

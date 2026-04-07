@@ -255,6 +255,10 @@ class TaskController extends Controller
         $assigneeId = $data['assignee_id'] ?? null;
         unset($data['assignee_id']);
 
+        if ($assigneeId) {
+            $this->assertAssigneeIsNotApplicationAdmin((int) $assigneeId, 'assignee_id');
+        }
+
         if (! empty($data['sprint_id'])) {
             $sprint = Sprint::query()->where('id', $data['sprint_id'])->where('project_id', $project->id)->firstOrFail();
             $this->sprintService->assertSprintAcceptsTaskAssignment($project, $sprint);
@@ -391,6 +395,10 @@ class TaskController extends Controller
         $syncAssignee = array_key_exists('assignee_id', $data);
         $assigneeIdUpdate = $data['assignee_id'] ?? null;
         unset($data['assignee_id']);
+
+        if ($syncAssignee && $assigneeIdUpdate) {
+            $this->assertAssigneeIsNotApplicationAdmin((int) $assigneeIdUpdate, 'assignee_id');
+        }
 
         $syncDependencies = array_key_exists('depends_on_task_ids', $data);
         $dependencyIdsUpdate = array_values(array_unique(array_filter($data['depends_on_task_ids'] ?? [])));
@@ -564,6 +572,8 @@ class TaskController extends Controller
             'user_id' => 'required|exists:users,id',
             'allocation_percent' => 'sometimes|integer|min:1|max:100',
         ]);
+
+        $this->assertAssigneeIsNotApplicationAdmin((int) $data['user_id'], 'user_id');
 
         $assignment = TaskAssignment::updateOrCreate(
             ['task_id' => $task->id, 'user_id' => $data['user_id']],
@@ -935,6 +945,7 @@ class TaskController extends Controller
     {
         TaskAssignment::where('task_id', $task->id)->delete();
         if ($assigneeId) {
+            $this->assertAssigneeIsNotApplicationAdmin($assigneeId, 'assignee_id');
             TaskAssignment::create([
                 'task_id' => $task->id,
                 'user_id' => $assigneeId,
@@ -1024,6 +1035,20 @@ class TaskController extends Controller
 
         if (! empty($errors)) {
             throw ValidationException::withMessages($errors);
+        }
+    }
+
+    private function assertAssigneeIsNotApplicationAdmin(int $userId, string $field): void
+    {
+        $user = User::query()->find($userId);
+        if (! $user) {
+            return;
+        }
+
+        if ($user->hasRole('admin')) {
+            throw ValidationException::withMessages([
+                $field => ['Les utilisateurs avec le role admin ne peuvent pas etre assignes aux taches.'],
+            ]);
         }
     }
 
