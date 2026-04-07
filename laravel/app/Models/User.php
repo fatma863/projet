@@ -16,8 +16,17 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'status',
         'avatar',
+        'profile_photo',
         'timezone',
+        'notify_in_app',
+        'notify_email',
+        'theme',
+        'locale',
+        'notify_type_task_assigned',
+        'notify_type_comment',
+        'notify_type_task_delayed',
     ];
 
     protected $hidden = [
@@ -30,6 +39,12 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'status' => 'string',
+            'notify_in_app' => 'boolean',
+            'notify_email' => 'boolean',
+            'notify_type_task_assigned' => 'boolean',
+            'notify_type_comment' => 'boolean',
+            'notify_type_task_delayed' => 'boolean',
         ];
     }
 
@@ -79,5 +94,10 @@ class User extends Authenticatable
     public function comments()
     {
         return $this->hasMany(TaskComment::class);
+    }
+
+    public function specialties()
+    {
+        return $this->belongsToMany(Specialty::class, 'user_specialty')->withTimestamps();
     }
 }

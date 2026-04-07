@@ -11,7 +11,7 @@ function Spinner({ className, size = 'default' }) {
   return <Loader2 className={cn('animate-spin text-primary', sizes[size], className)} />;
 }
 
-function LoadingScreen({ message = 'Chargement...' }) {
+function LoadingScreen({ message = 'Chargement…' }) {
   return (
     <div className="flex h-screen items-center justify-center">
       <div className="flex flex-col items-center gap-3">

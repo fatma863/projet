@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { safeRedirectPath } from '../../lib/safeRedirect';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
@@ -10,6 +11,7 @@ import { FolderKanban } from 'lucide-react';
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -43,7 +45,7 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off" noValidate>
-            {/* Decoy fields to prevent browser autofill on actual inputs */}
+            {/* Champs leurres pour limiter l’auto-remplissage du navigateur */}
             <input type="text" name="fake_username" autoComplete="username" tabIndex={-1} className="hidden" />
             <input type="password" name="fake_password" autoComplete="current-password" tabIndex={-1} className="hidden" />
             {error && (
@@ -53,7 +55,7 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Email</label>
+              <label className="text-sm font-medium text-foreground">Adresse e-mail</label>
               <Input
                 type="email"
                 name="login_email"
@@ -84,7 +86,10 @@ export default function LoginPage() {
 
             <p className="text-center text-sm text-muted-foreground">
               Pas encore de compte ?{' '}
-              <Link to="/register" className="font-medium text-primary hover:underline">
+              <Link
+                to={searchParams.get('redirect') ? `/register?redirect=${encodeURIComponent(searchParams.get('redirect'))}` : '/register'}
+                className="font-medium text-primary hover:underline"
+              >
                 S'inscrire
               </Link>
             </p>

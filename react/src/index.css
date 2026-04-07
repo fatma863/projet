@@ -29,4 +29,24 @@ body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/* Mode sombre (classe sur <html>) */
+.dark {
+  --color-primary: #60a5fa;
+  --color-primary-foreground: #0f172a;
+  --color-accent: #334155;
+  --color-accent-foreground: #f1f5f9;
+  --color-muted: #1e293b;
+  --color-muted-foreground: #94a3b8;
+  --color-card: #1e293b;
+  --color-card-foreground: #f1f5f9;
+  --color-border: #334155;
+  --color-input: #334155;
+  --color-background: #0f172a;
+  --color-foreground: #f1f5f9;
+  --color-sidebar: #0f172a;
+  --color-sidebar-foreground: #e2e8f0;
 }

@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Support\AccessControl;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Project extends Model
 {
@@ -23,10 +25,6 @@ class Project extends Model
         'priority',
         'start_date',
         'end_date',
-        'budget',
-        'estimated_cost',
-        'actual_cost',
-        'cost_per_hour',
         'owner_id',
         'created_by',
     ];
@@ -36,10 +34,6 @@ class Project extends Model
         return [
             'start_date' => 'date',
             'end_date' => 'date',
-            'budget' => 'decimal:2',
-            'estimated_cost' => 'decimal:2',
-            'actual_cost' => 'decimal:2',
-            'cost_per_hour' => 'decimal:2',
         ];
     }
 
@@ -87,6 +81,32 @@ class Project extends Model
         return $this->hasMany(TaskStatus::class)->orderBy('order');
     }
 
+    /**
+     * Map workflow buckets to a Kanban column (task_statuses.id) for this project.
+     *
+     * @param  string  $workflow  todo|in_progress|done|at_risk
+     */
+    public function resolveStatusIdForWorkflow(string $workflow): ?int
+    {
+        $ids = $this->statuses()->orderBy('order')->pluck('id')->all();
+        $n = count($ids);
+        if ($n === 0) {
+            return null;
+        }
+        if ($n === 1) {
+            return $ids[0];
+        }
+        if ($workflow === 'todo') {
+            return $ids[0];
+        }
+        if ($workflow === 'done') {
+            return $ids[$n - 1];
+        }
+
+        // in_progress + at_risk → middle column(s)
+        return $ids[min(1, $n - 1)];
+    }
+
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class);
@@ -110,5 +130,20 @@ class Project extends Model
     public function invitations(): HasMany
     {
         return $this->hasMany(ProjectInvitation::class);
+    }
+
+    /**
+     * Projets visibles pour l’utilisateur (membre du projet ou propriétaire).
+     */
+    public function scopeAccessibleToUser(Builder $query, User $user): Builder
+    {
+        if (AccessControl::isAdmin($user)) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($user) {
+            $q->where('owner_id', $user->id)
+                ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $user->id));
+        });
     }
 }

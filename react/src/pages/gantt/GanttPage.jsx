@@ -1,98 +1,146 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/api';
 import { Select } from '../../components/ui/Select';
 import { Spinner } from '../../components/ui/Spinner';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, CalendarRange, Sparkles, RotateCcw } from 'lucide-react';
+import GanttChart from '../../components/gantt/GanttChart';
+import { ErrorBoundary } from '../../components/ui/ErrorBoundary';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { normalizeGanttTasks } from '../../lib/ganttNormalize';
 
-const PRIORITY_COLORS = {
-  low: '#3b82f6',
-  medium: '#f59e0b',
-  high: '#f97316',
-  urgent: '#ef4444',
-};
+function parseGanttPayload(data) {
+  if (data == null) return [];
+  const raw =
+    data.gantt ??
+    data.data?.gantt ??
+    (Array.isArray(data.data) ? data.data : null) ??
+    data.tasks ??
+    [];
+  return Array.isArray(raw) ? raw : [];
+}
 
 export default function GanttPage() {
-  const [mode, setMode] = useState('global');
+  const [viewMode, setViewMode] = useState('global');
   const [selectedProject, setSelectedProject] = useState('');
-  const [globalProjectFilter, setGlobalProjectFilter] = useState('');
 
-  const { data: projects } = useQuery({
+  const { data: projectsPayload } = useQuery({
     queryKey: ['projects-for-gantt'],
-    queryFn: () => api.get('/projects?per_page=100').then((r) => r.data.data),
+    queryFn: () => api.get('/projects?per_page=100').then((r) => r.data),
   });
 
-  const { data: ganttGlobal, isLoading: loadingGlobal } = useQuery({
-    queryKey: ['gantt-global', globalProjectFilter],
-    queryFn: () => {
-      const q = globalProjectFilter ? `?project_id=${globalProjectFilter}` : '';
-      return api.get(`/gantt${q}`).then((r) => r.data.gantt);
-    },
-    enabled: mode === 'global',
+  const projects = useMemo(() => {
+    const d = projectsPayload?.data;
+    return Array.isArray(d) ? d : [];
+  }, [projectsPayload]);
+
+  const { data: ganttGlobal, isLoading: loadingGlobal, isError: errGlobal, error: errGlobalDetail } = useQuery({
+    queryKey: ['gantt', 'global'],
+    queryFn: () => api.get('/gantt').then((r) => parseGanttPayload(r.data)),
+    enabled: viewMode === 'global',
   });
 
-  const { data: ganttProject, isLoading: loadingProject } = useQuery({
-    queryKey: ['gantt', selectedProject],
-    queryFn: () => api.get(`/projects/${selectedProject}/gantt`).then((r) => r.data.gantt),
-    enabled: mode === 'project' && !!selectedProject,
+  const { data: ganttProject, isLoading: loadingProject, isError: errProject, error: errProjectDetail } = useQuery({
+    queryKey: ['gantt', 'project', selectedProject],
+    queryFn: () => api.get(`/gantt?project_id=${selectedProject}`).then((r) => parseGanttPayload(r.data)),
+    enabled: viewMode === 'project' && !!selectedProject,
   });
 
-  const ganttData = mode === 'global' ? ganttGlobal : ganttProject;
-  const isLoading = mode === 'global' ? loadingGlobal : loadingProject;
+  const ganttRaw = viewMode === 'global' ? ganttGlobal : ganttProject;
+  const ganttTasksNormalized = useMemo(() => normalizeGanttTasks(ganttRaw ?? []), [ganttRaw]);
+
+  const ganttError = viewMode === 'global' ? errGlobal : errProject;
+  const ganttErrorDetail = viewMode === 'global' ? errGlobalDetail : errProjectDetail;
+
+  const isLoading = viewMode === 'global' ? loadingGlobal : loadingProject;
+
+  useEffect(() => {
+    try {
+      console.log('Gantt tasks:', ganttRaw);
+      console.log('Projects:', projects);
+    } catch (e) {
+      console.warn('Gantt debug log failed', e);
+    }
+  }, [ganttRaw, projects]);
+
+  const resetGanttFilters = () => {
+    setViewMode('global');
+    setSelectedProject('');
+  };
+
+  const emptyDescription =
+    viewMode === 'project' && selectedProject
+      ? 'Aucune tâche planifiée pour ce projet'
+      : 'Aucune tâche avec des dates planifiées (début requis)';
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Diagramme de Gantt</h1>
-        <p className="text-muted-foreground">Chronologie des tâches (vue globale ou par projet)</p>
+      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-card via-card to-primary/[0.06] p-6 shadow-sm ring-1 ring-black/[0.03] dark:from-slate-900 dark:via-slate-900 dark:to-primary/10 dark:ring-white/[0.06]">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl dark:bg-primary/20" />
+        <div className="relative flex flex-wrap items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-inner dark:bg-primary/25">
+            <CalendarRange className="h-6 w-6" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Diagramme de Gantt</h1>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              Vue timeline des jalons et dépendances : chemin critique, avancement et repère{' '}
+              <span className="font-medium text-emerald-600 dark:text-emerald-400">aujourd’hui</span>.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground backdrop-blur-sm">
+                <Sparkles className="h-3 w-3 text-amber-500" />
+                Dépendances courbes & flèches
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground backdrop-blur-sm">
+                Grille hebdomadaire
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant={mode === 'global' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setMode('global')}
-          >
-            Vue globale
-          </Button>
-          <Button
-            type="button"
-            variant={mode === 'project' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setMode('project')}
-          >
-            Un projet
-          </Button>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={viewMode === 'global' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setViewMode('global');
+                setSelectedProject('');
+              }}
+            >
+              Vue globale
+            </Button>
+            <Button type="button" variant={viewMode === 'project' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('project')}>
+              Vue par projet
+            </Button>
+          </div>
+          {viewMode === 'project' && (
+            <div className="max-w-xs">
+              <label className="mb-1 block text-xs text-muted-foreground">Projet</label>
+              <Select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)}>
+                <option value="">Sélectionner un projet</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.code})
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
         </div>
-        {mode === 'global' && (
-          <div className="max-w-xs">
-            <label className="mb-1 block text-xs text-muted-foreground">Filtrer par projet (optionnel)</label>
-            <Select value={globalProjectFilter} onChange={(e) => setGlobalProjectFilter(e.target.value)}>
-              <option value="">Tous les projets</option>
-              {projects?.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
-              ))}
-            </Select>
-          </div>
-        )}
-        {mode === 'project' && (
-          <div className="max-w-xs">
-            <label className="mb-1 block text-xs text-muted-foreground">Projet</label>
-            <Select value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)}>
-              <option value="">Sélectionner un projet</option>
-              {projects?.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
-              ))}
-            </Select>
-          </div>
-        )}
+        <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={resetGanttFilters}>
+          <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+          Réinitialiser les filtres
+        </Button>
       </div>
 
-      {mode === 'project' && !selectedProject ? (
+      {viewMode === 'project' && !selectedProject ? (
         <Card>
           <CardContent className="py-16 text-center">
             <BarChart3 className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
@@ -100,196 +148,34 @@ export default function GanttPage() {
           </CardContent>
         </Card>
       ) : isLoading ? (
-        <div className="flex justify-center py-20"><Spinner size="lg" /></div>
-      ) : !ganttData || ganttData.length === 0 ? (
+        <div className="flex justify-center py-20">
+          <Spinner size="lg" />
+        </div>
+      ) : ganttError ? (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent className="py-10 text-center text-sm">
+            <p className="font-medium text-destructive">Impossible de charger le Gantt</p>
+            <p className="mt-2 text-muted-foreground">
+              {ganttErrorDetail?.response?.data?.message || ganttErrorDetail?.message || 'Erreur réseau ou serveur.'}
+            </p>
+          </CardContent>
+        </Card>
+      ) : !ganttTasksNormalized || ganttTasksNormalized.length === 0 ? (
         <Card>
-          <CardContent className="py-16 text-center text-muted-foreground">
-            Aucune tâche avec des dates planifiées (début requis)
+          <CardContent className="py-8">
+            <EmptyState
+              icon={BarChart3}
+              title="Aucune tâche à afficher"
+              description={emptyDescription}
+              className="border-0 bg-transparent py-10"
+            />
           </CardContent>
         </Card>
       ) : (
-        <GanttChart tasks={ganttData} showProject={mode === 'global'} />
+        <ErrorBoundary>
+          <GanttChart tasks={ganttTasksNormalized} showProject={viewMode === 'global'} />
+        </ErrorBoundary>
       )}
-    </div>
-  );
-}
-
-function GanttChart({ tasks }) {
-  const { minDate, maxDate, totalDays, months } = useMemo(() => {
-    let min = Infinity;
-    let max = -Infinity;
-    tasks.forEach((t) => {
-      if (t.start) min = Math.min(min, new Date(t.start).getTime());
-      if (t.end) max = Math.max(max, new Date(t.end).getTime());
-    });
-    // Add padding
-    const pad = 2 * 86400000;
-    min -= pad;
-    max += pad;
-    const totalDays = Math.ceil((max - min) / 86400000);
-    const minD = new Date(min);
-    const maxD = new Date(max);
-
-    // Build month markers
-    const months = [];
-    const cursor = new Date(minD.getFullYear(), minD.getMonth(), 1);
-    while (cursor <= maxD) {
-      const offset = Math.max(0, (cursor.getTime() - min) / 86400000);
-      months.push({
-        label: cursor.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }),
-        offset,
-      });
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
-
-    return { minDate: min, maxDate: max, totalDays, months };
-  }, [tasks]);
-
-  const taskRows = useMemo(() => tasks.map((task, index) => ({ ...task, rowIndex: index })), [tasks]);
-  const byId = useMemo(() => {
-    const map = new Map();
-    taskRows.forEach((t) => map.set(t.id, t));
-    return map;
-  }, [taskRows]);
-
-  const getBarMetrics = (task) => {
-    if (!task.start || !task.end) return null;
-    const startOffset = (new Date(task.start).getTime() - minDate) / 86400000;
-    const duration = Math.max(1, (new Date(task.end).getTime() - new Date(task.start).getTime()) / 86400000 + 1);
-    const left = (startOffset / totalDays) * 100;
-    const width = (duration / totalDays) * 100;
-    return { left, width };
-  };
-
-  const dependencies = useMemo(() => {
-    const lines = [];
-    taskRows.forEach((task) => {
-      const to = getBarMetrics(task);
-      if (!to || !task.dependencies?.length) return;
-      task.dependencies.forEach((dep) => {
-        const fromTask = byId.get(dep.id);
-        const from = fromTask ? getBarMetrics(fromTask) : null;
-        if (!from || !fromTask) return;
-        lines.push({
-          key: `${dep.id}-${task.id}-${dep.type}`,
-          x1: from.left + from.width,
-          y1: fromTask.rowIndex * 36 + 18,
-          x2: to.left,
-          y2: task.rowIndex * 36 + 18,
-          critical: task.is_critical && fromTask.is_critical,
-        });
-      });
-    });
-    return lines;
-  }, [taskRows, byId, minDate, totalDays]);
-
-  const rowHeight = 36;
-  const chartHeight = taskRows.length * rowHeight;
-
-  return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-card">
-      {/* Month headers */}
-      <div className="relative h-8 border-b border-border bg-accent/30">
-        {months.map((m, i) => (
-          <div
-            key={i}
-            className="absolute top-0 border-l border-border px-2 text-xs font-medium text-muted-foreground leading-8"
-            style={{ left: `${(m.offset / totalDays) * 100}%` }}
-          >
-            {m.label}
-          </div>
-        ))}
-      </div>
-
-      {/* Rows */}
-      <div>
-        <div className="relative">
-          <svg className="pointer-events-none absolute left-64 right-0 top-0 z-10" style={{ height: `${chartHeight}px` }}>
-            {dependencies.map((line) => (
-              <line
-                key={line.key}
-                x1={`${line.x1}%`}
-                y1={line.y1}
-                x2={`${line.x2}%`}
-                y2={line.y2}
-                stroke={line.critical ? '#dc2626' : '#64748b'}
-                strokeWidth={line.critical ? 2.5 : 1.5}
-                strokeDasharray={line.critical ? '0' : '4 3'}
-              />
-            ))}
-          </svg>
-
-          {taskRows.map((task) => {
-          const metrics = getBarMetrics(task);
-          return (
-            <div key={task.id} className="flex border-b border-border last:border-0">
-              {/* Task name */}
-              <div className="flex w-64 flex-shrink-0 flex-col justify-center gap-0.5 border-r border-border px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
-                    style={{ backgroundColor: task.status_color || '#6b7280' }}
-                  />
-                  <span className="truncate text-sm text-foreground" title={task.name}>
-                    {task.name}
-                  </span>
-                </div>
-                {showProject && task.project_name && (
-                  <span className="truncate pl-4 text-[11px] text-muted-foreground">{task.project_name}</span>
-                )}
-              </div>
-
-              {/* Bar area */}
-              <div className="relative flex-1 py-2" style={{ minHeight: '36px' }}>
-                {metrics ? (
-                  <div
-                    className={`absolute top-2 z-20 h-6 rounded ${task.is_critical ? 'ring-2 ring-red-600 ring-offset-1' : ''} ${task.is_delayed ? 'ring-2 ring-amber-500 ring-offset-1' : ''}`}
-                    style={{
-                      left: `${metrics.left}%`,
-                      width: `${metrics.width}%`,
-                      backgroundColor: task.is_critical ? '#dc2626' : task.is_delayed ? '#ea580c' : (PRIORITY_COLORS[task.priority] || '#6366f1'),
-                      opacity: 0.85,
-                    }}
-                    title={task.is_critical ? 'Chemin critique' : task.is_delayed ? 'Retard / échéance' : undefined}
-                  >
-                    {/* Progress fill */}
-                    {task.progress > 0 && (
-                      <div
-                        className="h-full rounded bg-black/20"
-                        style={{ width: `${task.progress}%` }}
-                      />
-                    )}
-                    {/* Label */}
-                    <span className="absolute inset-0 flex items-center px-2 text-xs font-medium text-white truncate">
-                      {task.progress}%
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex h-6 items-center px-2">
-                    <span className="text-xs text-muted-foreground italic">Pas de dates</span>
-                  </div>
-                )}
-
-              </div>
-            </div>
-          );
-        })}
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4 border-t border-border px-3 py-2">
-        {Object.entries(PRIORITY_COLORS).map(([key, color]) => (
-          <div key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="h-3 w-3 rounded" style={{ backgroundColor: color }} />
-            {key === 'low' ? 'Basse' : key === 'medium' ? 'Moyenne' : key === 'high' ? 'Haute' : 'Urgente'}
-          </div>
-        ))}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="h-3 w-3 rounded bg-red-600" />
-          Chemin critique
-        </div>
-      </div>
     </div>
   );
 }

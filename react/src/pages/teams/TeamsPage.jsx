@@ -103,7 +103,7 @@ export default function TeamsPage() {
                     <MoreVertical className="h-4 w-4 text-muted-foreground" />
                   </button>
                   {menuOpen === team.id && (
-                    <div className="absolute right-0 top-8 z-10 w-40 rounded-md border border-border bg-white py-1 shadow-lg">
+                    <div className="absolute right-0 top-8 z-10 w-40 rounded-md border border-border bg-card py-1 text-foreground shadow-lg">
                       <Link
                         to={`/teams/${team.id}`}
                         className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
@@ -363,7 +363,7 @@ function TeamFormModal({ open, onClose, team, onSuccess }) {
               Annuler
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Enregistrement...' : isEdit ? 'Modifier' : 'Créer'}
+              {mutation.isPending ? 'Enregistrement…' : isEdit ? 'Modifier' : 'Créer'}
             </Button>
           </div>
         </form>

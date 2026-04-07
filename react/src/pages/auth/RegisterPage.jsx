@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { safeRedirectPath } from '../../lib/safeRedirect';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card';
@@ -10,6 +11,7 @@ import { FolderKanban } from 'lucide-react';
 export default function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [form, setForm] = useState({ name: '', email: '', password: '', password_confirmation: '' });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -81,7 +83,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Email</label>
+              <label className="text-sm font-medium text-foreground">Adresse e-mail</label>
               <Input
                 type="email"
                 name="register_email"
@@ -125,7 +127,10 @@ export default function RegisterPage() {
 
             <p className="text-center text-sm text-muted-foreground">
               Déjà un compte ?{' '}
-              <Link to="/login" className="font-medium text-primary hover:underline">
+              <Link
+                to={searchParams.get('redirect') ? `/login?redirect=${encodeURIComponent(searchParams.get('redirect'))}` : '/login'}
+                className="font-medium text-primary hover:underline"
+              >
                 Se connecter
               </Link>
             </p>

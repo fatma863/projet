@@ -9,11 +9,15 @@ use Illuminate\Support\Facades\Schema;
 
 class AccessControl
 {
-    /** Normalise les anciennes valeurs pivot (viewer → guest). */
+    /** Normalise les anciennes valeurs pivot (viewer/guest -> client). */
     public static function normalizePivotRole(?string $role): ?string
     {
-        if ($role === 'viewer') {
-            return 'guest';
+        if ($role === null || $role === '') {
+            return $role;
+        }
+
+        if (in_array($role, ['viewer', 'guest'], true)) {
+            return 'client';
         }
 
         return $role;
@@ -56,15 +60,23 @@ class AccessControl
 
         return match (true) {
             in_array($legacyRole, ['owner', 'manager'], true) => 'admin',
-            $legacyRole === 'guest' => 'guest',
+            in_array($legacyRole, ['guest', 'client'], true) => 'client',
             in_array($legacyRole, ['admin', 'member', 'viewer'], true) => self::normalizePivotRole($legacyRole),
             default => 'member',
         };
     }
 
-    public static function isProjectGuest(User $user, Project $project): bool
+    /**
+     * Alias explicite pour les contrôleurs / services métier.
+     */
+    public static function getUserProjectRole(User $user, Project $project): ?string
     {
-        return self::projectRole($user, $project) === 'guest';
+        return self::projectRole($user, $project);
+    }
+
+    public static function isProjectClient(User $user, Project $project): bool
+    {
+        return self::projectRole($user, $project) === 'client';
     }
 
     public static function canInviteToProject(User $user, Project $project): bool
@@ -144,7 +156,7 @@ class AccessControl
         }
 
         $role = self::projectRole($user, $project);
-        if ($role === 'guest') {
+        if ($role === 'client') {
             return false;
         }
 
@@ -171,7 +183,7 @@ class AccessControl
             return false;
         }
 
-        if (self::isProjectGuest($user, $project)) {
+        if (self::isProjectClient($user, $project)) {
             return false;
         }
 
@@ -191,7 +203,7 @@ class AccessControl
             return false;
         }
 
-        if ($projectRole === 'guest' || $projectRole === 'viewer') {
+        if ($projectRole === 'client') {
             return false;
         }
 

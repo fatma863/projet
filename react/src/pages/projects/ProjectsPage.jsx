@@ -13,8 +13,9 @@ import { Select } from '../../components/ui/Select';
 import { Textarea } from '../../components/ui/Textarea';
 import {
   Plus, Search, FolderKanban, Calendar, Users, MoreVertical,
-  Pencil, Trash2, Eye, X,
+  Pencil, Trash2, Eye, X, RotateCcw,
 } from 'lucide-react';
+import { isGuestViewer } from '../../lib/roles';
 
 const STATUS_OPTIONS = [
   { value: 'planning', label: 'Planification', variant: 'secondary' },
@@ -46,7 +47,6 @@ const EMPTY_FORM = {
   project_manager_id: '',
   memberIds: [],
   priority: 'medium',
-  budget: '',
 };
 
 function parseUsersResponse(res) {
@@ -57,7 +57,7 @@ function parseUsersResponse(res) {
 export default function ProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.roles?.includes('admin');
-  const isViewer = user?.roles?.includes('viewer');
+  const isViewer = isGuestViewer(user);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -138,7 +138,7 @@ export default function ProjectsPage() {
         )}
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -154,6 +154,19 @@ export default function ProjectsPage() {
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
         </Select>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0 gap-1.5"
+          onClick={() => {
+            setSearch('');
+            setFilterStatus('');
+          }}
+        >
+          <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+          Réinitialiser les filtres
+        </Button>
       </div>
 
       {isLoading ? (
@@ -179,7 +192,7 @@ export default function ProjectsPage() {
                     <MoreVertical className="h-4 w-4 text-muted-foreground" />
                   </button>
                   {menuOpen === project.id && isAdmin && (
-                    <div className="absolute right-0 top-8 z-10 w-40 rounded-md border border-border bg-white py-1 shadow-lg">
+                    <div className="absolute right-0 top-8 z-10 w-40 rounded-md border border-border bg-card py-1 text-foreground shadow-lg">
                       <Link
                         to={`/projects/${project.id}`}
                         className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
@@ -301,12 +314,12 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
       project_manager_id: pmId ? String(pmId) : '',
       memberIds,
       priority: projectDetail.priority || 'medium',
-      budget: projectDetail.budget != null ? String(projectDetail.budget) : '',
     });
     setErrors({});
   }, [open, isEdit, projectDetail]);
 
   const pmNum = form.project_manager_id ? Number(form.project_manager_id) : null;
+  const pmRequired = !isEdit;
   const ownerId = isEdit ? projectDetail?.owner?.id : authUser?.id;
   const availableMembers = users.filter(
     (u) =>
@@ -351,7 +364,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
     const next = {};
     if (!form.name.trim()) next.name = ['Le nom est obligatoire.'];
     if (!form.code.trim()) next.code = ['Le code est obligatoire.'];
-    if (!form.project_manager_id) {
+    if (pmRequired && !form.project_manager_id) {
       next.project_manager_id = ['Le chef de projet est obligatoire.'];
     }
     if (form.start_date && form.end_date) {
@@ -375,18 +388,16 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
       description: form.description.trim() || null,
       status: form.status,
       priority: form.priority,
-      project_manager_id: Number(form.project_manager_id),
       members: form.memberIds,
     };
+    if (form.project_manager_id) {
+      payload.project_manager_id = Number(form.project_manager_id);
+    } else if (isEdit) {
+      payload.project_manager_id = null;
+    }
     if (form.team_id) payload.team_id = Number(form.team_id);
     if (form.start_date) payload.start_date = form.start_date;
     if (form.end_date) payload.end_date = form.end_date;
-    const budgetStr = form.budget != null ? String(form.budget).trim() : '';
-    if (budgetStr !== '' && !Number.isNaN(Number(budgetStr))) {
-      payload.budget = Number(budgetStr);
-    } else {
-      payload.budget = null;
-    }
 
     mutation.mutate(payload);
   };
@@ -456,7 +467,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Chef de projet *</label>
+            <label className="mb-1 block text-sm font-medium">Chef de projet {pmRequired ? '*' : ''}</label>
             <Select
               value={form.project_manager_id}
               onChange={(e) => {
@@ -477,6 +488,11 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
             </Select>
             {errors.project_manager_id && (
               <p className="mt-1 text-xs text-destructive">{errors.project_manager_id[0]}</p>
+            )}
+            {!pmRequired && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Optionnel en modification. Laissez vide si le projet n’a pas de chef de projet dédié.
+              </p>
             )}
           </div>
           <div>
@@ -507,10 +523,10 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
               key={form.memberIds.join('-')}
               value=""
               onChange={(e) => addMember(e.target.value)}
-              disabled={!pmNum || availableMembers.length === 0}
+              disabled={availableMembers.length === 0}
             >
               <option value="">
-                {!pmNum ? 'Choisissez d&apos;abord un chef de projet' : 'Ajouter un membre…'}
+                {availableMembers.length === 0 ? 'Aucun membre disponible' : 'Ajouter un membre...'}
               </option>
               {availableMembers.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -519,32 +535,18 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
               ))}
             </Select>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Priorité</label>
-              <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
-                {PRIORITY_OPTIONS.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Budget (€)</label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0,00"
-                value={form.budget}
-                onChange={(e) => set('budget', e.target.value)}
-              />
-              {errors.budget && <p className="mt-1 text-xs text-destructive">{errors.budget[0]}</p>}
-            </div>
+          <div className="max-w-md">
+            <label className="mb-1 block text-sm font-medium">Priorité</label>
+            <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
+              {PRIORITY_OPTIONS.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </Select>
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Enregistrement...' : isEdit ? 'Modifier' : 'Créer'}
+              {mutation.isPending ? 'Enregistrement…' : isEdit ? 'Modifier' : 'Créer'}
             </Button>
           </div>
         </form>

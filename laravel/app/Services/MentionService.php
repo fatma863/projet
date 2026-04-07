@@ -54,8 +54,10 @@ class MentionService
 
         return User::query()
             ->where(function ($q) use ($task) {
-                $q->whereHas('projects', fn ($qp) => $qp->where('projects.id', $task->project_id))
-                    ->orWhereHas('ownedProjects', fn ($qp) => $qp->where('projects.id', $task->project_id));
+                $pid = $task->project_id;
+                $q->whereHas('projects', fn ($qp) => $qp->where('projects.id', $pid))
+                    ->orWhereHas('accessibleProjects', fn ($qp) => $qp->where('projects.id', $pid))
+                    ->orWhereHas('ownedProjects', fn ($qp) => $qp->where('projects.id', $pid));
             })
             ->where(function ($q) use ($tokens) {
                 foreach ($tokens as $token) {

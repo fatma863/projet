@@ -1,11 +1,15 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../lib/api';
 import { disconnectEcho } from '../lib/echo';
+import { applyAppTheme, applyPublicTheme, resolveThemeForUser } from '../lib/theme';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
+    if (!localStorage.getItem('token')) {
+      return null;
+    }
     const stored = localStorage.getItem('user');
     return stored ? JSON.parse(stored) : null;
   });
@@ -14,6 +18,10 @@ export function AuthProvider({ children }) {
   const fetchUser = useCallback(async () => {
     const token = localStorage.getItem('token');
     if (!token) {
+      localStorage.removeItem('user');
+      setUser(null);
+      applyPublicTheme();
+      document.documentElement.lang = 'fr';
       setLoading(false);
       return;
     }
@@ -22,11 +30,17 @@ export function AuthProvider({ children }) {
       const userData = data.user || data;
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
+      applyAppTheme(resolveThemeForUser(userData));
+      if (userData.locale) {
+        document.documentElement.lang = userData.locale === 'en' ? 'en' : 'fr';
+      }
     } catch {
       disconnectEcho();
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       setUser(null);
+      applyPublicTheme();
+      document.documentElement.lang = 'fr';
     } finally {
       setLoading(false);
     }
@@ -43,6 +57,10 @@ export function AuthProvider({ children }) {
     const userData = data.user;
     localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
+    applyAppTheme(resolveThemeForUser(userData));
+    if (userData.locale) {
+      document.documentElement.lang = userData.locale === 'en' ? 'en' : 'fr';
+    }
     return data;
   };
 
@@ -55,6 +73,10 @@ export function AuthProvider({ children }) {
     const userData = data.user;
     localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
+    applyAppTheme(resolveThemeForUser(userData));
+    if (userData.locale) {
+      document.documentElement.lang = userData.locale === 'en' ? 'en' : 'fr';
+    }
     return data;
   };
 
@@ -68,6 +90,8 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
+    applyPublicTheme();
+    document.documentElement.lang = 'fr';
   };
 
   return (

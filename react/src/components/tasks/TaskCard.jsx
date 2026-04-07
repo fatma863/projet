@@ -18,6 +18,13 @@ const WORKFLOW_LABEL = {
   at_risk: 'À risque',
 };
 
+const PRIORITY_LABEL = {
+  low: 'Basse',
+  medium: 'Moyenne',
+  high: 'Haute',
+  urgent: 'Urgente',
+};
+
 export function TaskCard({
   task,
   draggable = false,
@@ -54,7 +61,7 @@ export function TaskCard({
                 {task.title}
               </Link>
               <Badge variant={PRIORITY_VARIANT[task.priority] || 'outline'} className="shrink-0 text-[10px] uppercase">
-                {task.priority || '—'}
+                {PRIORITY_LABEL[task.priority] || task.priority || '—'}
               </Badge>
             </div>
             {task.project && (
@@ -67,6 +74,23 @@ export function TaskCard({
               <Badge variant="outline" className="font-normal">
                 {WORKFLOW_LABEL[wf] || wf}
               </Badge>
+              {(task.progress_percent || 0) >= 100 && (
+                <Badge className="border-emerald-200 bg-emerald-50 font-normal text-emerald-900">Terminé</Badge>
+              )}
+              {task.is_overdue && (task.progress_percent || 0) < 100 && (
+                <Badge variant="destructive" className="font-normal">En retard</Badge>
+              )}
+              {wf === 'at_risk' && (task.progress_percent || 0) < 100 && !task.is_overdue && (
+                <Badge className="border-amber-200 bg-amber-100 font-normal text-amber-900">À risque</Badge>
+              )}
+              {task.is_blocked && (
+                <Badge variant="secondary" className="font-normal">Bloqué</Badge>
+              )}
+              {Array.isArray(task.dependencies) && task.dependencies.length > 0 && (
+                <Badge variant="outline" className="font-normal">
+                  Dépend de {task.dependencies.length} tâche{task.dependencies.length > 1 ? 's' : ''}
+                </Badge>
+              )}
               {task.due_date && (
                 <span className="inline-flex items-center gap-1">
                   <Calendar size={12} />

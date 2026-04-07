@@ -3,32 +3,64 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
 import { getEcho } from '../../lib/echo';
+import { ISSUE_TYPE_OPTIONS, PRIORITY_OPTIONS, WORKFLOW_OPTIONS } from '../../lib/taskConstants';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Textarea } from '../../components/ui/Textarea';
 import { Select } from '../../components/ui/Select';
-import { Badge } from '../../components/ui/Badge';
 import { Spinner } from '../../components/ui/Spinner';
+import { toast } from 'sonner';
 import {
-  MessageSquare, Clock, Paperclip, Users, Trash2, Send, Plus,
+  MessageSquare, Clock, Users, Trash2, Send, Plus, ChevronDown, ChevronRight,
+  LayoutGrid, UserCircle, CalendarRange, SlidersHorizontal, Link2, Sparkles,
+  Paperclip, Pencil, Download, Tag, Zap, Star,
 } from 'lucide-react';
-
-const PRIORITY_OPTIONS = [
-  { value: 'low', label: 'Basse' },
-  { value: 'medium', label: 'Moyenne' },
-  { value: 'high', label: 'Haute' },
-  { value: 'urgent', label: 'Urgente' },
-];
+import { MemberAssigneePicker } from '../../components/tasks/MemberAssigneePicker';
+import { TaskDependencyPicker } from '../../components/tasks/TaskDependencyPicker';
 
 const EMPTY_FORM = {
-  title: '', description: '', status_id: '', priority: 'medium',
-  complexity: 5, planned_start: '', planned_end: '', due_date: '',
-  estimated_hours: '', story_points: '', progress_percent: 0,
+  title: '',
+  description: '',
+  issue_type: 'task',
+  priority: 'medium',
+  assignee_id: '',
+  story_points: '',
+  complexity: 5,
+  planned_start: '',
+  planned_end: '',
+  estimated_hours: '',
+  workflow_status: 'todo',
+  progress_percent: 0,
   ai_auto_assign: false,
+  depends_on_task_ids: [],
+  specialty_ids: [],
 };
 
-export default function TaskModal({ open, onClose, projectId, task, defaultStatusId, statuses, canWriteProject = true, isAdmin: isAdminProp }) {
+function toDateOnly(value) {
+  if (!value) return '';
+  return String(value).slice(0, 10);
+}
+
+function formatDateFr(value) {
+  const raw = toDateOnly(value);
+  if (!raw) return '—';
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString('fr-FR');
+}
+
+export default function TaskModal({
+  open,
+  onClose,
+  projectId,
+  task,
+  defaultStatusId: _defaultStatusId,
+  defaultWorkflow = 'todo',
+  statuses: _statuses,
+  canWriteProject = true,
+  isAdmin: isAdminProp,
+}) {
   const { user } = useAuth();
   const isAdmin = isAdminProp ?? user?.roles?.includes('admin');
   const queryClient = useQueryClient();
@@ -37,39 +69,142 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
   const [errors, setErrors] = useState({});
   const [generalError, setGeneralError] = useState(null);
   const [activeTab, setActiveTab] = useState('details');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [autoAssignResult, setAutoAssignResult] = useState(null); // { best_user, top_users, message }
+  const [isAutoAssigning, setIsAutoAssigning] = useState(false);
   const canEditTask = isEdit ? (isAdmin || Boolean(task?.access?.can_edit)) : canWriteProject;
   const canDeleteTask = isEdit && (isAdmin || Boolean(task?.access?.can_delete));
+
+  const { data: membersRaw } = useQuery({
+    queryKey: ['project-members', projectId],
+    queryFn: () => api.get(`/projects/${projectId}/members`).then((r) => (
+      r.data?.members?.data ?? r.data?.members ?? r.data?.data ?? []
+    )),
+    enabled: open && Boolean(projectId),
+  });
+
+  const { data: projectMeta } = useQuery({
+    queryKey: ['project', String(projectId)],
+    queryFn: () => api.get(`/projects/${projectId}`).then((r) => (
+      r.data?.data ?? r.data?.project ?? r.data
+    )),
+    enabled: open && Boolean(projectId),
+    staleTime: 60_000,
+  });
+
+  const memberOptions = useMemo(() => {
+    const raw = membersRaw || [];
+    return raw
+      .map((m) => ({
+        id: m.id || m.user_id,
+        name: m.name || m.user?.name,
+        email: m.email || m.user?.email,
+        avatar: m.avatar ?? m.user?.avatar,
+        role: m.role ?? m.pivot?.project_role ?? m.pivot?.role ?? 'member',
+        specialties: m.specialties ?? m.user?.specialties ?? [],
+      }))
+      .filter((m) => m.id && m.name);
+  }, [membersRaw]);
+
+  const memberStats = useMemo(() => {
+    const stats = { total: memberOptions.length, admin: 0, member: 0, client: 0 };
+    memberOptions.forEach((m) => {
+      const role = String(m.role || 'member').toLowerCase();
+      if (role === 'admin') stats.admin += 1;
+      else if (role === 'client' || role === 'guest' || role === 'viewer') stats.client += 1;
+      else stats.member += 1;
+    });
+    return stats;
+  }, [memberOptions]);
+
+  // IDs des membres recommandés (matching spécialités tâche ↔ compétences membre)
+  const recommendedIds = useMemo(() => {
+    const selectedIds = new Set((form.specialty_ids || []).map((id) => String(id)));
+    if (selectedIds.size === 0) return new Set();
+    const ids = new Set();
+    memberOptions.forEach((m) => {
+      const memberSpecIds = (m.specialties || []).map((s) => String(s.id));
+      if (memberSpecIds.some((sid) => selectedIds.has(sid))) {
+        ids.add(m.id);
+      }
+    });
+    return ids;
+  }, [form.specialty_ids, memberOptions]);
+
+  const projectStart = toDateOnly(projectMeta?.start_date);
+  const projectEnd = toDateOnly(projectMeta?.end_date);
+
+  const { data: taskDetail } = useQuery({
+    queryKey: ['task', task?.id],
+    queryFn: () => api.get(`/tasks/${task.id}`).then((r) => r.data.task),
+    enabled: open && Boolean(task?.id),
+  });
+
+  const { data: projectTasks = [] } = useQuery({
+    queryKey: ['tasks', projectId],
+    queryFn: () =>
+      api.get(`/projects/${projectId}/tasks?all=1`).then((r) => (
+        r.data?.tasks?.data ?? r.data?.tasks ?? r.data?.data ?? []
+      )),
+    enabled: open && Boolean(projectId),
+  });
+
+  const { data: allSpecialties = [] } = useQuery({
+    queryKey: ['specialties'],
+    queryFn: () => api.get('/specialties').then((r) => r.data?.specialties ?? []),
+    staleTime: 5 * 60_000,
+  });
+
+  const taskMeta = task ? (taskDetail || task) : null;
 
   useEffect(() => {
     if (open) {
       if (task) {
+        const t = taskDetail || task;
+        const depIds = (t.dependencies || [])
+          .map((d) => d.depends_on_task_id ?? d.id)
+          .filter((id) => id != null);
+        const specIds = (t.specialties || []).map((s) => s.id).filter(Boolean).slice(0, 1);
         setForm({
-          title: task.title || '',
-          description: task.description || '',
-          status_id: task.status_id || '',
-          priority: task.priority || 'medium',
-          complexity: task.complexity || 5,
-          story_points: task.story_points ?? '',
-          planned_start: task.planned_start || '',
-          planned_end: task.planned_end || '',
-          due_date: task.due_date || '',
-          estimated_hours: task.estimated_hours || '',
-          progress_percent: task.progress_percent || 0,
+          title: t.title || '',
+          description: t.description || '',
+          issue_type: t.issue_type || t.type || 'task',
+          priority: t.priority || 'medium',
+          assignee_id: t.assignee_id ?? t.assignees?.[0]?.id ?? '',
+          complexity: t.complexity || 5,
+          story_points: t.story_points ?? '',
+          planned_start: t.planned_start || t.start_date || '',
+          planned_end: t.planned_end || t.end_date || '',
+          estimated_hours: t.estimated_hours ?? '',
+          workflow_status: t.workflow_status || 'todo',
+          progress_percent: t.progress_percent || 0,
+          ai_auto_assign: false,
+          depends_on_task_ids: depIds,
+          specialty_ids: specIds,
         });
       } else {
-        setForm({ ...EMPTY_FORM, status_id: defaultStatusId || '' });
+        setForm({ ...EMPTY_FORM, workflow_status: defaultWorkflow || 'todo' });
       }
       setErrors({});
       setGeneralError(null);
       setActiveTab('details');
+      setShowAdvanced(isEdit && !canEditTask);
+      setAutoAssignResult(null);
     }
-  }, [open, task, defaultStatusId]);
+  }, [open, task, taskDetail, defaultWorkflow, isEdit, canEditTask]);
 
   const saveMutation = useMutation({
     mutationFn: (data) =>
       isEdit ? api.put(`/tasks/${task.id}`, data) : api.post(`/projects/${projectId}/tasks`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks', String(projectId)] });
+      const pid = String(projectId);
+      queryClient.invalidateQueries({ queryKey: ['tasks', pid] });
+      if (task?.id) {
+        queryClient.invalidateQueries({ queryKey: ['task', task.id] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['project-gantt', pid] });
+      queryClient.invalidateQueries({ queryKey: ['project-critical-path', pid] });
+      queryClient.invalidateQueries({ queryKey: ['project-dashboard', pid] });
       onClose();
     },
     onError: (err) => {
@@ -87,31 +222,119 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
   const deleteMutation = useMutation({
     mutationFn: () => api.delete(`/tasks/${task.id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks', String(projectId)] });
+      const pid = String(projectId);
+      queryClient.invalidateQueries({ queryKey: ['tasks', pid] });
+      queryClient.invalidateQueries({ queryKey: ['project-gantt', pid] });
+      queryClient.invalidateQueries({ queryKey: ['project-critical-path', pid] });
+      queryClient.invalidateQueries({ queryKey: ['project-dashboard', pid] });
       onClose();
     },
   });
 
+  const handleAutoAssign = async () => {
+    if (!projectId) return;
+    setIsAutoAssigning(true);
+    setAutoAssignResult(null);
+    try {
+      const params = new URLSearchParams();
+      const selectedSpecialtyId = (form.specialty_ids || [])[0];
+      if (selectedSpecialtyId) {
+        params.append('specialty_ids[]', selectedSpecialtyId);
+      }
+      const res = await api.get(`/projects/${projectId}/auto-assign?${params.toString()}`);
+      const data = res.data;
+      setAutoAssignResult(data);
+      if (data.best_user) {
+        set('assignee_id', data.best_user.id);
+        set('ai_auto_assign', false);
+      }
+    } catch {
+      setAutoAssignResult({ best_user: null, top_users: [], message: 'Erreur lors de l\'auto-assignation.' });
+    } finally {
+      setIsAutoAssigning(false);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (!form.status_id) {
-      setErrors((prev) => ({ ...prev, status_id: ['Statut requis.'] }));
+    const nextErrors = {};
+    const specialtyIds = Array.isArray(form.specialty_ids)
+      ? form.specialty_ids.filter(Boolean).slice(0, 1)
+      : [];
+
+    if (!form.title?.trim()) {
+      nextErrors.title = ['Le titre est obligatoire.'];
+    }
+    if (specialtyIds.length !== 1) {
+      nextErrors.specialty_ids = ['Veuillez sélectionner une seule spécialité.'];
+    }
+    if (!form.issue_type || !form.priority) {
+      nextErrors.issue_type = ['Le type et la priorité sont obligatoires.'];
+    }
+
+    const ps = form.planned_start?.trim() || '';
+    const pe = form.planned_end?.trim() || '';
+    if ((ps && !pe) || (!ps && pe)) {
+      nextErrors.planned_end = ['Indiquez à la fois la date de début et la date de fin, ou laissez les deux vides.'];
+    }
+    if (ps && pe && pe < ps) {
+      nextErrors.planned_end = ['La date de fin doit être postérieure ou égale à la date de début.'];
+    }
+
+    if (!isEdit && ps && projectStart && ps < projectStart) {
+      nextErrors.planned_start = [`La date de début doit être dans la période projet (à partir du ${formatDateFr(projectStart)}).`];
+    }
+    if (!isEdit && ps && projectEnd && ps > projectEnd) {
+      nextErrors.planned_start = [`La date de début doit être dans la période projet (jusqu'au ${formatDateFr(projectEnd)}).`];
+    }
+    if (pe && projectStart && pe < projectStart) {
+      nextErrors.planned_end = [`La date de fin doit être dans la période projet (à partir du ${formatDateFr(projectStart)}).`];
+    }
+    if (pe && projectEnd && pe > projectEnd) {
+      nextErrors.planned_end = [`La date de fin doit être dans la période projet (jusqu'au ${formatDateFr(projectEnd)}).`];
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
       setGeneralError(null);
       return;
     }
 
-    const payload = { ...form };
-    const autoAssign = payload.ai_auto_assign;
-    delete payload.ai_auto_assign;
-    if (!isEdit && autoAssign) {
-      payload.ai_auto_assign = true;
+    const payload = {
+      title: form.title.trim(),
+      description: form.description || undefined,
+      issue_type: form.issue_type,
+      priority: form.priority,
+      complexity: form.complexity,
+      story_points: form.story_points === '' || form.story_points == null ? undefined : Number(form.story_points),
+      planned_end: pe || undefined,
+      estimated_hours: form.estimated_hours === '' || form.estimated_hours == null ? undefined : Number(form.estimated_hours),
+      depends_on_task_ids: Array.isArray(form.depends_on_task_ids) ? form.depends_on_task_ids.map(Number) : [],
+      specialty_ids: specialtyIds,
+    };
+
+    if (!isEdit) {
+      payload.planned_start = ps || undefined;
     }
-    if (!payload.planned_start) delete payload.planned_start;
-    if (!payload.planned_end) delete payload.planned_end;
-    if (!payload.due_date) delete payload.due_date;
-    if (!payload.estimated_hours) delete payload.estimated_hours;
-    if (payload.story_points === '' || payload.story_points === null) delete payload.story_points;
+
+    const autoAssign = Boolean(form.ai_auto_assign);
+    if (isEdit) {
+      payload.assignee_id = form.assignee_id ? Number(form.assignee_id) : null;
+    } else if (form.assignee_id && !autoAssign) {
+      payload.assignee_id = Number(form.assignee_id);
+    }
+
+    if (!isEdit) {
+      payload.workflow_status = form.workflow_status || 'todo';
+      if (autoAssign) {
+        payload.ai_auto_assign = true;
+      }
+    } else {
+      payload.workflow_status = form.workflow_status;
+      payload.progress_percent = form.progress_percent;
+    }
+
     saveMutation.mutate(payload);
   };
 
@@ -121,7 +344,7 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
     <Modal
       open={open}
       onClose={onClose}
-      title={isEdit ? (canEditTask ? `Modifier : ${task.title}` : task.title) : 'Nouvelle tâche'}
+      title={isEdit ? (canEditTask ? `Tâche · ${task.title}` : task.title) : 'Nouvelle tâche'}
       size="xl"
     >
       {/* Tabs */}
@@ -130,8 +353,7 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
           { key: 'details', label: 'Détails' },
           ...(isEdit ? [
             { key: 'comments', label: 'Commentaires', icon: MessageSquare },
-            { key: 'time', label: 'Temps', icon: Clock },
-            { key: 'assignees', label: 'Assignés', icon: Users },
+            // Onglets Temps et Assignés supprimés
           ] : []),
         ].map((t) => (
           <button
@@ -159,7 +381,7 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
 
           {errors && Object.keys(errors).length > 0 && (
             <div className="space-y-1 rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              <p className="font-medium">Erreurs de validation :</p>
+              <p className="font-medium">Erreurs de validation</p>
               {Object.entries(errors).map(([key, value]) => (
                 <p key={key}>
                   {Array.isArray(value) ? value[0] : String(value)}
@@ -168,113 +390,416 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
             </div>
           )}
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">Titre *</label>
-            <Input value={form.title} onChange={(e) => set('title', e.target.value)} disabled={!canEditTask} />
-            {errors.title && <p className="mt-1 text-xs text-destructive">{errors.title[0]}</p>}
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium">Description</label>
-            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3} disabled={!canEditTask} />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Statut *</label>
-              <Select value={form.status_id} onChange={(e) => set('status_id', Number(e.target.value))} disabled={!canEditTask}>
-                <option value="">Choisir...</option>
-                {statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </Select>
-              {errors.status_id && <p className="mt-1 text-xs text-destructive">{errors.status_id[0]}</p>}
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Priorité</label>
-              <Select value={form.priority} onChange={(e) => set('priority', e.target.value)} disabled={!canEditTask}>
-                {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-              </Select>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Complexité (1-10)</label>
-              <Input type="number" min={1} max={10} value={form.complexity} onChange={(e) => set('complexity', Number(e.target.value))} disabled={!canEditTask} />
-              {errors.complexity && <p className="mt-1 text-xs text-destructive">{errors.complexity[0]}</p>}
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Story points</label>
-              <Input type="number" min={0} value={form.story_points} onChange={(e) => set('story_points', e.target.value === '' ? '' : Number(e.target.value))} disabled={!canEditTask} />
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Début planifié</label>
-              <Input type="date" value={form.planned_start} onChange={(e) => set('planned_start', e.target.value)} disabled={!canEditTask} />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Fin planifiée</label>
-              <Input type="date" value={form.planned_end} onChange={(e) => set('planned_end', e.target.value)} disabled={!canEditTask} />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Échéance</label>
-              <Input type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)} disabled={!canEditTask} />
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Heures estimées</label>
-              <Input type="number" step="0.5" value={form.estimated_hours} onChange={(e) => set('estimated_hours', e.target.value)} disabled={!canEditTask} />
-            </div>
-            {isEdit && (
+          <div className="grid gap-8 lg:grid-cols-3">
+            <div className="space-y-5 lg:col-span-2">
+              <section className="rounded-xl border border-border/70 bg-muted/5 p-4 sm:p-5">
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground">
+                  <LayoutGrid className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  Informations de base
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Titre *</label>
+                    <Input value={form.title} onChange={(e) => set('title', e.target.value)} disabled={!canEditTask} placeholder="Résumé court" />
+                    {errors.title && <p className="mt-1 text-xs text-destructive">{errors.title[0]}</p>}
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Description</label>
+                    <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={4} disabled={!canEditTask} placeholder="Étapes, contexte, critères d’acceptation…" />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {/* Champ Type supprimé */}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Priorité *</label>
+                      <Select value={form.priority} onChange={(e) => set('priority', e.target.value)} disabled={!canEditTask}>
+                        {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="max-w-xs">
+                    <label className="mb-1 block text-sm font-medium">Effort (points)</label>
+                    <Input type="number" min={0} value={form.story_points} onChange={(e) => set('story_points', e.target.value === '' ? '' : Number(e.target.value))} disabled={!canEditTask} placeholder="Optionnel" />
+                  </div>
+                </div>
+              </section>
+
+              {/* ── Spécialités requises ── */}
+              <section className="rounded-xl border border-border/70 bg-muted/5 p-4 sm:p-5">
+                <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground">
+                  <Tag className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  Spécialités requises
+                </h3>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Choisissez une spécialité principale pour la tâche. Elle sert à mettre en avant les membres les plus adaptés.
+                </p>
+                {allSpecialties.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Chargement…</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {allSpecialties.map((s) => {
+                      const active = (form.specialty_ids || []).includes(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          disabled={!canEditTask}
+                          onClick={() => {
+                            set('specialty_ids', active ? [] : [s.id]);
+                          }}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all ${
+                            active
+                              ? 'border-transparent text-white shadow-sm'
+                              : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50'
+                          }`}
+                          style={active ? { backgroundColor: s.color } : {}}
+                          title={s.description || s.name}
+                        >
+                          {active && <span className="text-[10px]">✓</span>}
+                          {s.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {(form.specialty_ids || []).length > 0 && (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Spécialité sélectionnée — les membres correspondants seront mis en avant dans l&apos;assignation.
+                  </p>
+                )}
+                {errors.specialty_ids && <p className="mt-2 text-xs text-destructive">{errors.specialty_ids[0]}</p>}
+              </section>
+
+              {/* ── Assignation ── */}
+              <section className="rounded-xl border border-border/70 bg-muted/5 p-4 sm:p-5">
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground">
+                  <UserCircle className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  Assignation
+                </h3>
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-border bg-background/70 p-3 text-xs">
+                    <p className="font-medium text-foreground">Membres du projet ({memberStats.total})</p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-muted-foreground">
+                      <span className="rounded-full border border-border bg-card px-2 py-0.5">Admins: {memberStats.admin}</span>
+                      <span className="rounded-full border border-border bg-card px-2 py-0.5">Membres: {memberStats.member}</span>
+                      <span className="rounded-full border border-border bg-card px-2 py-0.5">Clients: {memberStats.client}</span>
+                    </div>
+                    <p className="mt-2 text-muted-foreground">
+                      Sélectionnez un membre pour cette tâche. Seuls les membres du projet sont proposés.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">
+                      Membre assigné
+                      {recommendedIds.size > 0 && (
+                        <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                          {recommendedIds.size} recommandé{recommendedIds.size > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </label>
+                    <MemberAssigneePicker
+                      id="task-assignee"
+                      members={memberOptions}
+                      value={form.assignee_id === '' ? '' : form.assignee_id}
+                      onChange={(id) => set('assignee_id', id === '' ? '' : id)}
+                      disabled={!canEditTask || Boolean(form.ai_auto_assign)}
+                      recommendedIds={recommendedIds}
+                    />
+                    {recommendedIds.size > 0 && (
+                      <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                        ⭐ Les membres marqués &quot;Recommandé&quot; ont les spécialités requises par cette tâche.
+                      </p>
+                    )}
+                  </div>
+                  {/* ── Bouton Auto assigner ── */}
+                  {!isEdit && canEditTask && (
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={handleAutoAssign}
+                        disabled={isAutoAssigning}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 px-4 py-3 text-sm font-medium text-primary transition-all hover:border-primary/70 hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isAutoAssigning ? (
+                          <>
+                            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                            Analyse en cours…
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="h-4 w-4 fill-primary" />
+                            Auto assigner
+                            <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold">IA</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Résultats auto-assignation */}
+                      {autoAssignResult && (
+                        <div className="rounded-xl border border-border bg-card overflow-hidden">
+                          {autoAssignResult.best_user ? (
+                            <>
+                              {/* TOP 3 */}
+                              <div className="border-b border-border bg-muted/30 px-3 py-2">
+                                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                  <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                                  Meilleurs candidats
+                                </p>
+                              </div>
+                              <div className="divide-y divide-border">
+                                {(autoAssignResult.top_users || []).map((u, idx) => {
+                                  const isSelected = String(form.assignee_id) === String(u.id);
+                                  const scoreColor = u.score >= 70 ? 'text-emerald-600 dark:text-emerald-400' : u.score >= 45 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground';
+                                  const barColor = u.score >= 70 ? 'bg-emerald-500' : u.score >= 45 ? 'bg-amber-500' : 'bg-slate-400';
+                                  return (
+                                    <button
+                                      key={u.id}
+                                      type="button"
+                                      onClick={() => { set('assignee_id', u.id); set('ai_auto_assign', false); }}
+                                      className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent ${isSelected ? 'bg-primary/5' : ''}`}
+                                    >
+                                      {/* Rang */}
+                                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">
+                                        {idx + 1}
+                                      </span>
+                                      {/* Avatar */}
+                                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+                                        {u.name?.[0] || '?'}
+                                      </div>
+                                      {/* Infos */}
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5">
+                                          <p className="truncate text-sm font-medium text-foreground">{u.name}</p>
+                                          {idx === 0 && (
+                                            <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                                              ⭐ Recommandé
+                                            </span>
+                                          )}
+                                        </div>
+                                        {/* Barre de score */}
+                                        <div className="mt-1 flex items-center gap-2">
+                                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                                            <div
+                                              className={`h-full rounded-full transition-all ${barColor}`}
+                                              style={{ width: `${u.score}%` }}
+                                            />
+                                          </div>
+                                          <span className={`text-[11px] font-semibold tabular-nums ${scoreColor}`}>
+                                            {u.score}%
+                                          </span>
+                                        </div>
+                                        {/* Spécialités du membre */}
+                                        {u.specialties?.length > 0 && (
+                                          <div className="mt-1 flex flex-wrap gap-1">
+                                            {u.specialties.slice(0, 3).map((s) => (
+                                              <span
+                                                key={s.id}
+                                                className="rounded-full px-1.5 py-0.5 text-[10px] font-medium text-white"
+                                                style={{ backgroundColor: s.color || '#6366f1' }}
+                                              >
+                                                {s.name}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                      {/* Indicateur sélectionné */}
+                                      {isSelected && (
+                                        <span className="shrink-0 text-[11px] font-semibold text-primary">✓ Sélectionné</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-3 px-4 py-4 text-sm text-muted-foreground">
+                              <span className="text-xl">⚠️</span>
+                              <div>
+                                <p className="font-medium text-foreground">Aucun membre disponible</p>
+                                <p className="text-xs">{autoAssignResult.message || 'Aucun membre compatible avec les spécialités requises.'}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-border/70 bg-muted/5 p-4 sm:p-5">
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground">
+                  <CalendarRange className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  Planification
+                </h3>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Dates prévues (optionnelles). Laissez les deux vides si non planifié. La date de fin est aussi utilisée comme échéance pour les alertes.
+                </p>
+                {(projectStart || projectEnd) && (
+                  <p className="mb-3 rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                    Période du projet: {projectStart ? formatDateFr(projectStart) : 'non définie'} → {projectEnd ? formatDateFr(projectEnd) : 'non définie'}.
+                    {' '}Les dates de tâche doivent rester dans cet intervalle.
+                  </p>
+                )}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Date de début</label>
+                    <Input
+                      type="date"
+                      value={form.planned_start}
+                      onChange={(e) => set('planned_start', e.target.value)}
+                      disabled={!canEditTask || isEdit}
+                      min={projectStart || undefined}
+                      max={projectEnd || undefined}
+                    />
+                    {isEdit && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        La date de début est figée après la création de la tâche.
+                      </p>
+                    )}
+                    {errors.planned_start && <p className="mt-1 text-xs text-destructive">{errors.planned_start[0]}</p>}
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Date de fin</label>
+                    <Input
+                      type="date"
+                      value={form.planned_end}
+                      onChange={(e) => set('planned_end', e.target.value)}
+                      disabled={!canEditTask}
+                      min={form.planned_start || projectStart || undefined}
+                      max={projectEnd || undefined}
+                    />
+                    {errors.planned_end && <p className="mt-1 text-xs text-destructive">{errors.planned_end[0]}</p>}
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-border/70 bg-muted/5 p-4 sm:p-5">
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground">
+                  <Link2 className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  Dépend de
+                </h3>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Tâches qui doivent être terminées avant (liens Gantt, type fin-début).
+                </p>
+                <TaskDependencyPicker
+                  tasks={projectTasks}
+                  value={form.depends_on_task_ids}
+                  onChange={(ids) => set('depends_on_task_ids', ids)}
+                  excludeTaskId={task?.id}
+                  disabled={!canEditTask}
+                />
+              </section>
+
               <div>
-                <label className="mb-1 block text-sm font-medium">Progression (%)</label>
-                <Input type="number" min={0} max={100} value={form.progress_percent} onChange={(e) => set('progress_percent', Number(e.target.value))} disabled={!canEditTask} />
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((v) => !v)}
+                  className="mb-3 flex w-full items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-left text-sm font-semibold text-foreground"
+                >
+                  <span className="flex items-center gap-2">
+                    <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+                    Avancé
+                  </span>
+                  {showAdvanced ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </button>
+                {showAdvanced && (
+                  <div className="grid gap-4 rounded-xl border border-border/70 bg-muted/5 p-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Complexité (1–10)</label>
+                      <Input type="number" min={1} max={10} value={form.complexity} onChange={(e) => set('complexity', Number(e.target.value))} disabled={!canEditTask} />
+                      {errors.complexity && <p className="mt-1 text-xs text-destructive">{errors.complexity[0]}</p>}
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Heures estimées</label>
+                      <Input type="number" min={0} step={0.5} value={form.estimated_hours} onChange={(e) => set('estimated_hours', e.target.value)} disabled={!canEditTask} />
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          {isEdit && task && (task.estimated_duration != null || task.risk_level) && (
-            <div className="flex flex-wrap gap-3 rounded-lg border border-dashed border-border bg-muted/15 px-3 py-2 text-xs text-muted-foreground">
-              {task.estimated_duration != null && (
-                <span>
-                  Durée estimée (IA) :{' '}
-                  <span className="font-medium text-foreground">
-                    {(task.estimated_duration / 60).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h
-                    {' '}({task.estimated_duration} min)
-                  </span>
-                </span>
+            </div>
+
+            <div className="space-y-4 rounded-xl border border-border bg-muted/10 p-4 lg:sticky lg:top-0 lg:self-start">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Résumé</h3>
+              {(taskMeta || projectMeta) && (
+                <div className="space-y-1 rounded-lg border border-dashed border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                  {taskMeta?.id && (
+                    <p>
+                      ID: <span className="font-medium text-foreground">#{taskMeta.id}</span>
+                    </p>
+                  )}
+                  <p>
+                    Projet: <span className="font-medium text-foreground">{projectMeta?.name || taskMeta?.project?.name || '—'}</span>
+                  </p>
+                  <p>
+                    Type: <span className="font-medium text-foreground">{form.issue_type || taskMeta?.issue_type || 'task'}</span>
+                  </p>
+                  <p>
+                    Début / fin: <span className="font-medium text-foreground">{formatDateFr(form.planned_start)} → {formatDateFr(form.planned_end)}</span>
+                  </p>
+                  {taskMeta?.created_at && (
+                    <p>
+                      Créée le: <span className="font-medium text-foreground">{formatDateFr(taskMeta.created_at)}</span>
+                    </p>
+                  )}
+                  {taskMeta?.updated_at && (
+                    <p>
+                      Mise à jour: <span className="font-medium text-foreground">{formatDateFr(taskMeta.updated_at)}</span>
+                    </p>
+                  )}
+                  {taskMeta?.creator?.name && (
+                    <p>
+                      Créée par: <span className="font-medium text-foreground">{taskMeta.creator.name}</span>
+                    </p>
+                  )}
+                </div>
               )}
-              {task.risk_level && (
-                <span>
-                  Risque :{' '}
-                  <span
-                    className={`font-medium ${
-                      task.risk_level === 'high'
-                        ? 'text-red-700'
-                        : task.risk_level === 'medium'
-                          ? 'text-amber-800'
-                          : 'text-emerald-800'
-                    }`}
-                  >
-                    {task.risk_level}
-                    {task.risk_score != null ? ` (${task.risk_score})` : ''}
-                  </span>
-                </span>
+              {isEdit && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Statut workflow</label>
+                    <Select value={form.workflow_status} onChange={(e) => set('workflow_status', e.target.value)} disabled={!canEditTask}>
+                      {WORKFLOW_OPTIONS.map((w) => (
+                        <option key={w.value} value={w.value}>{w.label}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Progression (%)</label>
+                    <Input type="number" min={0} max={100} value={form.progress_percent} onChange={(e) => set('progress_percent', Number(e.target.value))} disabled={!canEditTask} />
+                  </div>
+                </>
+              )}
+              {!isEdit && (
+                <p className="text-xs text-muted-foreground">
+                  Les nouvelles tâches démarrent en <strong>À faire</strong> (workflow). Vous pourrez les déplacer sur le tableau après création.
+                </p>
+              )}
+              {isEdit && taskMeta && (taskMeta.estimated_duration != null || taskMeta.risk_level) && (
+                <div className="space-y-1 rounded-lg border border-dashed border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                  {taskMeta.estimated_duration != null && (
+                    <p>
+                      Estimation IA :{' '}
+                      <span className="font-medium text-foreground">
+                        {(taskMeta.estimated_duration / 60).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h
+                      </span>
+                    </p>
+                  )}
+                  {taskMeta.risk_level && (
+                    <p>
+                      Risque :{' '}
+                      <span className="font-medium text-foreground">
+                        {taskMeta.risk_level}
+                        {taskMeta.risk_score != null ? ` (${taskMeta.risk_score})` : ''}
+                      </span>
+                    </p>
+                  )}
+                </div>
               )}
             </div>
-          )}
-          {!isEdit && canEditTask && (
-            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={Boolean(form.ai_auto_assign)}
-                onChange={(e) => set('ai_auto_assign', e.target.checked)}
-              />
-              <span>
-                <span className="font-medium text-foreground">Assignation automatique (IA)</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  Propose le membre le plus disponible selon la charge et l’historique.
-                </span>
-              </span>
-            </label>
-          )}
-          <div className="flex items-center justify-between pt-2">
+          </div>
+
+          <div className="flex items-center justify-between border-t border-border pt-4">
             <div>
               {isEdit && canDeleteTask && canEditTask && (
                 <Button
@@ -291,7 +816,7 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
                 <>
                   <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
                   <Button type="submit" disabled={saveMutation.isPending}>
-                    {saveMutation.isPending ? 'Enregistrement...' : isEdit ? 'Enregistrer' : 'Créer'}
+                    {saveMutation.isPending ? 'Enregistrement…' : isEdit ? 'Enregistrer' : 'Créer'}
                   </Button>
                 </>
               ) : (
@@ -302,21 +827,40 @@ export default function TaskModal({ open, onClose, projectId, task, defaultStatu
         </form>
       )}
 
-      {activeTab === 'comments' && isEdit && <CommentsTab taskId={task.id} projectId={projectId} canWriteProject={canWriteProject} />}
+      {activeTab === 'comments' && isEdit && (
+        <CommentsTab taskId={task.id} projectId={projectId} canWriteProject={canWriteProject} isAdmin={isAdmin} userId={user?.id} />
+      )}
+      {activeTab === 'files' && isEdit && <FilesTab taskId={task.id} canEdit={canEditTask} />}
       {activeTab === 'time' && isEdit && <TimeEntriesTab taskId={task.id} canEdit={canEditTask} />}
       {activeTab === 'assignees' && isEdit && <AssigneesTab taskId={task.id} isAdmin={isAdmin} canEdit={canEditTask} />}
     </Modal>
   );
 }
 
-function CommentsTab({ taskId, projectId, canWriteProject }) {
+function renderCommentBody(text) {
+  if (!text) return null;
+  return text.split(/(\s+)/).map((token, idx) => (
+    token.startsWith('@')
+      ? <span key={idx} className="font-medium text-primary">{token}</span>
+      : <span key={idx}>{token}</span>
+  ));
+}
+
+function CommentsTab({ taskId, projectId, canWriteProject, isAdmin, userId }) {
   const queryClient = useQueryClient();
   const [body, setBody] = useState('');
+  const [parentId, setParentId] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [editBody, setEditBody] = useState('');
 
-  const { data: comments, isLoading } = useQuery({
+  const { data: comments = [], isLoading } = useQuery({
     queryKey: ['comments', taskId],
-    queryFn: () => api.get(`/tasks/${taskId}/comments`).then((r) => r.data.data),
+    queryFn: () =>
+      api.get(`/tasks/${taskId}/comments`).then((r) => (
+        r.data?.comments?.data ?? r.data?.comments ?? r.data?.data ?? []
+      )),
   });
+
   const { data: members } = useQuery({
     queryKey: ['project-members', projectId],
     queryFn: () => api.get(`/projects/${projectId}/members`).then((r) => (
@@ -327,20 +871,10 @@ function CommentsTab({ taskId, projectId, canWriteProject }) {
   useEffect(() => {
     const echo = getEcho();
     const channel = echo.private(`project.${projectId}`);
+    const refresh = () => queryClient.invalidateQueries({ queryKey: ['comments', taskId] });
 
-    channel.listen('.task.comment.created', (payload) => {
-      if (payload.task_id !== taskId || !payload.comment) return;
-      queryClient.setQueryData(['comments', taskId], (current = []) => {
-        if (current.some((item) => item.id === payload.comment.id)) return current;
-        return [payload.comment, ...current];
-      });
-    });
-
-    channel.listen('.task.comment.deleted', (payload) => {
-      if (payload.task_id !== taskId) return;
-      queryClient.setQueryData(['comments', taskId], (current = []) =>
-        current.filter((item) => item.id !== payload.comment_id));
-    });
+    channel.listen('.task.comment.created', refresh);
+    channel.listen('.task.comment.deleted', refresh);
 
     return () => {
       echo.leave(`private-project.${projectId}`);
@@ -348,16 +882,34 @@ function CommentsTab({ taskId, projectId, canWriteProject }) {
   }, [projectId, queryClient, taskId]);
 
   const addMutation = useMutation({
-    mutationFn: (text) => api.post(`/tasks/${taskId}/comments`, { body: text }),
+    mutationFn: ({ text, pid }) => api.post(`/tasks/${taskId}/comments`, { body: text, parent_id: pid || undefined }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['comments', taskId] });
       setBody('');
+      setParentId(null);
+      toast.success('Commentaire publié');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Erreur');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, text }) => api.put(`/tasks/${taskId}/comments/${id}`, { body: text }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['comments', taskId] });
+      setEditing(null);
+      setEditBody('');
+      toast.success('Commentaire mis à jour');
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (commentId) => api.delete(`/tasks/${taskId}/comments/${commentId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['comments', taskId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['comments', taskId] });
+      toast.success('Commentaire supprimé');
+    },
   });
 
   const mentionCandidates = useMemo(() => {
@@ -374,64 +926,144 @@ function CommentsTab({ taskId, projectId, canWriteProject }) {
       u.name.toLowerCase().includes(mentionSearch) || u.email?.toLowerCase().includes(mentionSearch)).slice(0, 5)
     : [];
 
-  const insertMention = (user) => {
-    setBody((prev) => prev.replace(/@([A-Za-z0-9._-]*)$/, `@${(user.email || '').split('@')[0]} `));
+  const insertMention = (u) => {
+    setBody((prev) => prev.replace(/@([A-Za-z0-9._-]*)$/, `@${(u.email || '').split('@')[0]} `));
   };
+
+  const canDelete = (c) => isAdmin || (userId && Number(c.user?.id) === Number(userId));
+  const canEdit = (c) => canWriteProject && (isAdmin || (userId && Number(c.user?.id) === Number(userId)));
 
   if (isLoading) return <div className="flex justify-center py-6"><Spinner /></div>;
 
   return (
     <div className="space-y-4">
-      <div className="max-h-64 space-y-3 overflow-y-auto">
-        {comments?.map((c) => (
-          <div key={c.id} className="rounded-lg bg-accent/30 p-3">
-            <div className="mb-1 flex items-center justify-between">
+      <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+        {comments.map((c) => (
+          <div key={c.id} className="rounded-lg border border-border/80 bg-accent/20 p-3">
+            <div className="mb-1 flex items-center justify-between gap-2">
               <span className="text-sm font-medium text-foreground">{c.user?.name}</span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                {c.edited_at && (
+                  <span className="text-[10px] text-muted-foreground">modifié</span>
+                )}
                 <span className="text-xs text-muted-foreground">
-                  {new Date(c.created_at).toLocaleDateString('fr-FR')}
+                  {new Date(c.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
                 </span>
-                {canWriteProject && (
+                {canEdit(c) && (
                   <button
-                    onClick={() => deleteMutation.mutate(c.id)}
-                    className="text-muted-foreground hover:text-destructive"
+                    type="button"
+                    title="Modifier"
+                    onClick={() => { setEditing(c.id); setEditBody(c.body); }}
+                    className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {canDelete(c) && (
+                  <button
+                    type="button"
+                    title="Supprimer"
+                    onClick={() => { if (window.confirm('Supprimer ce commentaire ?')) deleteMutation.mutate(c.id); }}
+                    className="rounded p-1 text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
             </div>
-            <p className="text-sm text-foreground">{c.body.split(/(\s+)/).map((token, idx) => (
-              token.startsWith('@')
-                ? <span key={`${c.id}-${idx}`} className="font-medium text-primary">{token}</span>
-                : <span key={`${c.id}-${idx}`}>{token}</span>
-            ))}</p>
+            {editing === c.id ? (
+              <div className="space-y-2">
+                <Textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={3} />
+                <div className="flex gap-2">
+                  <Button size="sm" type="button" onClick={() => updateMutation.mutate({ id: c.id, text: editBody.trim() })} disabled={!editBody.trim()}>
+                    Enregistrer
+                  </Button>
+                  <Button size="sm" type="button" variant="outline" onClick={() => { setEditing(null); setEditBody(''); }}>Annuler</Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-foreground">{renderCommentBody(c.body)}</p>
+            )}
+            {canWriteProject && (
+              <button
+                type="button"
+                className="mt-2 text-xs font-medium text-primary hover:underline"
+                onClick={() => { setParentId(c.id); setBody(''); }}
+              >
+                Répondre
+              </button>
+            )}
+            {(c.replies || []).length > 0 && (
+              <div className="mt-3 space-y-2 border-l-2 border-primary/30 pl-3">
+                {(c.replies || []).map((r) => (
+                  <div key={r.id} className="rounded-md bg-background/80 p-2">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium">{r.user?.name}</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground">
+                          {new Date(r.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+                        </span>
+                        {canEdit(r) && (
+                          <button type="button" className="rounded p-0.5 hover:bg-accent" onClick={() => { setEditing(r.id); setEditBody(r.body); }}>
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        )}
+                        {canDelete(r) && (
+                          <button type="button" className="rounded p-0.5 hover:text-destructive" onClick={() => { if (window.confirm('Supprimer ?')) deleteMutation.mutate(r.id); }}>
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {editing === r.id ? (
+                      <div className="space-y-2">
+                        <Textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} rows={2} />
+                        <div className="flex gap-2">
+                          <Button size="sm" type="button" onClick={() => updateMutation.mutate({ id: r.id, text: editBody.trim() })}>OK</Button>
+                          <Button size="sm" type="button" variant="outline" onClick={() => { setEditing(null); setEditBody(''); }}>Annuler</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-foreground">{renderCommentBody(r.body)}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
-        {comments?.length === 0 && (
+        {comments.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground">Aucun commentaire</p>
         )}
       </div>
+
+      {parentId && (
+        <p className="text-xs text-muted-foreground">
+          Réponse au fil ·{' '}
+          <button type="button" className="font-medium text-primary hover:underline" onClick={() => setParentId(null)}>Annuler</button>
+        </p>
+      )}
+
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="Ajouter un commentaire... (mention: @username)"
+            placeholder={parentId ? 'Votre réponse… (@ pour mentionner)' : 'Commentaire… (@ pour mentionner)'}
             rows={2}
-            className="flex-1"
             disabled={!canWriteProject}
           />
           {mentionSuggestions.length > 0 && (
-            <div className="absolute bottom-full left-0 mb-1 w-full rounded-md border border-border bg-white shadow-lg">
-              {mentionSuggestions.map((user) => (
+            <div className="absolute bottom-full left-0 z-10 mb-1 w-full rounded-md border border-border bg-card shadow-lg">
+              {mentionSuggestions.map((u) => (
                 <button
-                  key={user.id}
+                  key={u.id}
                   type="button"
-                  onClick={() => insertMention(user)}
+                  onClick={() => insertMention(u)}
                   className="block w-full px-3 py-2 text-left text-sm hover:bg-accent"
                 >
-                  {user.name} <span className="text-xs text-muted-foreground">(@{(user.email || '').split('@')[0]})</span>
+                  {u.name}{' '}
+                  <span className="text-xs text-muted-foreground">(@{(u.email || '').split('@')[0]})</span>
                 </button>
               ))}
             </div>
@@ -439,7 +1071,11 @@ function CommentsTab({ taskId, projectId, canWriteProject }) {
         </div>
         <Button
           size="sm"
-          onClick={() => { if (body.trim()) addMutation.mutate(body.trim()); }}
+          type="button"
+          onClick={() => {
+            if (!body.trim()) return;
+            addMutation.mutate({ text: body.trim(), pid: parentId });
+          }}
           disabled={!canWriteProject || !body.trim() || addMutation.isPending}
           className="self-end"
         >
@@ -450,13 +1086,164 @@ function CommentsTab({ taskId, projectId, canWriteProject }) {
   );
 }
 
+function FilesTab({ taskId, canEdit }) {
+  const queryClient = useQueryClient();
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkName, setLinkName] = useState('');
+
+  const { data: attachments = [], isLoading } = useQuery({
+    queryKey: ['attachments', taskId],
+    queryFn: () =>
+      api.get(`/tasks/${taskId}/attachments`).then((r) => (
+        r.data?.attachments?.data ?? r.data?.attachments ?? []
+      )),
+  });
+
+  const addFile = useMutation({
+    mutationFn: (file) => {
+      const fd = new FormData();
+      fd.append('type', 'file');
+      fd.append('file', file);
+      return api.post(`/tasks/${taskId}/attachments`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attachments', taskId] });
+      toast.success('Fichier ajouté');
+    },
+    onError: (e) => toast.error(e?.response?.data?.message || 'Upload impossible'),
+  });
+
+  const addLinkMut = useMutation({
+    mutationFn: () => api.post(`/tasks/${taskId}/attachments`, {
+      type: 'link',
+      url: linkUrl.trim(),
+      filename: linkName.trim() || linkUrl.trim(),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attachments', taskId] });
+      setLinkUrl('');
+      setLinkName('');
+      toast.success('Lien ajouté');
+    },
+  });
+
+  const delMut = useMutation({
+    mutationFn: (id) => api.delete(`/tasks/${taskId}/attachments/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attachments', taskId] });
+      toast.success('Supprimé');
+    },
+  });
+
+  const downloadBlob = async (path) => {
+    const res = await api.get(path, { responseType: 'blob' });
+    return URL.createObjectURL(res.data);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const a of attachments) {
+        if (!a.is_previewable || !a.download_url || previews[a.id]) continue;
+        try {
+          const url = await downloadBlob(a.download_url);
+          if (!cancelled) setPreviews((p) => ({ ...p, [a.id]: url }));
+        } catch {
+          /* ignore */
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      Object.values(previews).forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [attachments]);
+
+  if (isLoading) return <div className="flex justify-center py-6"><Spinner /></div>;
+
+  return (
+    <div className="space-y-4">
+      {canEdit && (
+        <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium">Fichier (max 10 Mo)</label>
+            <Input
+              type="file"
+              accept="image/*,.pdf,.doc,.docx,.zip"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) addFile.mutate(f);
+                e.target.value = '';
+              }}
+            />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Input placeholder="URL (lien externe)" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} />
+            <Input placeholder="Libellé du lien" value={linkName} onChange={(e) => setLinkName(e.target.value)} />
+          </div>
+          <Button type="button" size="sm" variant="outline" onClick={() => linkUrl.trim() && addLinkMut.mutate()} disabled={!linkUrl.trim() || addLinkMut.isPending}>
+            Ajouter le lien
+          </Button>
+        </div>
+      )}
+
+      <ul className="space-y-2">
+        {attachments.map((a) => (
+          <li key={a.id} className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border bg-card p-3 text-sm">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-foreground">{a.filename || 'Sans nom'}</p>
+              <p className="text-xs text-muted-foreground">{a.type === 'link' ? a.url : (a.mime || 'Fichier')}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {a.type === 'file' && a.download_url && (
+                <a
+                  href={a.download_url}
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    try {
+                      const url = await downloadBlob(a.download_url);
+                      const alink = document.createElement('a');
+                      alink.href = url;
+                      alink.download = a.filename || 'fichier';
+                      alink.click();
+                      URL.revokeObjectURL(url);
+                    } catch {
+                      toast.error('Téléchargement impossible');
+                    }
+                  }}
+                >
+                  <Download className="h-3.5 w-3.5" /> Télécharger
+                </a>
+              )}
+              {a.type === 'link' && a.url && (
+                <a href={a.url} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">
+                  Ouvrir
+                </a>
+              )}
+              {canEdit && (
+                <button type="button" className="text-destructive hover:underline text-xs" onClick={() => delMut.mutate(a.id)}>Supprimer</button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {attachments.length === 0 && <p className="text-center text-sm text-muted-foreground">Aucune pièce jointe</p>}
+    </div>
+  );
+}
+
 function TimeEntriesTab({ taskId, canEdit = true }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), minutes: '', note: '' });
 
   const { data: entries, isLoading } = useQuery({
     queryKey: ['time-entries', taskId],
-    queryFn: () => api.get(`/tasks/${taskId}/time-entries`).then((r) => r.data.data),
+    queryFn: () => api.get(`/tasks/${taskId}/time-entries`).then((r) => (
+      r.data?.time_entries?.data ?? r.data?.time_entries ?? []
+    )),
   });
 
   const addMutation = useMutation({
@@ -540,7 +1327,9 @@ function AssigneesTab({ taskId, isAdmin, canEdit = true }) {
 
   const { data: assignees, isLoading } = useQuery({
     queryKey: ['assignees', taskId],
-    queryFn: () => api.get(`/tasks/${taskId}/assignees`).then((r) => r.data.data),
+    queryFn: () => api.get(`/tasks/${taskId}/assignees`).then((r) => (
+      r.data?.assignees?.data ?? r.data?.assignees ?? []
+    )),
   });
 
   const assignMutation = useMutation({
@@ -548,7 +1337,12 @@ function AssigneesTab({ taskId, isAdmin, canEdit = true }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assignees', taskId] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['member-dashboard'] });
       setUserId('');
+      toast.success('Tâche assignée');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Assignation impossible');
     },
   });
 
@@ -595,17 +1389,17 @@ function AssigneesTab({ taskId, isAdmin, canEdit = true }) {
           <div key={a.id} className="flex items-center justify-between rounded-lg bg-accent/30 p-3">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
-                {(a.user?.name || '?')[0]}
+                {(a.name || a.user?.name || '?')[0]}
               </div>
               <div>
-                <p className="text-sm font-medium">{a.user?.name}</p>
+                <p className="text-sm font-medium">{a.name || a.user?.name}</p>
                 <p className="text-xs text-muted-foreground">{a.allocation_percent}% allocation</p>
               </div>
             </div>
             {canEdit && (
               <button
                 type="button"
-                onClick={() => unassignMutation.mutate(a.user?.id || a.user_id)}
+                onClick={() => unassignMutation.mutate(a.id || a.user?.id || a.user_id)}
                 className="rounded p-1 text-muted-foreground hover:text-destructive"
               >
                 <Trash2 className="h-4 w-4" />

@@ -1,0 +1,11 @@
+{{ $bodyLine }}
+
+@if(!empty($payload['project_id']) || !empty($payload['task_id']))
+—
+@if(!empty($payload['project_id']))
+Projet #{{ $payload['project_id'] }}
+@endif
+@if(!empty($payload['task_id']))
+ · Tâche #{{ $payload['task_id'] }}
+@endif
+@endif

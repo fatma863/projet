@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Ca
 import { Spinner } from '../../components/ui/Spinner';
 import { Modal } from '../../components/ui/Modal';
 import { CalendarView } from '../../components/calendar/CalendarView';
-import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, RotateCcw } from 'lucide-react';
 
 function rangeForView(view, anchor) {
   const a = new Date(anchor);
@@ -38,6 +38,7 @@ export default function CalendarPage() {
   const [projectId, setProjectId] = useState('');
   const [userId, setUserId] = useState('');
   const [detail, setDetail] = useState(null);
+  const [dayDetail, setDayDetail] = useState(null);
 
   const { from, to } = useMemo(() => rangeForView(view, anchor), [view, anchor]);
 
@@ -70,6 +71,18 @@ export default function CalendarPage() {
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [tasks]);
+
+  const stats = useMemo(() => {
+    const projectSet = new Set();
+    tasks.forEach((t) => {
+      if (t?.project?.id) projectSet.add(t.project.id);
+    });
+    return {
+      tasks: tasks.length,
+      projects: projectSet.size,
+      users: userOptions.length,
+    };
+  }, [tasks, userOptions.length]);
 
   const shift = (dir) => {
     const d = new Date(anchor);
@@ -113,8 +126,22 @@ export default function CalendarPage() {
       </div>
 
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-base">Filtres</CardTitle>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-fit shrink-0 gap-1.5"
+            onClick={() => {
+              setProjectId('');
+              setUserId('');
+              setAnchor(new Date());
+            }}
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            Réinitialiser les filtres
+          </Button>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
@@ -142,8 +169,21 @@ export default function CalendarPage() {
           <div className="flex items-end gap-2 text-xs text-muted-foreground">
             <CalendarDays className="mb-2 h-4 w-4" />
             <span>
-              Vert = terminé · Jaune = en cours · Rouge = à risque · Gris = à faire
+              Chaque projet possède une couleur dédiée. Cliquez sur Voir tout pour afficher tous les projets du jour.
             </span>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs">
+              <span className="rounded-full border border-border bg-card px-2 py-1 font-medium text-foreground">
+                {stats.tasks} tâches
+              </span>
+              <span className="rounded-full border border-border bg-card px-2 py-1 font-medium text-foreground">
+                {stats.projects} projets
+              </span>
+              <span className="rounded-full border border-border bg-card px-2 py-1 font-medium text-foreground">
+                {stats.users} utilisateurs
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -159,11 +199,58 @@ export default function CalendarPage() {
               tasks={tasks}
               view={view}
               anchorDate={anchor}
-              onSelectTask={(t) => setDetail(t)}
+              onOpenDay={(payload) => setDayDetail(payload)}
             />
           )}
         </CardContent>
       </Card>
+
+      <Modal
+        open={!!dayDetail}
+        onClose={() => setDayDetail(null)}
+        title={dayDetail ? `Tous les projets - ${dayDetail.dateLabel}` : ''}
+        size="lg"
+      >
+        {dayDetail && (
+          <div className="space-y-4">
+            {dayDetail.projects.map((project) => (
+              <div
+                key={project.projectId || project.projectName}
+                className="rounded-lg border border-border bg-card/60 p-3"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2.5 w-2.5 rounded-full ${project.style?.dot || 'bg-slate-500'}`} />
+                    <p className="font-semibold text-foreground">{project.projectName}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{project.tasks.length} tâche(s)</span>
+                </div>
+
+                <div className="space-y-2">
+                  {project.tasks.map((task) => (
+                    <button
+                      key={task.id}
+                      type="button"
+                      onClick={() => {
+                        setDayDetail(null);
+                        setDetail(task);
+                      }}
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                    >
+                      <div className="font-medium text-foreground">{task.title}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Échéance: {task.deadline ? new Date(task.deadline).toLocaleDateString('fr-FR') : '—'}
+                        {' · '}
+                        {task.workflow_status || task.status || 'todo'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
 
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.title}>
         {detail && (

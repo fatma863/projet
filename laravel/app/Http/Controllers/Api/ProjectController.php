@@ -6,20 +6,29 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ActivityLogResource;
 use App\Http\Resources\ProjectResource;
 use App\Models\Project;
-use App\Models\ProjectInvitation;
-use App\Models\TaskStatus;
+use App\Models\Task;
 use App\Models\User;
+use App\Services\ActivityLogService;
 use App\Services\AIService;
+use App\Services\NotificationService;
+use App\Services\ProjectInviteService;
 use App\Support\AccessControl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProjectController extends Controller
 {
+    public function __construct(
+        private readonly NotificationService $notificationService,
+        private readonly AIService $aiService,
+        private readonly ProjectInviteService $projectInviteService,
+        private readonly ActivityLogService $activityLogService,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -30,20 +39,15 @@ class ProjectController extends Controller
             ->when($request->team_id, fn ($q, $t) => $q->where('team_id', $t))
             ->when($request->search, fn ($q, $s) => $q->where(function ($q2) use ($s) {
                 $q2->where('name', 'like', "%{$s}%")
-                   ->orWhere('code', 'like', "%{$s}%");
+                    ->orWhere('code', 'like', "%{$s}%");
             }))
             ->orderByDesc('updated_at');
 
-        // Non-admin : propriétaire, project_user, project_members ; optionnellement tâches assignées (hors invité global).
+        // Non-admin : uniquement propriétaire ou membre project_user.
         if (! AccessControl::isAdmin($user)) {
             $query->where(function ($q) use ($user) {
                 $q->where('owner_id', $user->id)
-                    ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $user->id))
-                    ->orWhereHas('members', fn ($q2) => $q2->where('users.id', $user->id));
-
-                if (! $user->hasRole('viewer')) {
-                    $q->orWhereHas('tasks.assignees', fn ($q2) => $q2->where('users.id', $user->id));
-                }
+                    ->orWhereHas('users', fn ($q2) => $q2->where('users.id', $user->id));
             });
         }
 
@@ -69,12 +73,13 @@ class ProjectController extends Controller
             'priority' => 'nullable|in:low,medium,high',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
-            'budget' => 'nullable|numeric|min:0',
-            'cost_per_hour' => 'sometimes|numeric|min:0',
         ]);
 
         $membersPayload = $data['members'] ?? [];
         unset($data['members']);
+
+        $this->assertNoApplicationAdmins([$data['project_manager_id'] ?? null], 'project_manager_id');
+        $this->assertNoApplicationAdmins($membersPayload, 'members');
 
         $data['owner_id'] = $request->user()->id;
         $data['created_by'] = $request->user()->id;
@@ -97,8 +102,12 @@ class ProjectController extends Controller
             $project->statuses()->create($status);
         }
 
-        $this->recalculateProjectCosts($project);
         $project->load('owner', 'members', 'statuses', 'client', 'manager');
+
+        $this->activityLogService->log($project, $request->user(), 'project.created', $project, [
+            'project_name' => $project->name,
+            'project_code' => $project->code,
+        ]);
 
         return response()->json([
             'message' => 'Projet créé avec succès.',
@@ -111,7 +120,7 @@ class ProjectController extends Controller
         Gate::authorize('view', $project);
 
         $project->load('owner', 'team', 'members', 'statuses', 'client', 'manager')
-                ->loadCount('members', 'tasks');
+            ->loadCount('members', 'tasks');
 
         return response()->json(['project' => new ProjectResource($project)]);
     }
@@ -122,7 +131,7 @@ class ProjectController extends Controller
 
         $data = $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'code' => 'sometimes|required|string|max:10|unique:projects,code,' . $project->id,
+            'code' => 'sometimes|required|string|max:10|unique:projects,code,'.$project->id,
             'description' => 'nullable|string',
             'team_id' => 'nullable|exists:teams,id',
             'client_id' => 'nullable|exists:clients,id',
@@ -133,14 +142,19 @@ class ProjectController extends Controller
             'priority' => 'nullable|in:low,medium,high',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
-            'budget' => 'nullable|numeric|min:0',
             'owner_id' => 'sometimes|exists:users,id',
-            'cost_per_hour' => 'sometimes|numeric|min:0',
         ]);
 
         $shouldSyncMembers = $request->has('project_manager_id') || $request->has('members');
         $membersPayload = $data['members'] ?? null;
         unset($data['members']);
+
+        if (array_key_exists('project_manager_id', $data) && ! empty($data['project_manager_id'])) {
+            $this->assertNoApplicationAdmins([(int) $data['project_manager_id']], 'project_manager_id');
+        }
+        if ($membersPayload !== null) {
+            $this->assertNoApplicationAdmins($membersPayload, 'members');
+        }
 
         $project->update($data);
         $project->refresh();
@@ -155,8 +169,11 @@ class ProjectController extends Controller
             ]);
         }
 
-        $this->recalculateProjectCosts($project);
         $project->load('owner', 'team', 'members', 'statuses', 'client', 'manager');
+
+        $this->activityLogService->log($project, $request->user(), 'project.updated', $project, [
+            'project_name' => $project->name,
+        ]);
 
         return response()->json([
             'message' => 'Projet mis à jour.',
@@ -167,6 +184,10 @@ class ProjectController extends Controller
     public function destroy(Request $request, Project $project): JsonResponse
     {
         Gate::authorize('delete', $project);
+
+        $this->activityLogService->log($project, $request->user(), 'project.deleted', $project, [
+            'project_name' => $project->name,
+        ]);
 
         $project->delete();
 
@@ -181,11 +202,9 @@ class ProjectController extends Controller
         $statuses = $project->statuses;
 
         $totalTasks = $tasks->count();
-        $completedTasks = $tasks->where('progress_percent', 100)->count();
+        $completedTasks = $tasks->filter(fn (Task $t) => $t->isCompleted())->count();
         $overdueTasks = $tasks->filter(fn ($t) => $t->isOverdue())->count();
-        $avgProgress = $totalTasks > 0 ? round($tasks->avg('progress_percent'), 1) : 0;
-        $this->recalculateProjectCosts($project);
-        $project->refresh();
+        $avgProgress = $totalTasks > 0 ? round(100 * $completedTasks / $totalTasks, 1) : 0;
 
         $ai = $this->aiService->projectDashboardInsights($project);
 
@@ -214,9 +233,6 @@ class ProjectController extends Controller
                 'actual' => $ai['actual_hours_total'],
                 'delta' => round($ai['estimated_hours_total'] - $ai['actual_hours_total'], 1),
             ],
-            'estimated_cost' => $project->estimated_cost !== null ? (float) $project->estimated_cost : null,
-            'actual_cost' => $project->actual_cost !== null ? (float) $project->actual_cost : null,
-            'cost_per_hour' => $project->cost_per_hour !== null ? (float) $project->cost_per_hour : null,
             'tasks_by_status' => $tasksByStatus,
             'tasks_by_priority' => $tasksByPriority,
         ]);
@@ -240,6 +256,50 @@ class ProjectController extends Controller
         ]);
     }
 
+    /**
+     * Export CSV des tâches du projet (rapport simple).
+     */
+    public function exportTasks(Request $request, Project $project): StreamedResponse
+    {
+        Gate::authorize('view', $project);
+
+        $tasks = $project->tasks()
+            ->with(['status', 'assignees'])
+            ->orderBy('id')
+            ->get();
+
+        $safeCode = preg_replace('/[^A-Za-z0-9_-]+/', '-', $project->code) ?: 'projet';
+        $filename = $safeCode.'-taches.csv';
+
+        return response()->streamDownload(function () use ($tasks) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
+            fputcsv($out, [
+                'ID', 'Titre', 'Type', 'Priorité', 'Colonne Kanban', 'Workflow', 'Progression %',
+                'Échéance', 'Assignés', 'Heures estimées',
+            ], ';');
+
+            foreach ($tasks as $t) {
+                fputcsv($out, [
+                    $t->id,
+                    $t->title,
+                    $t->issue_type,
+                    $t->priority,
+                    $t->status?->name,
+                    $t->workflow_status,
+                    $t->progress_percent,
+                    $t->due_date?->toDateString(),
+                    $t->assignees->pluck('name')->implode(', '),
+                    $t->estimated_hours,
+                ], ';');
+            }
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
     public function members(Request $request, Project $project): JsonResponse
     {
         Gate::authorize('view', $project);
@@ -249,19 +309,57 @@ class ProjectController extends Controller
         ]);
     }
 
+    /**
+     * Recherche d'utilisateurs par nom ou e-mail pour ajout au projet (hors membres actuels).
+     */
+    public function searchUsers(Request $request, Project $project): JsonResponse
+    {
+        Gate::authorize('update', $project);
+
+        $search = $request->input('search', '');
+        $search = is_string($search) ? trim($search) : '';
+        if (mb_strlen($search) < 2) {
+            return response()->json(['users' => []]);
+        }
+
+        $excludeIds = collect([$project->owner_id])
+            ->merge($project->members()->pluck('users.id'))
+            ->merge($project->users()->pluck('users.id'))
+            ->filter(fn ($id) => $id !== null)
+            ->unique()
+            ->values()
+            ->all();
+
+        $query = User::query()
+            ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'admin'))
+            ->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%');
+            })
+            ->orderBy('name')
+            ->limit(25);
+
+        if ($excludeIds !== []) {
+            $query->whereNotIn('id', $excludeIds);
+        }
+
+        $users = $query->get(['id', 'name', 'email', 'avatar']);
+
+        return response()->json(['users' => $users]);
+    }
+
     public function addMember(Request $request, Project $project): JsonResponse
     {
         Gate::authorize('update', $project);
 
         $data = $request->validate([
             'user_id' => 'required|exists:users,id',
-            'project_role' => 'sometimes|string|in:admin,member,guest,viewer',
+            'project_role' => 'sometimes|string|in:admin,member,client',
         ]);
 
-        $normalizedRole = $data['project_role'] ?? 'member';
-        if ($normalizedRole === 'viewer') {
-            $normalizedRole = 'guest';
-        }
+        $this->assertNoApplicationAdmins([(int) $data['user_id']], 'user_id');
+
+        $normalizedRole = AccessControl::normalizePivotRole($data['project_role'] ?? 'member');
 
         $project->members()->syncWithoutDetaching([
             $data['user_id'] => ['project_role' => $normalizedRole],
@@ -269,6 +367,15 @@ class ProjectController extends Controller
         if (\Illuminate\Support\Facades\Schema::hasTable('project_user')) {
             $project->users()->syncWithoutDetaching([
                 $data['user_id'] => ['role' => $normalizedRole],
+            ]);
+        }
+
+        $member = User::query()->find($data['user_id']);
+        if ($member) {
+            $this->activityLogService->log($project, $request->user(), 'project.member_role_changed', $project, [
+                'member_id' => $member->id,
+                'member_name' => $member->name,
+                'role' => $normalizedRole,
             ]);
         }
 
@@ -291,13 +398,16 @@ class ProjectController extends Controller
             $project->users()->detach($userId);
         }
 
+        $this->activityLogService->log($project, $request->user(), 'project.member_removed', $project, [
+            'member_id' => $userId,
+        ]);
+
         return response()->json(['message' => 'Membre retiré du projet.']);
     }
 
     /**
      * Invitation par e-mail (membre ou invité lecture seule).
-     * Si l'utilisateur existe : rattachement immédiat à project_user.
-     * Sinon : enregistrement d'une invitation (e-mail simulé via log).
+     * Jeton UUID, expiration 48 h, acceptation via /accept-invite (lien unique).
      */
     public function invite(Request $request, Project $project): JsonResponse
     {
@@ -309,89 +419,41 @@ class ProjectController extends Controller
 
         $data = $request->validate([
             'email' => 'required|email|max:255',
-            'role' => 'required|string|in:member,guest',
+            'role' => 'required|string|in:member,client',
         ]);
 
-        $email = mb_strtolower($data['email']);
+        $inviteRole = AccessControl::normalizePivotRole($data['role']) ?? 'member';
 
-        $existing = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
-
-        if ($existing) {
-            if ($project->users()->where('users.id', $existing->id)->exists()) {
-                return response()->json(['message' => 'Cet utilisateur est déjà membre du projet.'], 422);
-            }
-
-            $project->users()->syncWithoutDetaching([
-                $existing->id => ['role' => $data['role']],
-            ]);
-            $project->members()->syncWithoutDetaching([
-                $existing->id => ['project_role' => $data['role']],
-            ]);
-
-            ProjectInvitation::query()
-                ->where('project_id', $project->id)
-                ->whereRaw('LOWER(email) = ?', [$email])
-                ->delete();
-
-            return response()->json([
-                'message' => 'Utilisateur ajouté au projet.',
-                'user_attached' => true,
-                'user' => [
-                    'id' => $existing->id,
-                    'email' => $existing->email,
-                    'name' => $existing->name,
-                ],
-            ]);
+        try {
+            $result = $this->projectInviteService->createPendingInvitation(
+                $project,
+                $request->user(),
+                $data['email'],
+                $inviteRole
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        $pending = ProjectInvitation::query()->updateOrCreate(
-            [
-                'project_id' => $project->id,
-                'email' => $email,
-            ],
-            [
-                'role' => $data['role'],
-                'invited_by' => $request->user()->id,
-                'token' => Str::random(64),
-                'expires_at' => now()->addDays(14),
-                'accepted_at' => null,
-            ]
-        );
+        $pending = $result['invitation'];
 
-        Log::info('Invitation projet (e-mail non envoyé — simulation)', [
-            'project_id' => $project->id,
-            'project_name' => $project->name,
-            'email' => $email,
-            'role' => $data['role'],
-            'invitation_id' => $pending->id,
-            'token' => $pending->token,
+        $this->activityLogService->log($project, $request->user(), 'project.user_invited', $pending, [
+            'email' => $pending->email,
+            'role' => $pending->role,
         ]);
 
         return response()->json([
-            'message' => 'Invitation enregistrée. Un e-mail serait envoyé à l’adresse indiquée lorsque le compte existera.',
+            'message' => 'Invitation créée. Partagez le lien ci-dessous (valide 48 h).',
             'user_attached' => false,
             'invitation' => [
                 'id' => $pending->id,
                 'email' => $pending->email,
                 'role' => $pending->role,
-                'expires_at' => $pending->expires_at?->toISOString(),
+                'expires_at' => $pending->expires_at?->toIso8601String(),
+                'token' => $pending->token,
             ],
+            'invitation_path' => '/accept-invite?token='.urlencode($pending->token),
         ], 201);
-    }
-
-    public function recalculateCosts(Request $request, Project $project): JsonResponse
-    {
-        Gate::authorize('update', $project);
-
-        $this->recalculateProjectCosts($project);
-        $project->refresh();
-
-        return response()->json([
-            'message' => 'Coûts projet recalculés.',
-            'estimated_cost' => (float) $project->estimated_cost,
-            'actual_cost' => (float) $project->actual_cost,
-            'cost_per_hour' => (float) $project->cost_per_hour,
-        ]);
     }
 
     /**
@@ -453,16 +515,32 @@ class ProjectController extends Controller
             ->all();
     }
 
-    private function recalculateProjectCosts(Project $project): void
+    /**
+     * @param  array<int, mixed>  $userIds
+     */
+    private function assertNoApplicationAdmins(array $userIds, string $field): void
     {
-        $rate = (float) ($project->cost_per_hour ?? 50);
-        $estimatedHours = (float) $project->tasks()->sum('estimated_hours');
-        $actualHours = (float) $project->tasks()->sum('actual_hours');
+        $ids = collect($userIds)
+            ->filter(fn ($id) => $id !== null && $id !== '')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
 
-        $project->updateQuietly([
-            'estimated_cost' => round($estimatedHours * $rate, 2),
-            'actual_cost' => round($actualHours * $rate, 2),
-        ]);
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        $hasAdmin = User::query()
+            ->whereIn('id', $ids->all())
+            ->whereHas('roles', fn ($q) => $q->where('name', 'admin'))
+            ->exists();
+
+        if ($hasAdmin) {
+            throw ValidationException::withMessages([
+                $field => ['Les utilisateurs avec le role admin ne peuvent pas participer aux projets.'],
+            ]);
+        }
     }
 
     /**
@@ -470,17 +548,23 @@ class ProjectController extends Controller
      */
     private function mergedProjectMembers(Project $project): array
     {
-        $project->load(['members', 'users']);
+        $project->load(['members.specialties', 'users.specialties']);
 
         $merged = [];
 
         foreach ($project->users as $u) {
             $merged[$u->id] = [
-                'id' => $u->id,
-                'name' => $u->name,
-                'email' => $u->email,
-                'avatar' => $u->avatar,
-                'role' => AccessControl::normalizePivotRole($u->pivot->role ?? 'member'),
+                'id'          => $u->id,
+                'name'        => $u->name,
+                'email'       => $u->email,
+                'avatar'      => $u->avatar,
+                'is_app_admin' => $u->hasRole('admin'),
+                'role'        => AccessControl::normalizePivotRole($u->pivot->role ?? 'member'),
+                'specialties' => $u->specialties->map(fn ($s) => [
+                    'id'    => $s->id,
+                    'name'  => $s->name,
+                    'color' => $s->color,
+                ])->values()->all(),
             ];
         }
 
@@ -489,11 +573,17 @@ class ProjectController extends Controller
                 continue;
             }
             $merged[$u->id] = [
-                'id' => $u->id,
-                'name' => $u->name,
-                'email' => $u->email,
-                'avatar' => $u->avatar,
-                'role' => AccessControl::normalizePivotRole($u->pivot->project_role ?? 'member'),
+                'id'          => $u->id,
+                'name'        => $u->name,
+                'email'       => $u->email,
+                'avatar'      => $u->avatar,
+                'is_app_admin' => $u->hasRole('admin'),
+                'role'        => AccessControl::normalizePivotRole($u->pivot->project_role ?? 'member'),
+                'specialties' => $u->specialties->map(fn ($s) => [
+                    'id'    => $s->id,
+                    'name'  => $s->name,
+                    'color' => $s->color,
+                ])->values()->all(),
             ];
         }
 

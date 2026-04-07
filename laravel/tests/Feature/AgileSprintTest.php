@@ -54,6 +54,62 @@ class AgileSprintTest extends TestCase
         ]);
     }
 
+    public function test_complete_endpoint_terminates_active_sprint(): void
+    {
+        [$user, $project] = $this->seedProject();
+        Sanctum::actingAs($user);
+
+        $sprintId = $this->postJson("/api/projects/{$project->id}/sprints", ['name' => 'Sprint X'])
+            ->assertCreated()
+            ->json('sprint.id');
+
+        $this->postJson("/api/projects/{$project->id}/sprints/{$sprintId}/start")->assertOk();
+        $this->postJson("/api/projects/{$project->id}/sprints/{$sprintId}/complete")->assertOk();
+
+        $this->assertDatabaseHas('sprints', [
+            'id' => $sprintId,
+            'status' => 'completed',
+        ]);
+    }
+
+    public function test_cannot_delete_active_sprint(): void
+    {
+        [$user, $project] = $this->seedProject();
+        Sanctum::actingAs($user);
+
+        $sprintId = $this->postJson("/api/projects/{$project->id}/sprints", ['name' => 'Actif'])
+            ->assertCreated()
+            ->json('sprint.id');
+
+        $this->postJson("/api/projects/{$project->id}/sprints/{$sprintId}/start")->assertOk();
+
+        $this->deleteJson("/api/projects/{$project->id}/sprints/{$sprintId}")
+            ->assertStatus(422);
+    }
+
+    public function test_can_reorder_backlog(): void
+    {
+        [$user, $project, $taskA] = $this->seedProjectWithTask();
+        Sanctum::actingAs($user);
+
+        $status = \App\Models\TaskStatus::query()->where('project_id', $project->id)->first();
+        $taskB = Task::query()->create([
+            'project_id' => $project->id,
+            'title' => 'Second backlog',
+            'status_id' => $status->id,
+            'story_points' => 2,
+            'created_by' => $user->id,
+            'position' => 1,
+        ]);
+
+        $this->patchJson("/api/projects/{$project->id}/backlog/reorder", [
+            'task_ids' => [$taskB->id, $taskA->id],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('tasks', ['id' => $taskB->id, 'position' => 0]);
+        $this->assertDatabaseHas('tasks', ['id' => $taskA->id, 'position' => 1]);
+    }
+
     private function seedProject(): array
     {
         $user = User::factory()->create();

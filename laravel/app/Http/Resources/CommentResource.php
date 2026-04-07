@@ -12,10 +12,13 @@ class CommentResource extends JsonResource
         return [
             'id' => $this->id,
             'task_id' => $this->task_id,
+            'parent_id' => $this->parent_id,
             'user' => new UserResource($this->whenLoaded('user')),
             'body' => $this->body,
+            'replies' => CommentResource::collection($this->whenLoaded('replies')),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
+            'edited_at' => $this->edited_at?->toISOString(),
         ];
     }
 }

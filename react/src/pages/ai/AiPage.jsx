@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
+import { isGuestViewer } from '../../lib/roles';
 import { cn } from '../../lib/utils';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -8,30 +10,114 @@ import { Badge } from '../../components/ui/Badge';
 import { Select } from '../../components/ui/Select';
 import { Spinner } from '../../components/ui/Spinner';
 import {
-  Brain, Clock, AlertTriangle, UserCheck, TrendingUp, Zap,
-  BarChart3, Table2, Sparkles,
+  Brain, Clock, AlertTriangle, TrendingUp,
+  BarChart3, Table2, Sparkles, Scale, Lightbulb, Target,
 } from 'lucide-react';
 
+function normalizeWorkflowStatus(raw) {
+  const normalized = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (normalized === 'done' || normalized === 'completed' || normalized === 'termine') return 'done';
+  if (normalized === 'in_progress' || normalized === 'at_risk' || normalized === 'en cours') return 'in_progress';
+  return 'todo';
+}
+
+function getTaskStatus(task) {
+  const statusValue = task?.status;
+  const statusFromObject = statusValue && typeof statusValue === 'object' ? statusValue.name : statusValue;
+  return statusFromObject || task?.workflow_status || task?.state || task?.etat || 'todo';
+}
+
+const PRIORITY_LABEL_FR = {
+  low: 'Basse',
+  medium: 'Moyenne',
+  high: 'Haute',
+  urgent: 'Urgente',
+};
+
 export default function AiPage() {
+  const { user } = useAuth();
+  const isInvite = isGuestViewer(user);
+
+  const tabDefs = useMemo(
+    () => {
+      const all = [
+        { key: 'estimate', label: 'Estimation', icon: Clock },
+        { key: 'risk-task', label: 'Risque Tâche', icon: AlertTriangle },
+        { key: 'risk-project', label: 'Risque Projet', icon: TrendingUp },
+        { key: 'recommendations', label: 'Synthèse projet', icon: Lightbulb },
+        { key: 'balance', label: 'Équilibre charge', icon: Scale },
+      ];
+      if (isInvite) {
+        return all.filter((t) => !['risk-project', 'recommendations', 'balance'].includes(t.key));
+      }
+      return all;
+    },
+    [isInvite],
+  );
+
   const [tab, setTab] = useState('estimate');
+
+  useEffect(() => {
+    if (!tabDefs.some((t) => t.key === tab)) {
+      setTab('estimate');
+    }
+  }, [tab, tabDefs]);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">IA & Analytics</h1>
-        <p className="text-muted-foreground">Estimations intelligentes, analyse des risques et optimisation</p>
+        <h1 className="text-2xl font-bold text-foreground">IA et analyses</h1>
+        <p className="text-muted-foreground">
+          Estimation automatique du temps et détection des retards probables (règles métier + historique projet).
+        </p>
       </div>
 
-      <div className="flex gap-1 border-b border-border">
-        {[
-          { key: 'estimate', label: 'Estimation', icon: Clock },
-          { key: 'risk-task', label: 'Risque Tâche', icon: AlertTriangle },
-          { key: 'risk-project', label: 'Risque Projet', icon: TrendingUp },
-          { key: 'suggest', label: 'Suggestion', icon: UserCheck },
-          { key: 'optimize', label: 'Optimisation', icon: Zap },
-        ].map((t) => (
+      <div
+        className={cn(
+          'grid gap-3',
+          isInvite ? 'sm:grid-cols-2' : 'sm:grid-cols-3',
+        )}
+      >
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2 text-primary">
+            <Target className="h-4 w-4" />
+            <span className="text-sm font-semibold">Estimation</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Durée en heures à partir des story points, priorité, description et tâches similaires terminées sur le projet.
+          </p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2 text-amber-600">
+            <AlertTriangle className="h-4 w-4" />
+            <span className="text-sm font-semibold">Retards probables</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Score de risque (priorité, échéance, avancement vs calendrier, dépendances bloquantes).
+          </p>
+        </div>
+        {!isInvite && (
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="mb-2 flex items-center gap-2 text-violet-600">
+              <Scale className="h-4 w-4" />
+              <span className="text-sm font-semibold">Répartition &amp; charge</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Synthèse projet, équilibre de charge et vue globale des risques (onglets dédiés).
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-1 border-b border-border">
+        {tabDefs.map((t) => (
           <button
             key={t.key}
+            type="button"
             onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
               tab === t.key
@@ -47,9 +133,9 @@ export default function AiPage() {
 
       {tab === 'estimate' && <EstimatePanel />}
       {tab === 'risk-task' && <TaskRiskPanel />}
-      {tab === 'risk-project' && <ProjectRiskPanel />}
-      {tab === 'suggest' && <SuggestPanel />}
-      {tab === 'optimize' && <OptimizePanel />}
+      {tab === 'risk-project' && !isInvite && <ProjectRiskPanel />}
+      {tab === 'recommendations' && !isInvite && <RecommendationsPanel />}
+      {tab === 'balance' && !isInvite && <WorkloadBalancePanel />}
     </div>
   );
 }
@@ -91,7 +177,7 @@ function EstimatePanel() {
             </span>
           )}
         </div>
-        {error && <p className="text-sm text-destructive">Erreur: {error.response?.data?.message || error.message}</p>}
+        {error && <p className="text-sm text-destructive">Erreur&nbsp;: {error.response?.data?.message || error.message}</p>}
         {data && <EstimateResultView data={data} />}
       </CardContent>
     </Card>
@@ -135,7 +221,7 @@ function TaskRiskPanel() {
             </span>
           )}
         </div>
-        {error && <p className="text-sm text-destructive">Erreur: {error.response?.data?.message || error.message}</p>}
+        {error && <p className="text-sm text-destructive">Erreur&nbsp;: {error.response?.data?.message || error.message}</p>}
         {data && <TaskRiskResultView data={data} />}
       </CardContent>
     </Card>
@@ -179,74 +265,14 @@ function ProjectRiskPanel() {
             Analyser
           </Button>
         </div>
-        {error && <p className="text-sm text-destructive">Erreur: {error.response?.data?.message || error.message}</p>}
+        {error && <p className="text-sm text-destructive">Erreur&nbsp;: {error.response?.data?.message || error.message}</p>}
         {data && <ProjectRiskResultView data={data} />}
       </CardContent>
     </Card>
   );
 }
 
-function SuggestPanel() {
-  const [taskId, setTaskId] = useState('');
-  const [run, setRun] = useState(false);
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['ai-suggest', taskId],
-    queryFn: () => api.get(`/ai/suggest-assignment/${taskId}`).then((r) => r.data),
-    enabled: run && !!taskId,
-  });
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <UserCheck className="h-5 w-5 text-green-500" /> Suggestion d'assignation
-        </CardTitle>
-        <CardDescription>L'IA suggère le meilleur membre à assigner à une tâche</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <TaskPickerByProject
-          taskId={taskId}
-          onTaskChange={(id) => {
-            setTaskId(id);
-            setRun(false);
-          }}
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={() => setRun(true)} disabled={!taskId || isLoading}>
-            {isLoading ? <Spinner className="mr-2" /> : <Brain className="mr-2 h-4 w-4" />}
-            Suggérer
-          </Button>
-          {taskId && (
-            <span className="text-sm text-muted-foreground">
-              Tâche : <span className="font-medium text-foreground">#{taskId}</span>
-            </span>
-          )}
-        </div>
-        {error && <p className="text-sm text-destructive">Erreur: {error.response?.data?.message || error.message}</p>}
-        {data && (
-          <div className="rounded-lg bg-accent/30 p-4 space-y-3">
-            <p className="font-medium">{data.title}</p>
-            {data.suggested_user && (
-              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-gradient-to-r from-green-50 to-emerald-50/80 p-4 shadow-sm">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-lg font-semibold text-green-800">
-                  {data.suggested_user.name?.[0] || '?'}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-foreground">{data.suggested_user.name}</p>
-                  <p className="text-sm text-muted-foreground">{data.suggested_user.email}</p>
-                </div>
-                {data.score != null && <Badge variant="success" className="text-sm">Score : {data.score}</Badge>}
-              </div>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function OptimizePanel() {
+function RecommendationsPanel() {
   const [projectId, setProjectId] = useState('');
   const [run, setRun] = useState(false);
 
@@ -256,21 +282,25 @@ function OptimizePanel() {
   });
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['ai-optimize', projectId],
-    queryFn: () => api.get(`/ai/optimize-assignments/${projectId}`).then((r) => r.data),
+    queryKey: ['ai-recommendations', projectId],
+    queryFn: () => api.get(`/ai/recommendations/project/${projectId}`).then((r) => r.data),
     enabled: run && !!projectId,
   });
+
+  const sum = data?.summary;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Zap className="h-5 w-5 text-purple-500" /> Optimisation des assignations
+          <Lightbulb className="h-5 w-5 text-amber-500" /> Synthèse et recommandations projet
         </CardTitle>
-        <CardDescription>Optimise l'ensemble des assignations d'un projet</CardDescription>
+        <CardDescription>
+          Priorité suggérée, échéance indicative et pistes de rééquilibrage lorsque des retards sont détectés.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-end gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-sm font-medium">Projet</label>
             <Select value={projectId} onChange={(e) => { setProjectId(e.target.value); setRun(false); }} className="w-60">
@@ -280,35 +310,174 @@ function OptimizePanel() {
           </div>
           <Button onClick={() => setRun(true)} disabled={!projectId || isLoading}>
             {isLoading ? <Spinner className="mr-2" /> : <Brain className="mr-2 h-4 w-4" />}
-            Optimiser
+            Générer
           </Button>
         </div>
-        {error && <p className="text-sm text-destructive">Erreur: {error.response?.data?.message || error.message}</p>}
+        {error && <p className="text-sm text-destructive">Erreur&nbsp;: {error.response?.data?.message || error.message}</p>}
         {data && (
-          <div className="rounded-lg bg-accent/30 p-4 space-y-3">
-            {data.assignments && Array.isArray(data.assignments) && data.assignments.length > 0 ? (
+          <div className="space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+            {sum && (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-center">
+                  <p className="text-xs font-medium text-muted-foreground">Tâches actives</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums">{sum.active_tasks}</p>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-4 py-3 text-center dark:border-amber-900 dark:bg-amber-950/30">
+                  <p className="text-xs font-medium text-muted-foreground">En retard</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-amber-900 dark:text-amber-200">{sum.overdue_tasks}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-center">
+                  <p className="text-xs font-medium text-muted-foreground">Focus priorité</p>
+                  <p className="mt-1 text-sm font-semibold capitalize">{PRIORITY_LABEL_FR[sum.suggested_priority_focus] || sum.suggested_priority_focus}</p>
+                </div>
+              </div>
+            )}
+            {data.deadline_suggestion && (
+              <div className="rounded-lg border border-sky-200/80 bg-sky-50/50 px-4 py-3 dark:border-sky-900 dark:bg-sky-950/20">
+                <p className="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-300">Échéance indicative</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{data.deadline_suggestion}</p>
+                {data.deadline_suggestion_label && (
+                  <p className="mt-1 text-sm text-muted-foreground">{data.deadline_suggestion_label}</p>
+                )}
+              </div>
+            )}
+            {data.redistribution_suggestion && (
+              <div className="overflow-hidden rounded-lg border border-violet-200/70 bg-violet-50/40 dark:border-violet-900 dark:bg-violet-950/20">
+                <div className="border-b border-violet-200/60 px-4 py-2 text-sm font-semibold dark:border-violet-800">
+                  Répartition ({data.redistribution_suggestion.tasks_overdue_count} tâche(s) en retard)
+                </div>
+                <p className="px-4 py-2 text-sm text-muted-foreground">{data.redistribution_suggestion.reason}</p>
+                {Array.isArray(data.redistribution_suggestion.target_users_low_workload) && (
+                  <div className="overflow-x-auto px-2 pb-3">
+                    <table className="w-full min-w-[400px] text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-muted-foreground">
+                          <th className="px-2 py-1.5">Membre</th>
+                          <th className="px-2 py-1.5 text-right">Tâches actives</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {data.redistribution_suggestion.target_users_low_workload.map((u) => (
+                          <tr key={u.user_id}>
+                            <td className="px-2 py-2 font-medium">{u.name}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">{u.active_tasks}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+            {!data.deadline_suggestion && !data.redistribution_suggestion && (
+              <p className="text-sm text-muted-foreground">Aucune alerte de synthèse pour ce projet.</p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function WorkloadBalancePanel() {
+  const [projectId, setProjectId] = useState('');
+  const [run, setRun] = useState(false);
+
+  const { data: projects } = useQuery({
+    queryKey: ['projects-for-ai'],
+    queryFn: () => api.get('/projects?per_page=100').then((r) => r.data.data),
+  });
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['ai-workload-balance', projectId],
+    queryFn: () => api.get(`/ai/workload-balance/${projectId}`).then((r) => r.data),
+    enabled: run && !!projectId,
+  });
+
+  const metrics = data?.balance_metrics;
+  const hints = Array.isArray(data?.rebalance_hints) ? data.rebalance_hints : [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Scale className="h-5 w-5 text-violet-500" /> Équilibre de charge par membre
+        </CardTitle>
+        <CardDescription>
+          Heures ouvertes estimées, tâches actives et retard par personne ; dispersion de l’équipe pour repérer les surcharges.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium">Projet</label>
+            <Select value={projectId} onChange={(e) => { setProjectId(e.target.value); setRun(false); }} className="w-60">
+              <option value="">Choisir un projet</option>
+              {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </Select>
+          </div>
+          <Button onClick={() => setRun(true)} disabled={!projectId || isLoading}>
+            {isLoading ? <Spinner className="mr-2" /> : <BarChart3 className="mr-2 h-4 w-4" />}
+            Analyser
+          </Button>
+        </div>
+        {error && <p className="text-sm text-destructive">Erreur&nbsp;: {error.response?.data?.message || error.message}</p>}
+        {data && (
+          <div className="space-y-4">
+            {metrics && (
+              <div className="flex flex-wrap gap-3 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm">
+                <span>
+                  Moyenne charge : <strong className="tabular-nums">{metrics.average_workload_score}</strong>
+                </span>
+                <span className="text-muted-foreground">|</span>
+                <span>
+                  Dispersion : <strong className="tabular-nums">{metrics.spread}</strong>
+                </span>
+                {metrics.imbalanced && (
+                  <Badge variant="warning">Équipe déséquilibrée</Badge>
+                )}
+              </div>
+            )}
+            {Array.isArray(data.members) && data.members.length > 0 ? (
               <div className="overflow-hidden rounded-lg border border-border">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/40 text-left text-xs font-medium text-muted-foreground">
-                      <th className="px-4 py-2">Tâche</th>
-                      <th className="px-4 py-2">Assignation suggérée</th>
-                      <th className="px-4 py-2 text-right">Score</th>
+                      <th className="px-4 py-2">Membre</th>
+                      <th className="px-4 py-2 text-right">Score charge</th>
+                      <th className="px-4 py-2 text-right">Heures ouvertes</th>
+                      <th className="px-4 py-2 text-right">Actives</th>
+                      <th className="px-4 py-2 text-right">Retard</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {data.assignments.map((a, i) => (
-                      <tr key={i} className="hover:bg-muted/15">
-                        <td className="px-4 py-3 font-medium">{a.task?.title || `Tâche #${a.task_id}`}</td>
-                        <td className="px-4 py-3 text-primary">{a.suggested_user?.name || `Utilisateur #${a.user_id}`}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{a.score ?? '—'}</td>
+                    {data.members.map((m) => (
+                      <tr key={m.user_id} className="hover:bg-muted/15">
+                        <td className="px-4 py-3">
+                          <span className="font-medium">{m.name}</span>
+                          <span className="ml-2 block text-xs text-muted-foreground">{m.email}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums font-medium">{m.workload_score}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{m.open_estimated_hours}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{m.active_tasks}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{m.overdue_tasks}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Aucune proposition d’assignation.</p>
+              <p className="text-sm text-muted-foreground">Aucun membre trouvé pour ce projet.</p>
+            )}
+            {hints.length > 0 && (
+              <div className="rounded-lg border border-violet-200/60 bg-violet-50/30 px-4 py-3 dark:border-violet-900 dark:bg-violet-950/20">
+                <p className="mb-2 text-sm font-semibold">Conseils</p>
+                <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
+                  {hints.map((h, i) => (
+                    <li key={i}>{h}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
         )}
@@ -339,8 +508,8 @@ function EstimateResultView({ data }) {
   const mins = data.estimated_duration_minutes ?? data.estimated_duration;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-indigo-200/50 bg-gradient-to-br from-slate-50 via-white to-indigo-50/50 p-1 shadow-md">
-      <div className="rounded-[14px] bg-white/95 p-5 sm:p-6">
+    <div className="overflow-hidden rounded-2xl border border-indigo-200/50 bg-gradient-to-br from-slate-50 via-white to-indigo-50/50 p-1 shadow-md dark:border-indigo-900/40 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/50">
+      <div className="rounded-[14px] bg-card p-5 sm:p-6 dark:bg-slate-900/70">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="mb-1 flex items-center gap-2 text-indigo-600">
@@ -458,21 +627,53 @@ function EstimateResultView({ data }) {
   );
 }
 
+const SCHEDULE_HEALTH_LABEL = {
+  critical: 'Planning critique',
+  watch: 'À surveiller',
+  ok: 'Sous contrôle',
+};
+
 function TaskRiskResultView({ data }) {
   const factors = Array.isArray(data.risk_factors) ? data.risk_factors : [];
   const recs = Array.isArray(data.recommendations) ? data.recommendations : [];
+  const insights = Array.isArray(data.insights) ? data.insights : [];
+  const delayPct = data.delay_probability_percent ?? data.risk_score;
+  const health = data.schedule_health;
 
   return (
     <div className="space-y-4 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-50/60 via-white to-orange-50/30 p-5 shadow-sm">
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="text-lg font-semibold text-foreground">{data.title}</h3>
         {data.risk_score != null && <RiskBadge score={data.risk_score} />}
+        {delayPct != null && (
+          <Badge variant="outline" className="tabular-nums" title="Probabilité de retard (modèle heuristique)">
+            Retard probable : {delayPct}%
+          </Badge>
+        )}
+        {health && (
+          <Badge
+            variant={health === 'critical' ? 'destructive' : health === 'watch' ? 'warning' : 'success'}
+          >
+            {SCHEDULE_HEALTH_LABEL[health] || health}
+          </Badge>
+        )}
         {data.risk_level && (
           <Badge variant={data.risk_level === 'high' ? 'destructive' : data.risk_level === 'medium' ? 'warning' : 'success'}>
             {data.risk_level === 'high' ? 'Risque élevé' : data.risk_level === 'medium' ? 'Risque moyen' : 'Risque faible'}
           </Badge>
         )}
       </div>
+
+      {insights.length > 0 && (
+        <div className="rounded-xl border border-amber-100 bg-white/80 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+          <p className="mb-2 text-sm font-semibold text-foreground">Analyse</p>
+          <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
+            {insights.map((line, i) => (
+              <li key={i} className="leading-relaxed">{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {factors.length > 0 ? (
         <div className="overflow-hidden rounded-xl border border-border shadow-sm">
@@ -500,13 +701,13 @@ function TaskRiskResultView({ data }) {
           </table>
         </div>
       ) : (
-        <p className="rounded-lg border border-border bg-white/80 px-4 py-3 text-sm text-muted-foreground">
+        <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           Aucun facteur de risque identifié pour cette tâche.
         </p>
       )}
 
       {recs.length > 0 && (
-        <div className="rounded-xl border border-amber-100 bg-white/90 px-4 py-3">
+        <div className="rounded-xl border border-amber-100 bg-card px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20">
           <p className="mb-2 text-sm font-semibold text-foreground">Recommandations</p>
           <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
             {recs.map((r, i) => (
@@ -524,7 +725,7 @@ function ProjectRiskResultView({ data }) {
   const tasks = Array.isArray(data.tasks) ? data.tasks : [];
 
   return (
-    <div className="space-y-5 rounded-2xl border border-orange-200/70 bg-gradient-to-br from-orange-50/50 via-white to-amber-50/20 p-5 shadow-sm">
+    <div className="space-y-5 rounded-2xl border border-orange-200/70 bg-gradient-to-br from-orange-50/50 via-white to-amber-50/20 p-5 shadow-sm dark:border-orange-900/50 dark:from-slate-900 dark:via-slate-900 dark:to-amber-950/30">
       {s && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
@@ -538,7 +739,9 @@ function ProjectRiskResultView({ data }) {
               key={m.label}
               className={cn(
                 'rounded-xl border px-4 py-3 text-center shadow-sm',
-                m.highlight ? 'border-amber-300 bg-amber-50/90' : 'border-border bg-white/90'
+                m.highlight
+                  ? 'border-amber-300 bg-amber-50/90 dark:border-amber-700 dark:bg-amber-950/40'
+                  : 'border-border bg-card dark:bg-slate-900/60'
               )}
             >
               <p className="text-xs font-medium text-muted-foreground">{m.label}</p>
@@ -569,7 +772,9 @@ function ProjectRiskResultView({ data }) {
                       <span className="font-medium">{t.title}</span>
                       <span className="ml-2 font-mono text-xs text-muted-foreground">#{t.task_id}</span>
                     </td>
-                    <td className="px-4 py-2.5 capitalize">{t.priority}</td>
+                    <td className="px-4 py-2.5">
+                      {PRIORITY_LABEL_FR[t.priority] || t.priority || '—'}
+                    </td>
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{t.due_date || '—'}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{t.progress ?? t.progress_percent ?? '—'}%</td>
                     <td className="px-4 py-2.5 text-right">
@@ -582,7 +787,7 @@ function ProjectRiskResultView({ data }) {
           </div>
         </div>
       ) : (
-        <p className="rounded-lg border border-border bg-white/80 px-4 py-3 text-sm text-muted-foreground">
+        <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           Aucune tâche à risque détectée sur ce projet.
         </p>
       )}
@@ -590,9 +795,7 @@ function ProjectRiskResultView({ data }) {
   );
 }
 
-/**
- * Liste des projets → clic → liste des tâches du projet → sélection.
- */
+/** Sélecteur en deux étapes : projet puis tâche. */
 function TaskPickerByProject({ taskId, onTaskChange }) {
   const [projectId, setProjectId] = useState('');
 
@@ -604,10 +807,38 @@ function TaskPickerByProject({ taskId, onTaskChange }) {
   const { data: tasks = [], isLoading: loadingTasks } = useQuery({
     queryKey: ['ai-picker-project-tasks', projectId],
     enabled: Boolean(projectId),
-    queryFn: () =>
-      api.get(`/projects/${projectId}/tasks?all=1`).then((r) => (
-        r.data.tasks?.data ?? r.data.tasks ?? r.data.data ?? []
-      )),
+    queryFn: async () => {
+      const selectedProjectId = Number(projectId);
+      const normalizeList = (rawTasks) => (Array.isArray(rawTasks) ? rawTasks : [])
+        .filter((t) => t?.project_id == null || Number(t.project_id) === selectedProjectId)
+        .map((t) => ({ ...t, workflow_status: normalizeWorkflowStatus(getTaskStatus(t)) }));
+
+      try {
+        const r = await api.get(`/projects/${projectId}/tasks?all=1`);
+        const list = normalizeList(r.data?.tasks?.data ?? r.data?.tasks ?? r.data?.data ?? []);
+        if (import.meta.env.DEV) {
+          console.debug('[AiPage] project tasks response', {
+            projectId: selectedProjectId,
+            count: list.length,
+          });
+        }
+        if (list.length > 0) return list;
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.warn('[AiPage] /projects/{id}/tasks failed, using fallback', error?.response?.data ?? error?.message);
+        }
+      }
+
+      const fallback = await api.get(`/tasks?all=1&project_id=${selectedProjectId}`);
+      const fallbackList = normalizeList(fallback.data?.tasks?.data ?? fallback.data?.tasks ?? fallback.data?.data ?? []);
+      if (import.meta.env.DEV) {
+        console.debug('[AiPage] fallback global tasks response', {
+          projectId: selectedProjectId,
+          count: fallbackList.length,
+        });
+      }
+      return fallbackList;
+    },
   });
 
   const handleProjectSelect = (id) => {
@@ -616,65 +847,49 @@ function TaskPickerByProject({ taskId, onTaskChange }) {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid gap-4 md:grid-cols-2">
       <div>
-        <p className="mb-2 text-sm font-medium text-foreground">1. Choisir un projet</p>
-        <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-card">
-          {loadingProjects ? (
-            <div className="flex justify-center py-10"><Spinner /></div>
-          ) : projects.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">Aucun projet accessible.</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {projects.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => handleProjectSelect(p.id)}
-                    className={cn(
-                      'w-full px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent/80',
-                      projectId === p.id && 'bg-primary/10 font-medium text-primary'
-                    )}
-                  >
-                    <span className="block">{p.name}</span>
-                    <span className="text-xs text-muted-foreground">{p.code}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <label className="mb-1 block text-sm font-medium text-foreground">1. Choisir un projet</label>
+        <Select
+          value={projectId}
+          onChange={(e) => handleProjectSelect(e.target.value)}
+          disabled={loadingProjects}
+          className="w-full"
+        >
+          <option value="">{loadingProjects ? 'Chargement des projets…' : 'Choisir un projet'}</option>
+          {projects.map((p) => (
+            <option key={p.id} value={String(p.id)}>
+              {p.name}{p.code ? ` (${p.code})` : ''}
+            </option>
+          ))}
+        </Select>
+        {!loadingProjects && projects.length === 0 && (
+          <p className="mt-1 text-xs text-muted-foreground">Aucun projet accessible.</p>
+        )}
       </div>
       <div>
-        <p className="mb-2 text-sm font-medium text-foreground">2. Choisir une tâche</p>
-        <div className="max-h-64 overflow-y-auto rounded-lg border border-border bg-card">
-          {!projectId ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">
-              Sélectionnez d’abord un projet.
-            </p>
-          ) : loadingTasks ? (
-            <div className="flex justify-center py-10"><Spinner /></div>
-          ) : tasks.length === 0 ? (
-            <p className="p-4 text-sm text-muted-foreground">Aucune tâche dans ce projet.</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {tasks.map((t) => (
-                <li key={t.id}>
-                  <button
-                    type="button"
-                    onClick={() => onTaskChange(String(t.id))}
-                    className={cn(
-                      'w-full px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent/80',
-                      String(taskId) === String(t.id) && 'bg-primary/10 font-medium text-primary'
-                    )}
-                  >
-                    {t.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <label className="mb-1 block text-sm font-medium text-foreground">2. Choisir une tâche</label>
+        <Select
+          value={taskId || ''}
+          onChange={(e) => onTaskChange(e.target.value)}
+          disabled={!projectId || loadingTasks || tasks.length === 0}
+          className="w-full"
+        >
+          <option value="">
+            {!projectId
+              ? 'Sélectionnez d’abord un projet'
+              : loadingTasks
+                ? 'Chargement des tâches…'
+                : tasks.length === 0
+                  ? 'Aucune tâche dans ce projet'
+                  : 'Choisir une tâche'}
+          </option>
+          {tasks.map((t) => (
+            <option key={t.id} value={String(t.id)}>
+              #{t.id} - {t.title}
+            </option>
+          ))}
+        </Select>
       </div>
     </div>
   );

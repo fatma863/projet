@@ -10,8 +10,15 @@ import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Modal } from '../ui/Modal';
 import { Spinner } from '../ui/Spinner';
+import { UserAvatar } from '../ui/UserAvatar';
 import { Search, UserCog } from 'lucide-react';
-import { APP_ROLE_LABELS, formatAppRole, normalizeAppRole } from '../../lib/roles';
+import { formatAppRole, normalizeAppRole } from '../../lib/roles';
+
+const ROLE_OPTIONS = [
+  { value: 'admin', label: 'Administrateur' },
+  { value: 'member', label: 'Membre' },
+  { value: 'viewer', label: 'Invité' },
+];
 
 /**
  * CRUD utilisateurs (admin). variant: "dashboard" = carte dans le tableau de bord ; "page" = page dédiée /users
@@ -25,7 +32,11 @@ export default function UserManagement({ variant = 'page' }) {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [userForm, setUserForm] = useState({ name: '', email: '', password: '', role: 'member' });
+  const [userForm, setUserForm] = useState({
+    name: '', email: '', password: '', password_confirmation: '', status: 'active', role: 'member',
+  });
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
   const [modalError, setModalError] = useState(null);
   /** Incrémenté à chaque ouverture du modal pour remonter le formulaire et éviter l’autofill du navigateur */
   const [userFormKey, setUserFormKey] = useState(0);
@@ -35,15 +46,22 @@ export default function UserManagement({ variant = 'page' }) {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: users = [], isLoading } = useQuery({
-    queryKey: ['admin-users', debouncedSearch],
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
+  const { data: usersPayload, isLoading } = useQuery({
+    queryKey: ['admin-users', debouncedSearch, statusFilter, page],
     enabled: isAdmin,
     queryFn: () => {
-      const params = new URLSearchParams({ per_page: '200' });
+      const params = new URLSearchParams({ per_page: '20', page: String(page) });
       if (debouncedSearch.trim()) params.set('search', debouncedSearch.trim());
-      return api.get(`/users?${params}`).then((r) => r.data.data || []);
+      if (statusFilter) params.set('status', statusFilter);
+      return api.get(`/users?${params}`).then((r) => r.data);
     },
   });
+  const users = usersPayload?.data || [];
+  const meta = usersPayload?.meta || {};
 
   const saveUserMutation = useMutation({
     mutationFn: (payload) => (editingUser
@@ -53,7 +71,9 @@ export default function UserManagement({ variant = 'page' }) {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       setShowUserModal(false);
       setEditingUser(null);
-      setUserForm({ name: '', email: '', password: '', role: 'member' });
+      setUserForm({
+        name: '', email: '', password: '', password_confirmation: '', status: 'active', role: 'member',
+      });
       setModalError(null);
     },
     onError: (err) => {
@@ -79,9 +99,27 @@ export default function UserManagement({ variant = 'page' }) {
 
   if (!isAdmin) return null;
 
+  const appRoleBadge = (roleKey) => {
+    const key = normalizeAppRole(roleKey);
+    const label = formatAppRole(roleKey);
+    const cls =
+      key === 'admin'
+        ? 'border-primary/30 bg-primary/15 text-primary'
+        : key === 'viewer'
+          ? 'border-amber-500/30 bg-amber-50 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100'
+          : 'border-emerald-500/30 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-100';
+    return (
+      <Badge variant="outline" className={`font-medium ${cls}`}>
+        {label}
+      </Badge>
+    );
+  };
+
   const openCreate = () => {
     setEditingUser(null);
-    setUserForm({ name: '', email: '', password: '', role: 'member' });
+    setUserForm({
+      name: '', email: '', password: '', password_confirmation: '', status: 'active', role: 'member',
+    });
     setModalError(null);
     setUserFormKey((k) => k + 1);
     setShowUserModal(true);
@@ -93,7 +131,9 @@ export default function UserManagement({ variant = 'page' }) {
       name: u.name || '',
       email: u.email || '',
       password: '',
-      role: normalizeAppRole(Array.isArray(u.roles) ? u.roles[0] : u.roles),
+      password_confirmation: '',
+      status: u.status || 'active',
+      role: normalizeAppRole(u.role) || 'member',
     });
     setModalError(null);
     setUserFormKey((k) => k + 1);
@@ -112,11 +152,24 @@ export default function UserManagement({ variant = 'page' }) {
             className="pl-10"
           />
         </div>
+        <div className="w-full sm:w-44">
+          <Select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">Tous les statuts</option>
+            <option value="active">Actif</option>
+            <option value="disabled">Désactivé</option>
+          </Select>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           {variant === 'dashboard' && (
             <Link
               to="/users"
-              className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-white px-3 text-sm font-medium hover:bg-accent"
+              className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-accent"
             >
               <UserCog className="mr-1 h-4 w-4" />
               Page complète
@@ -136,22 +189,31 @@ export default function UserManagement({ variant = 'page' }) {
         <p className="py-8 text-center text-sm text-muted-foreground">Aucun utilisateur trouvé.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="border-b border-border bg-accent/40">
               <tr>
                 <th className="px-4 py-3 font-medium text-foreground">Nom</th>
                 <th className="px-4 py-3 font-medium text-foreground">Email</th>
-                <th className="px-4 py-3 font-medium text-foreground">Rôle</th>
+                <th className="px-4 py-3 font-medium text-foreground">Rôle applicatif</th>
+                <th className="px-4 py-3 font-medium text-foreground">Statut</th>
                 <th className="px-4 py-3 text-right font-medium text-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
                 <tr key={u.id} className="border-b border-border last:border-0 hover:bg-accent/20">
-                  <td className="px-4 py-3 font-medium text-foreground">{u.name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
                   <td className="px-4 py-3">
-                    <Badge variant="secondary">{formatAppRole(u.roles?.[0])}</Badge>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <UserAvatar name={u.name} src={u.avatar_url} size="sm" className="shrink-0" />
+                      <span className="min-w-0 truncate font-medium text-foreground">{u.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
+                  <td className="px-4 py-3">{appRoleBadge(u.role)}</td>
+                  <td className="px-4 py-3">
+                    <Badge variant={u.status === 'disabled' ? 'destructive' : 'success'}>
+                      {u.status === 'disabled' ? 'Désactivé' : 'Actif'}
+                    </Badge>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-2">
@@ -160,15 +222,15 @@ export default function UserManagement({ variant = 'page' }) {
                       </Button>
                       <Button
                         size="sm"
-                        variant="destructive"
-                        disabled={u.id === user?.id}
+                        variant="outline"
+                        disabled={u.id === user?.id || u.status === 'disabled'}
                         onClick={() => {
-                          if (window.confirm('Supprimer cet utilisateur ?')) {
+                          if (window.confirm('Êtes-vous sûr de vouloir désactiver cet utilisateur ?')) {
                             deleteUserMutation.mutate(u.id);
                           }
                         }}
                       >
-                        Supprimer
+                        Désactiver
                       </Button>
                     </div>
                   </td>
@@ -176,6 +238,24 @@ export default function UserManagement({ variant = 'page' }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {Number(meta?.last_page || 1) > 1 && (
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <Button size="sm" variant="outline" disabled={(meta?.current_page || 1) <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+            Précédent
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Page {meta?.current_page || 1} / {meta?.last_page || 1}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={(meta?.current_page || 1) >= (meta?.last_page || 1)}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Suivant
+          </Button>
         </div>
       )}
 
@@ -197,9 +277,18 @@ export default function UserManagement({ variant = 'page' }) {
           onSubmit={(e) => {
             e.preventDefault();
             setModalError(null);
+            if (userForm.password && userForm.password.length < 6) {
+              setModalError('Le mot de passe doit contenir au moins 6 caractères.');
+              return;
+            }
+            if (userForm.password !== userForm.password_confirmation) {
+              setModalError('La confirmation du mot de passe ne correspond pas.');
+              return;
+            }
             const payload = { ...userForm };
             if (editingUser && !payload.password) {
               delete payload.password;
+              delete payload.password_confirmation;
             }
             saveUserMutation.mutate(payload);
           }}
@@ -245,16 +334,49 @@ export default function UserManagement({ variant = 'page' }) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Rôle</label>
+            <label className="mb-1 block text-sm font-medium">
+              Confirmation mot de passe {editingUser ? '(laisser vide pour conserver)' : ''}
+            </label>
+            <Input
+              type="password"
+              name="admin_user_password_confirm"
+              autoComplete="new-password"
+              value={userForm.password_confirmation}
+              onChange={(e) => setUserForm((s) => ({ ...s, password_confirmation: e.target.value }))}
+              required={!editingUser && Boolean(userForm.password)}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Rôle applicatif</label>
             <Select
-              name="admin_user_role"
+              name="admin_user_app_role"
               autoComplete="off"
               value={userForm.role}
               onChange={(e) => setUserForm((s) => ({ ...s, role: e.target.value }))}
+              disabled={Boolean(editingUser && editingUser.id === user?.id)}
             >
-              <option value="admin">{APP_ROLE_LABELS.admin}</option>
-              <option value="member">{APP_ROLE_LABELS.member}</option>
-              <option value="viewer">{APP_ROLE_LABELS.viewer}</option>
+              {ROLE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+            {editingUser?.id === user?.id && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Vous ne pouvez pas modifier votre propre rôle depuis ce formulaire.
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Statut</label>
+            <Select
+              name="admin_user_status"
+              autoComplete="off"
+              value={userForm.status}
+              onChange={(e) => setUserForm((s) => ({ ...s, status: e.target.value }))}
+            >
+              <option value="active">Actif</option>
+              <option value="disabled">Désactivé</option>
             </Select>
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -274,7 +396,7 @@ export default function UserManagement({ variant = 'page' }) {
         <CardHeader className="flex-row flex-wrap items-start justify-between gap-2 pb-2">
           <div>
             <CardTitle className="text-base">Gestion des utilisateurs</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Créer, modifier, supprimer et attribuer les rôles</p>
+            <p className="mt-1 text-sm text-muted-foreground">Créer, modifier, désactiver et filtrer les comptes</p>
           </div>
         </CardHeader>
         <CardContent>{content}</CardContent>
@@ -286,7 +408,7 @@ export default function UserManagement({ variant = 'page' }) {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Utilisateurs</h1>
-        <p className="text-muted-foreground">Administration des comptes et des rôles</p>
+        <p className="text-muted-foreground">Administration des comptes utilisateurs</p>
       </div>
       <Card>
         <CardContent className="pt-6">{content}</CardContent>

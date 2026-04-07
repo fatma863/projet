@@ -1,0 +1,20 @@
+/** Fuseaux courants (alignés avec la validation API `timezone`). */
+export const COMMON_TIMEZONES = [
+  'UTC',
+  'Africa/Tunis',
+  'Africa/Casablanca',
+  'Africa/Algiers',
+  'Europe/Paris',
+  'Europe/Brussels',
+  'Europe/London',
+  'Europe/Berlin',
+  'America/Montreal',
+  'America/New_York',
+  'America/Chicago',
+  'America/Los_Angeles',
+  'America/Sao_Paulo',
+  'Asia/Dubai',
+  'Asia/Tokyo',
+  'Asia/Singapore',
+  'Australia/Sydney',
+];

@@ -57,6 +57,7 @@ class AiController extends Controller
             'title' => $task->title,
             'suggested_user' => $detail['suggested_user'],
             'score' => $detail['score'],
+            'workload_score' => $detail['workload_score'] ?? null,
         ]);
     }
 
@@ -72,5 +73,12 @@ class AiController extends Controller
         Gate::authorize('view', $project);
 
         return response()->json($this->projectRecommendationService->recommend($project));
+    }
+
+    public function workloadBalance(Project $project): JsonResponse
+    {
+        Gate::authorize('view', $project);
+
+        return response()->json($this->aiService->buildWorkloadBalancePayload($project));
     }
 }

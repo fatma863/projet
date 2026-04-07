@@ -17,6 +17,11 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // Fichiers publics Laravel (avatars, etc.) — même origine que le dev Vite
+      '/storage': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
   },
 })

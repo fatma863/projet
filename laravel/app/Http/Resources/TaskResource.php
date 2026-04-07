@@ -3,7 +3,9 @@
 namespace App\Http\Resources;
 
 use App\Models\Task;
+use App\Services\TaskDependencyService;
 use App\Support\AccessControl;
+use App\Http\Resources\SpecialtyResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -20,6 +22,8 @@ class TaskResource extends JsonResource
             'parent_id' => $this->parent_id,
             'title' => $this->title,
             'description' => $this->description,
+            'issue_type' => $this->issue_type ?? 'task',
+            'type' => $this->issue_type ?? 'task',
             'status_id' => $this->status_id,
             'status' => new TaskStatusResource($this->whenLoaded('status')),
             'sprint' => new SprintResource($this->whenLoaded('sprint')),
@@ -28,17 +32,20 @@ class TaskResource extends JsonResource
             'story_points' => $this->story_points,
             'planned_start' => $this->planned_start?->toDateString(),
             'planned_end' => $this->planned_end?->toDateString(),
+            'start_date' => $this->planned_start?->toDateString(),
+            'end_date' => $this->planned_end?->toDateString(),
             'due_date' => $this->due_date?->toDateString(),
             'deadline' => $this->due_date?->toDateString(),
-            'start_date' => $this->planned_start?->toDateString(),
             'workflow_status' => $this->workflow_status ?? Task::inferWorkflowStatus($this->resource),
             'estimated_hours' => $this->estimated_hours ? (float) $this->estimated_hours : null,
             'estimated_duration' => $this->estimated_duration,
+            'duration_days' => $this->duration_days,
             'risk_level' => $this->risk_level,
             'risk_score' => $this->risk_score,
             'actual_hours' => (float) $this->actual_hours,
             'progress_percent' => $this->progress_percent,
             'kanban_order' => $this->kanban_order,
+            'position' => $this->position,
             'project' => $this->when(
                 $this->relationLoaded('project'),
                 fn () => $this->project ? [
@@ -48,10 +55,21 @@ class TaskResource extends JsonResource
                 ] : null,
             ),
             'is_overdue' => $this->isOverdue(),
+            'is_blocked' => $this->when(
+                $this->relationLoaded('dependencies'),
+                fn () => app(TaskDependencyService::class)->isTaskBlocked($this->resource)
+            ),
+            'assignee_id' => $this->whenLoaded('assignees', fn () => $this->assignees->first()?->id),
+            'assignee' => $this->whenLoaded('assignees', function () {
+                $u = $this->assignees->first();
+
+                return $u ? new UserResource($u) : null;
+            }),
             'assignees' => TaskAssigneeResource::collection($this->whenLoaded('assignees')),
             'subtasks' => TaskResource::collection($this->whenLoaded('subtasks')),
             'subtasks_count' => $this->whenCounted('subtasks'),
             'dependencies' => TaskDependencyResource::collection($this->whenLoaded('dependencies')),
+            'specialties' => SpecialtyResource::collection($this->whenLoaded('specialties')),
             'comments_count' => $this->whenCounted('comments'),
             'attachments_count' => $this->whenCounted('attachments'),
             'time_entries_count' => $this->whenCounted('timeEntries'),

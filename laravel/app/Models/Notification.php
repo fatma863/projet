@@ -9,7 +9,10 @@ class Notification extends Model
 {
     protected $fillable = [
         'user_id',
+        'related_task_id',
+        'message',
         'type',
+        'severity',
         'data',
         'read_at',
     ];
@@ -22,9 +25,23 @@ class Notification extends Model
         ];
     }
 
+    protected $appends = [
+        'read',
+    ];
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function relatedTask(): BelongsTo
+    {
+        return $this->belongsTo(Task::class, 'related_task_id');
+    }
+
+    public function getReadAttribute(): bool
+    {
+        return $this->read_at !== null;
     }
 
     public function isRead(): bool

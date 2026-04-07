@@ -20,7 +20,12 @@ class AIService
      */
     public function estimateTaskDuration(Task $task): int
     {
-        $minutes = self::BASE_MINUTES;
+        $sp = (int) ($task->story_points ?? 0);
+        if ($sp > 0) {
+            $minutes = (int) round($sp * Task::DEFAULT_HOURS_PER_STORY_POINT * 60);
+        } else {
+            $minutes = self::BASE_MINUTES;
+        }
 
         $minutes *= match ($task->priority) {
             'urgent' => 0.75,
@@ -48,15 +53,7 @@ class AIService
      */
     public function detectTaskRisk(Task $task, bool $persist = false): array
     {
-        $task->loadMissing('assignees');
-
-        $score = 0;
-        $factors = [];
-
-        $now = Carbon::now()->startOfDay();
-        $due = $task->due_date ? Carbon::parse($task->due_date)->startOfDay() : null;
-
-        if ($task->progress_percent >= 100) {
+        if ($task->isCompleted()) {
             $result = ['risk_level' => 'low', 'risk_score' => 0, 'factors' => ['Tâche terminée']];
             if ($persist) {
                 $this->persistRisk($task, $result);
@@ -65,58 +62,28 @@ class AIService
             return $result;
         }
 
-        if ($due && $task->progress_percent < 100) {
-            if ($now->gt($due)) {
-                $days = $now->diffInDays($due);
-                $score += min(55, 35 + (int) $days * 3);
-                $factors[] = 'Échéance dépassée';
-            } elseif ($due->isFuture() && $now->diffInDays($due) <= 2) {
-                $score += 28;
-                $factors[] = 'Échéance dans moins de 2 jours';
-            }
+        $now = Carbon::now()->startOfDay();
+        $due = $task->due_date ? Carbon::parse($task->due_date)->startOfDay() : null;
+        if (! $due && $task->planned_end) {
+            $due = Carbon::parse($task->planned_end)->startOfDay();
         }
 
-        $assignees = $task->assignees;
-        if ($assignees->isEmpty()) {
-            $score += 12;
-            $factors[] = 'Aucun assigné';
-        }
-
-        foreach ($assignees as $user) {
-            $active = $this->activeTaskCountForUser($user->id);
-            if ($active >= 8) {
-                $score += 22;
-                $factors[] = 'Charge élevée pour un assigné ('.$active.' tâches actives)';
-                break;
-            }
-            if ($active >= 5) {
-                $score += 12;
-                $factors[] = 'Charge importante ('.$active.' tâches actives)';
-                break;
-            }
-        }
-
-        foreach ($assignees as $user) {
-            $delayed = $this->delayedCompletedHistoryCount($user->id);
-            if ($delayed >= 5) {
-                $score += 18;
-                $factors[] = 'Historique de retards fréquents pour un assigné';
-                break;
-            }
-            if ($delayed >= 2) {
-                $score += 8;
-                $factors[] = 'Quelques retards passés sur les tâches terminées';
-                break;
-            }
-        }
-
-        $score = (int) min(100, max(0, $score));
+        $priorityPart = $this->priorityRiskPoints($task);
+        $deadlinePart = $this->deadlineProximityPoints($now, $due);
+        $schedulePart = $this->scheduleSlippagePoints($task, $now, $due);
+        $dependencyPart = $this->dependencyRiskPoints($task);
+        $score = (int) min(100, $priorityPart + $deadlinePart + $schedulePart + $dependencyPart);
         $level = $this->scoreToLevel($score);
 
+        $factors = $this->riskFactorsFromPriorityAndDeadline($task, $now, $due);
+        $factors = array_merge($factors, $this->scheduleRiskFactorStrings($task, $now, $due));
+        $factors = array_merge($factors, $this->dependencyRiskFactorStrings($task));
+
+        $factors = array_values(array_unique(array_filter($factors)));
         $result = [
             'risk_level' => $level,
             'risk_score' => $score,
-            'factors' => $factors ?: ['Aucun signal critique'],
+            'factors' => $factors ?: ['Priorité et échéance sous contrôle'],
         ];
 
         if ($persist) {
@@ -126,8 +93,195 @@ class AIService
         return $result;
     }
 
+    private function priorityRiskPoints(Task $task): int
+    {
+        return match ($task->priority) {
+            'urgent' => 42,
+            'high' => 32,
+            'medium' => 18,
+            'low' => 8,
+            default => 14,
+        };
+    }
+
     /**
-     * Meilleur utilisateur pour assigner la tâche (score simple charge + perf).
+     * Proximité d’échéance (due_date ou planned_end) : retard ou jours restants.
+     */
+    private function deadlineProximityPoints(Carbon $now, ?Carbon $due): int
+    {
+        if (! $due) {
+            return 0;
+        }
+
+        if ($now->gt($due)) {
+            $overdueDays = max(1, (int) $due->diffInDays($now));
+
+            return min(58, 28 + min(30, ($overdueDays - 1) * 4));
+        }
+
+        $daysLeft = (int) $now->diffInDays($due, false);
+        if ($daysLeft <= 0) {
+            return 36;
+        }
+        if ($daysLeft <= 2) {
+            return 30;
+        }
+        if ($daysLeft <= 7) {
+            return 16;
+        }
+        if ($daysLeft <= 14) {
+            return 7;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Retard probable si la progression reste nettement sous une courbe linéaire (début → échéance).
+     */
+    private function scheduleSlippagePoints(Task $task, Carbon $now, ?Carbon $due): int
+    {
+        if ($due === null || $task->isCompleted()) {
+            return 0;
+        }
+        if ($now->gt($due)) {
+            return 0;
+        }
+
+        $start = $task->planned_start
+            ? Carbon::parse($task->planned_start)->startOfDay()
+            : ($task->created_at ? Carbon::parse($task->created_at)->startOfDay() : null);
+        if ($start === null) {
+            return 0;
+        }
+
+        $dueDay = $due->copy()->startOfDay();
+        $totalSpan = max(1, (int) $start->diffInDays($dueDay));
+        $elapsed = (int) min($totalSpan, max(0, $start->diffInDays($now->copy()->startOfDay())));
+        if ($elapsed < 1) {
+            return 0;
+        }
+
+        $p = (int) ($task->progress_percent ?? 0);
+        $expectedProgress = (int) min(100, (int) round(100 * ($elapsed / $totalSpan)));
+        if ($p + 12 < $expectedProgress) {
+            $gap = $expectedProgress - $p;
+
+            return min(24, 6 + (int) min(18, $gap / 4));
+        }
+
+        return 0;
+    }
+
+    /**
+     * Dépendances non terminées : risque de blocage.
+     */
+    private function dependencyRiskPoints(Task $task): int
+    {
+        try {
+            $count = $task->dependencies()
+                ->where('progress_percent', '<', 100)
+                ->count();
+        } catch (\Throwable) {
+            return 0;
+        }
+
+        return min(18, $count * 6);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function scheduleRiskFactorStrings(Task $task, Carbon $now, ?Carbon $due): array
+    {
+        if ($due === null || $task->isCompleted() || $now->gt($due)) {
+            return [];
+        }
+        $start = $task->planned_start
+            ? Carbon::parse($task->planned_start)->startOfDay()
+            : ($task->created_at ? Carbon::parse($task->created_at)->startOfDay() : null);
+        if ($start === null) {
+            return [];
+        }
+        $dueDay = $due->copy()->startOfDay();
+        $totalSpan = max(1, (int) $start->diffInDays($dueDay));
+        $elapsed = (int) min($totalSpan, max(0, $start->diffInDays($now->copy()->startOfDay())));
+        if ($elapsed < 1) {
+            return [];
+        }
+        $p = (int) ($task->progress_percent ?? 0);
+        $expectedProgress = (int) min(100, (int) round(100 * ($elapsed / $totalSpan)));
+        if ($p + 12 < $expectedProgress) {
+            return ['Progression en retard par rapport au calendrier (trajectoire linéaire)'];
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function dependencyRiskFactorStrings(Task $task): array
+    {
+        try {
+            $n = $task->dependencies()
+                ->where('progress_percent', '<', 100)
+                ->count();
+        } catch (\Throwable) {
+            return [];
+        }
+        if ($n > 0) {
+            return [$n === 1
+                ? 'Une dépendance non terminée peut bloquer cette tâche'
+                : $n.' dépendances non terminées (risque de blocage)'];
+        }
+
+        return [];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function riskFactorsFromPriorityAndDeadline(
+        Task $task,
+        Carbon $now,
+        ?Carbon $due
+    ): array {
+        $factors = [];
+
+        $factors[] = match ($task->priority) {
+            'urgent' => 'Priorité urgente',
+            'high' => 'Priorité haute',
+            'medium' => 'Priorité moyenne',
+            'low' => 'Priorité basse',
+            default => 'Priorité non définie',
+        };
+
+        if (! $due) {
+            $factors[] = 'Aucune échéance renseignée';
+
+            return $factors;
+        }
+
+        if ($now->gt($due)) {
+            $factors[] = 'Échéance dépassée';
+        } else {
+            $daysLeft = (int) $now->diffInDays($due, false);
+            if ($daysLeft <= 2) {
+                $factors[] = 'Échéance dans 2 jours ou moins';
+            } elseif ($daysLeft <= 7) {
+                $factors[] = 'Échéance dans la semaine';
+            } elseif ($daysLeft <= 14) {
+                $factors[] = 'Échéance sous deux semaines';
+            }
+        }
+
+        return $factors;
+    }
+
+    /**
+     * Meilleur membre du projet pour l’auto-assignation : score de charge minimal
+     * (open_estimated_hours × 0,6) + (tâches actives × 0,3) + (tâches en retard × 0,1).
      */
     public function suggestBestUser(Task $task): ?int
     {
@@ -152,17 +306,88 @@ class AIService
         }
 
         $bestId = null;
-        $bestScore = -1.0;
+        $bestScore = null;
 
         foreach ($unique as $uid) {
-            $s = $this->computeUserAssignmentScore((int) $uid);
-            if ($s > $bestScore) {
-                $bestScore = $s;
-                $bestId = (int) $uid;
+            $uid = (int) $uid;
+            $score = $this->workloadCompositeScore($uid, (int) $project->id);
+
+            if ($bestScore === null || $score < $bestScore || ($score === $bestScore && ($bestId === null || $uid < $bestId))) {
+                $bestScore = $score;
+                $bestId = $uid;
             }
         }
 
         return $bestId;
+    }
+
+    /**
+     * Score de charge (plus bas = plus disponible) pour un membre dans un projet.
+     */
+    public function workloadCompositeScore(int $userId, int $projectId): float
+    {
+        $hours = $this->openEstimatedHoursForUserInProject($userId, $projectId);
+        $active = $this->activeTaskCountForUserInProject($userId, $projectId);
+        $overdue = $this->overdueTaskCountForUserInProject($userId, $projectId);
+
+        return ($hours * 0.6) + ($active * 0.3) + ($overdue * 0.1);
+    }
+
+    /**
+     * Somme des heures estimées des tâches non terminées du projet assignées à l’utilisateur.
+     */
+    public function openEstimatedHoursForUserInProject(int $userId, int $projectId): float
+    {
+        return (float) Task::query()
+            ->where('project_id', $projectId)
+            ->whereNull('archived_at')
+            ->where('progress_percent', '<', 100)
+            ->where(function ($q) {
+                $q->whereNull('workflow_status')
+                    ->orWhere('workflow_status', '!=', 'done');
+            })
+            ->whereHas('assignees', fn ($q) => $q->where('users.id', $userId))
+            ->sum('estimated_hours');
+    }
+
+    protected function activeTaskCountForUserInProject(int $userId, int $projectId): int
+    {
+        return Task::query()
+            ->where('project_id', $projectId)
+            ->whereNull('archived_at')
+            ->where('progress_percent', '<', 100)
+            ->where(function ($q) {
+                $q->whereNull('workflow_status')
+                    ->orWhere('workflow_status', '!=', 'done');
+            })
+            ->whereHas('assignees', fn ($q) => $q->where('users.id', $userId))
+            ->count();
+    }
+
+    /**
+     * Tâches non terminées du projet assignées à l’utilisateur dont la date d’échéance / fin planifiée est dépassée (jour calendaire).
+     */
+    protected function overdueTaskCountForUserInProject(int $userId, int $projectId): int
+    {
+        $today = now()->toDateString();
+
+        return Task::query()
+            ->where('project_id', $projectId)
+            ->whereNull('archived_at')
+            ->where('progress_percent', '<', 100)
+            ->where(function ($q) {
+                $q->whereNull('workflow_status')
+                    ->orWhere('workflow_status', '!=', 'done');
+            })
+            ->whereHas('assignees', fn ($q) => $q->where('users.id', $userId))
+            ->where(function ($q) use ($today) {
+                $q->where(function ($q2) use ($today) {
+                    $q2->whereNotNull('due_date')->whereDate('due_date', '<', $today);
+                })->orWhere(function ($q2) use ($today) {
+                    $q2->whereNotNull('planned_end')->whereDate('planned_end', '<', $today);
+                });
+            })
+            ->count();
     }
 
     /**
@@ -175,6 +400,7 @@ class AIService
         $mins = $this->estimateTaskDuration($task);
         $hours = round($mins / 60, 2);
         $n = $this->similarTasksSampleCount($task);
+        $detail = $this->comparableTasksEstimateDetail($task);
 
         return [
             'task_id' => $task->id,
@@ -184,8 +410,59 @@ class AIService
             'estimated_duration_minutes' => $mins,
             'estimated_days' => max(1, round($hours / 8, 1)),
             'method' => 'rule_based',
-            'confidence' => round(min(0.88, 0.42 + $n * 0.06), 2),
+            'confidence' => round(min(0.92, 0.42 + max($n, count($detail['comparable_tasks'])) * 0.05), 2),
             'sample_size' => $n,
+            'comparable_tasks' => $detail['comparable_tasks'],
+            'comparable_range' => $detail['comparable_range'],
+            'average_completion_time_days' => $detail['average_completion_time_days'],
+        ];
+    }
+
+    /**
+     * @return array{comparable_tasks: array<int, array<string, mixed>>, comparable_range: ?array{min: float, max: float}, average_completion_time_days: ?float}
+     */
+    private function comparableTasksEstimateDetail(Task $task): array
+    {
+        $c = (int) ($task->complexity ?? 5);
+        $rows = Task::query()
+            ->where('project_id', $task->project_id)
+            ->where('id', '!=', $task->id)
+            ->where('progress_percent', 100)
+            ->whereNotNull('actual_hours')
+            ->where('actual_hours', '>', 0)
+            ->orderByDesc('updated_at')
+            ->limit(40)
+            ->get()
+            ->filter(fn (Task $t) => abs((int) $t->complexity - $c) <= 2)
+            ->take(5);
+
+        $comparable = [];
+        $daysSamples = [];
+        foreach ($rows as $t) {
+            $days = null;
+            if ($t->created_at && $t->updated_at) {
+                $days = max(0.5, $t->created_at->diffInDays($t->updated_at));
+                $daysSamples[] = $days;
+            }
+            $comparable[] = [
+                'id' => $t->id,
+                'title' => $t->title,
+                'actual_hours' => round((float) $t->actual_hours, 2),
+                'completion_days' => $days !== null ? round($days, 1) : null,
+            ];
+        }
+
+        $hoursList = collect($comparable)->pluck('actual_hours')->filter();
+        $range = $hoursList->isEmpty()
+            ? null
+            : ['min' => round((float) $hoursList->min(), 2), 'max' => round((float) $hoursList->max(), 2)];
+
+        $avgDays = count($daysSamples) > 0 ? round(array_sum($daysSamples) / count($daysSamples), 1) : null;
+
+        return [
+            'comparable_tasks' => $comparable,
+            'comparable_range' => $range,
+            'average_completion_time_days' => $avgDays,
         ];
     }
 
@@ -264,6 +541,7 @@ class AIService
                 'user_id' => $detail['suggested_user_id'],
                 'suggested_user' => $detail['suggested_user'],
                 'score' => $detail['score'],
+                'workload_score' => $detail['workload_score'] ?? null,
             ];
         }
 
@@ -289,6 +567,8 @@ class AIService
 
         $raw = $this->computeUserAssignmentScore($bestId);
         $user = User::query()->find($bestId);
+        $projectId = (int) $task->project_id;
+        $workload = $this->workloadCompositeScore($bestId, $projectId);
 
         return [
             'suggested_user_id' => $bestId,
@@ -296,6 +576,36 @@ class AIService
                 ? ['id' => $user->id, 'name' => $user->name, 'email' => $user->email]
                 : null,
             'score' => (int) round(min(100, max(0, $raw))),
+            'workload_score' => round($workload, 4),
+        ];
+    }
+
+    /**
+     * Charge ouverte par membre dans un projet (pour expliquer l’auto-assignation).
+     * suggestBestUser() minimise workload_score : (heures ouvertes × 0,6) + (tâches actives × 0,3) + (en retard × 0,1).
+     *
+     * @return array{user_id: int, project_id: int, active_tasks: int, open_estimated_hours: float}
+     */
+    public function memberWorkloadMetrics(int $userId, int $projectId): array
+    {
+        $activeTasks = Task::query()
+            ->where('project_id', $projectId)
+            ->whereHas('assignees', fn ($q) => $q->where('users.id', $userId))
+            ->where('progress_percent', '<', 100)
+            ->count();
+
+        $hours = Task::query()
+            ->where('project_id', $projectId)
+            ->whereHas('assignees', fn ($q) => $q->where('users.id', $userId))
+            ->where('progress_percent', '<', 100)
+            ->sum('estimated_hours');
+
+        return [
+            'user_id' => $userId,
+            'project_id' => $projectId,
+            'active_tasks' => $activeTasks,
+            'open_estimated_hours' => round((float) $hours, 2),
+            'workload_score' => round($this->workloadCompositeScore($userId, $projectId), 4),
         ];
     }
 
@@ -307,17 +617,12 @@ class AIService
     public function projectDashboardInsights(Project $project): array
     {
         $tasks = $project->tasks()->with('assignees')->get();
-        $active = $tasks->where('progress_percent', '<', 100);
+        $active = $tasks->filter(fn (Task $t) => ! $t->isCompleted());
 
         $atRisk = $active->filter(function (Task $t) {
-            if (in_array($t->risk_level, ['high', 'medium'], true)) {
-                return true;
-            }
-            if ($t->risk_level === null && $t->isOverdue()) {
-                return true;
-            }
+            $r = $this->detectTaskRisk($t, false);
 
-            return false;
+            return in_array($r['risk_level'], ['high', 'medium'], true);
         });
 
         $memberIds = $project->members()->pluck('users.id');
@@ -344,8 +649,10 @@ class AIService
         }
         usort($workload, fn ($a, $b) => $b['active_tasks'] <=> $a['active_tasks']);
 
-        $est = (float) $tasks->sum(fn (Task $t) => (float) ($t->estimated_hours ?? 0));
-        $act = (float) $tasks->sum(fn (Task $t) => (float) ($t->actual_hours ?? 0));
+        $est = (float) $tasks->sum(fn (Task $t) => $t->effectiveEstimatedHours());
+        $act = (float) $tasks
+            ->filter(fn (Task $t) => $t->isCompleted())
+            ->sum(fn (Task $t) => (float) ($t->actual_hours ?? 0));
 
         return [
             'ai_tasks_at_risk' => $atRisk->count(),
@@ -367,11 +674,125 @@ class AIService
         return [
             'risk_score' => $analysis['risk_score'],
             'risk_level' => $analysis['risk_level'],
+            'delay_probability_percent' => $analysis['risk_score'],
+            'schedule_health' => match ($analysis['risk_level']) {
+                'high' => 'critical',
+                'medium' => 'watch',
+                default => 'ok',
+            },
             'risk_factors' => $this->mapFactorsForApi($analysis['factors']),
             'recommendations' => $this->riskRecommendations($analysis['risk_level']),
+            'insights' => $this->delayRiskInsights($task, $analysis),
         ];
     }
 
+    /**
+     * @param  array{risk_level: string, risk_score: int, factors: array<int, string>}  $analysis
+     * @return array<int, string>
+     */
+    private function delayRiskInsights(Task $task, array $analysis): array
+    {
+        $lines = [];
+        $estH = (float) ($task->estimated_hours ?? 0);
+        if ($estH > 0 && ! $task->isCompleted()) {
+            $rem = max(0, 100 - (int) ($task->progress_percent ?? 0)) / 100 * $estH;
+            $lines[] = 'Reste à produire (estimation) : environ '.round($rem, 1).' h.';
+        }
+        if ($analysis['risk_score'] >= 60) {
+            $lines[] = 'Retard probable sans action : prioriser ou découper la tâche.';
+        } elseif ($analysis['risk_score'] >= 30) {
+            $lines[] = 'Surveiller les dépendances et la charge de l’assigné.';
+        }
+
+        return array_slice($lines, 0, 4);
+    }
+
+    /**
+     * Équilibre de charge par membre sur un projet (répartition des tâches).
+     *
+     * @return array<string, mixed>
+     */
+    public function buildWorkloadBalancePayload(Project $project): array
+    {
+        $ids = collect();
+        if (Schema::hasTable('project_user')) {
+            $ids = $ids->merge($project->users()->pluck('users.id'));
+        }
+        $ids = $ids->merge($project->members()->pluck('users.id'));
+        if ($project->owner_id) {
+            $ids->push($project->owner_id);
+        }
+        $unique = $ids->filter()->unique()->values();
+
+        $members = [];
+        foreach ($unique as $uid) {
+            $uid = (int) $uid;
+            $u = User::query()->find($uid);
+            if (! $u) {
+                continue;
+            }
+            $score = $this->workloadCompositeScore($uid, (int) $project->id);
+            $hours = $this->openEstimatedHoursForUserInProject($uid, (int) $project->id);
+            $active = $this->activeTaskCountForUserInProject($uid, (int) $project->id);
+            $overdue = $this->overdueTaskCountForUserInProject($uid, (int) $project->id);
+            $members[] = [
+                'user_id' => $uid,
+                'name' => $u->name,
+                'email' => $u->email,
+                'workload_score' => round($score, 4),
+                'open_estimated_hours' => round($hours, 2),
+                'active_tasks' => $active,
+                'overdue_tasks' => $overdue,
+            ];
+        }
+
+        usort($members, fn ($a, $b) => $b['workload_score'] <=> $a['workload_score']);
+
+        $scores = array_column($members, 'workload_score');
+        $avg = count($scores) ? array_sum($scores) / count($scores) : 0.0;
+        $variance = 0.0;
+        foreach ($scores as $s) {
+            $variance += ($s - $avg) ** 2;
+        }
+        $std = count($scores) > 1 ? sqrt($variance / count($scores)) : 0.0;
+
+        return [
+            'project_id' => $project->id,
+            'members' => $members,
+            'balance_metrics' => [
+                'average_workload_score' => round($avg, 4),
+                'spread' => round($std, 4),
+                'imbalanced' => $std > 1.25 && count($members) > 1,
+            ],
+            'rebalance_hints' => $this->workloadRebalanceHints($members, $avg),
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $members
+     * @return array<int, string>
+     */
+    private function workloadRebalanceHints(array $members, float $avg): array
+    {
+        if ($members === []) {
+            return [];
+        }
+        $hints = [];
+        foreach ($members as $m) {
+            if (($m['workload_score'] ?? 0) > $avg + 1.2) {
+                $hints[] = 'Charge élevée pour '.$m['name'].' : envisager de réassigner des tâches non démarrées ou d’étaler les livrables.';
+            }
+        }
+        if ($hints === [] && count($members) > 1) {
+            $hints[] = 'Répartition globalement cohérente. Les suggestions d’assignation privilégient les membres avec le score de charge le plus bas.';
+        }
+
+        return array_slice($hints, 0, 6);
+    }
+
+    /**
+     * Score d’assignation (0–100) : pénalise la charge (tâches actives globales) et l’historique de retard.
+     */
     private function computeUserAssignmentScore(int $userId): float
     {
         $workload = $this->activeTaskCountForUser($userId);
