@@ -100,10 +100,11 @@ export default function TaskModal({
         name: m.name || m.user?.name,
         email: m.email || m.user?.email,
         avatar: m.avatar ?? m.user?.avatar,
+        is_app_admin: Boolean(m.is_app_admin ?? m.user?.is_app_admin),
         role: m.role ?? m.pivot?.project_role ?? m.pivot?.role ?? 'member',
         specialties: m.specialties ?? m.user?.specialties ?? [],
       }))
-      .filter((m) => m.id && m.name);
+      .filter((m) => m.id && m.name && !m.is_app_admin);
   }, [membersRaw]);
 
   const memberStats = useMemo(() => {
