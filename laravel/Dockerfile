@@ -28,14 +28,20 @@ RUN apt-get update \
 # Install Composer
 COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 
-# Copy existing application directory contents
-COPY . /var/www
+# Allow Composer to run as root inside container build
+ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Copy existing application directory permissions
+# Copy existing application directory contents
 COPY --chown=www-data:www-data . /var/www
 
+# Ensure Laravel runtime directories exist before Composer scripts run
+RUN mkdir -p bootstrap/cache \
+    && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views \
+    && chown -R www-data:www-data bootstrap storage \
+    && chmod -R ug+rwx bootstrap/cache storage
+
 # Install PHP dependencies
-RUN composer install --no-interaction --prefer-dist --optimize-autoloader
+RUN composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
 
 # Set permissions for Laravel
 RUN chown -R www-data:www-data /var/www \

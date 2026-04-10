@@ -5,14 +5,16 @@ namespace App\Services;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\AI\OpenRouterService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Règles métier intelligentes (sans ML) : durée, risque, assignation.
+ * Moteur d'IA hybride : règles métier (heuristiques) enrichies par un LLM via OpenRouter.
  */
 class AIService
 {
+    public function __construct(private readonly OpenRouterService $llm) {}
     private const BASE_MINUTES = 120;
 
     /**
@@ -417,6 +419,22 @@ class AIService
         $n = $this->similarTasksSampleCount($task);
         $detail = $this->comparableTasksEstimateDetail($task);
 
+        $confidence = round(min(0.92, 0.42 + max($n, count($detail['comparable_tasks'])) * 0.05), 2);
+
+        $aiJustification = null;
+        if ($this->llm->isAvailable()) {
+            $aiJustification = $this->llm->justifyEstimate([
+                'title'          => $task->title,
+                'description'    => mb_substr((string) ($task->description ?? ''), 0, 300),
+                'priority'       => $task->priority,
+                'story_points'   => $task->story_points,
+                'complexity'     => $task->complexity,
+                'estimated_hours' => $hours,
+                'confidence'     => $confidence,
+                'sample_size'    => $n,
+            ]);
+        }
+
         return [
             'task_id' => $task->id,
             'title' => $task->title,
@@ -424,12 +442,14 @@ class AIService
             'estimated_duration' => $mins,
             'estimated_duration_minutes' => $mins,
             'estimated_days' => max(1, round($hours / 8, 1)),
-            'method' => 'rule_based',
-            'confidence' => round(min(0.92, 0.42 + max($n, count($detail['comparable_tasks'])) * 0.05), 2),
+            'method' => $n > 0 ? 'similar_tasks_same_project' : 'rule_based',
+            'confidence' => $confidence,
             'sample_size' => $n,
             'comparable_tasks' => $detail['comparable_tasks'],
             'comparable_range' => $detail['comparable_range'],
             'average_completion_time_days' => $detail['average_completion_time_days'],
+            'ai_justification' => $aiJustification,
+            'ai_powered' => $this->llm->isAvailable(),
         ];
     }
 
@@ -686,6 +706,30 @@ class AIService
     {
         $analysis = $this->detectTaskRisk($task, false);
 
+        $baseInsights = $this->delayRiskInsights($task, $analysis);
+        $baseRecommendations = $this->riskRecommendations($analysis['risk_level']);
+
+        if ($this->llm->isAvailable()) {
+            $taskContext = [
+                'title'            => $task->title,
+                'description'      => mb_substr((string) ($task->description ?? ''), 0, 300),
+                'priority'         => $task->priority,
+                'progress_percent' => $task->progress_percent,
+                'risk_score'       => $analysis['risk_score'],
+                'risk_level'       => $analysis['risk_level'],
+                'risk_factors'     => $analysis['factors'],
+                'due_date'         => $task->due_date?->toDateString(),
+                'planned_end'      => $task->planned_end,
+            ];
+            $enriched = $this->llm->enrichTaskRisk($taskContext);
+            if (! empty($enriched['insights'])) {
+                $baseInsights = array_merge($baseInsights, $enriched['insights']);
+            }
+            if (! empty($enriched['recommendations'])) {
+                $baseRecommendations = $enriched['recommendations'];
+            }
+        }
+
         return [
             'risk_score' => $analysis['risk_score'],
             'risk_level' => $analysis['risk_level'],
@@ -696,8 +740,9 @@ class AIService
                 default => 'ok',
             },
             'risk_factors' => $this->mapFactorsForApi($analysis['factors']),
-            'recommendations' => $this->riskRecommendations($analysis['risk_level']),
-            'insights' => $this->delayRiskInsights($task, $analysis),
+            'recommendations' => $baseRecommendations,
+            'insights' => array_slice($baseInsights, 0, 5),
+            'ai_powered' => $this->llm->isAvailable(),
         ];
     }
 
@@ -771,6 +816,21 @@ class AIService
         }
         $std = count($scores) > 1 ? sqrt($variance / count($scores)) : 0.0;
 
+        $hints = $this->workloadRebalanceHints($members, $avg);
+
+        if ($this->llm->isAvailable() && count($members) > 0) {
+            $aiHints = $this->llm->analyzeWorkload(array_map(fn ($m) => [
+                'name'           => $m['name'],
+                'workload_score' => $m['workload_score'],
+                'active_tasks'   => $m['active_tasks'],
+                'overdue_tasks'  => $m['overdue_tasks'],
+                'open_hours'     => $m['open_estimated_hours'],
+            ], $members));
+            if (! empty($aiHints)) {
+                $hints = $aiHints;
+            }
+        }
+
         return [
             'project_id' => $project->id,
             'members' => $members,
@@ -779,7 +839,8 @@ class AIService
                 'spread' => round($std, 4),
                 'imbalanced' => $std > 1.25 && count($members) > 1,
             ],
-            'rebalance_hints' => $this->workloadRebalanceHints($members, $avg),
+            'rebalance_hints' => $hints,
+            'ai_powered' => $this->llm->isAvailable(),
         ];
     }
 

@@ -216,6 +216,7 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
             Route::get('optimize-assignments/{project}', [AiController::class, 'optimizeProjectAssignments']);
             Route::get('recommendations/project/{project}', [AiController::class, 'projectRecommendations']);
             Route::get('workload-balance/{project}', [AiController::class, 'workloadBalance']);
+            Route::post('chat', [AiController::class, 'chat']);
         });
     });
 });

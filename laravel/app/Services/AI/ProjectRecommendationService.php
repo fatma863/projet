@@ -7,8 +7,10 @@ use Carbon\Carbon;
 
 class ProjectRecommendationService
 {
+    public function __construct(private readonly OpenRouterService $llm) {}
+
     /**
-     * Synthèse automatique : charge restante, échéance suggérée, pistes de rééquilibrage.
+     * Synthèse automatique enrichie par IA : charge restante, échéance suggérée, pistes de rééquilibrage.
      */
     public function recommend(Project $project): array
     {
@@ -31,6 +33,7 @@ class ProjectRecommendationService
             : (($active->avg('complexity') ?? 0) >= 7 ? 'high' : 'medium');
 
         $deadlineSuggestion = null;
+        $remainingHours = 0.0;
         if ($active->count() > 0) {
             $remainingHours = (float) $active->sum(function ($t) {
                 $estimated = (float) ($t->estimated_hours ?? $t->effectiveEstimatedHours() ?? 8);
@@ -60,6 +63,27 @@ class ProjectRecommendationService
             $redistribution = array_slice($redistribution, 0, 5);
         }
 
+        // Enrichissement IA
+        $aiSynthesis = null;
+        $aiActions = [];
+        if ($this->llm->isAvailable()) {
+            $projectContext = [
+                'project_name'      => $project->name,
+                'total_tasks'       => $tasks->count(),
+                'active_tasks'      => $active->count(),
+                'overdue_tasks'     => $overdue->count(),
+                'remaining_hours'   => round($remainingHours, 1),
+                'member_count'      => $project->members()->count(),
+                'priority_focus'    => $prioritySuggestion,
+                'deadline_target'   => $deadlineSuggestion,
+                'avg_complexity'    => round((float) ($active->avg('complexity') ?? 0), 1),
+                'high_priority_count' => $active->whereIn('priority', ['high', 'urgent'])->count(),
+            ];
+            $result = $this->llm->synthesizeProject($projectContext);
+            $aiSynthesis = $result['synthesis'] ?? null;
+            $aiActions = $result['actions'] ?? [];
+        }
+
         return [
             'project_id' => $project->id,
             'summary' => [
@@ -79,6 +103,9 @@ class ProjectRecommendationService
                     'tasks_overdue_count' => $overdue->count(),
                 ]
                 : null,
+            'ai_synthesis' => $aiSynthesis,
+            'ai_actions' => $aiActions,
+            'ai_powered' => $this->llm->isAvailable(),
         ];
     }
 }

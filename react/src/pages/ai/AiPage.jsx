@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import api from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { isGuestViewer } from '../../lib/roles';
@@ -12,6 +12,7 @@ import { Spinner } from '../../components/ui/Spinner';
 import {
   Brain, Clock, AlertTriangle, TrendingUp,
   BarChart3, Table2, Sparkles, Scale, Lightbulb, Target,
+  MessageSquare, Send, Bot, User as UserIcon, Zap, CheckCircle2,
 } from 'lucide-react';
 
 function normalizeWorkflowStatus(raw) {
@@ -38,6 +39,15 @@ const PRIORITY_LABEL_FR = {
   urgent: 'Urgente',
 };
 
+function AiPoweredBadge({ powered }) {
+  if (!powered) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-violet-500/10 to-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-violet-700 ring-1 ring-violet-200 dark:text-violet-300 dark:ring-violet-800">
+      <Zap className="h-3 w-3" /> IA réelle
+    </span>
+  );
+}
+
 export default function AiPage() {
   const { user } = useAuth();
   const isInvite = isGuestViewer(user);
@@ -46,10 +56,11 @@ export default function AiPage() {
     () => {
       const all = [
         { key: 'estimate', label: 'Estimation', icon: Clock },
-        { key: 'risk-task', label: 'Risque Tâche', icon: AlertTriangle },
-        { key: 'risk-project', label: 'Risque Projet', icon: TrendingUp },
-        { key: 'recommendations', label: 'Synthèse projet', icon: Lightbulb },
-        { key: 'balance', label: 'Équilibre charge', icon: Scale },
+        { key: 'risk-task', label: 'Risque tâche', icon: AlertTriangle },
+        { key: 'risk-project', label: 'Risque projet', icon: TrendingUp },
+        { key: 'recommendations', label: 'Synthèse', icon: Lightbulb },
+        { key: 'balance', label: 'Charge', icon: Scale },
+        { key: 'chat', label: 'Assistant', icon: MessageSquare },
       ];
       if (isInvite) {
         return all.filter((t) => !['risk-project', 'recommendations', 'balance'].includes(t.key));
@@ -69,50 +80,55 @@ export default function AiPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">IA et analyses</h1>
-        <p className="text-muted-foreground">
-          Estimation automatique du temps et détection des retards probables (règles métier + historique projet).
-        </p>
-      </div>
-
-      <div
-        className={cn(
-          'grid gap-3',
-          isInvite ? 'sm:grid-cols-2' : 'sm:grid-cols-3',
-        )}
-      >
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <div className="mb-2 flex items-center gap-2 text-primary">
-            <Target className="h-4 w-4" />
-            <span className="text-sm font-semibold">Estimation</span>
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-foreground">Intelligence Artificielle</h1>
+            <span className="rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm">
+              Propulsé par LLM
+            </span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Durée en heures à partir des story points, priorité, description et tâches similaires terminées sur le projet.
+          <p className="mt-1 text-sm text-muted-foreground">
+            Analyses intelligentes, estimations contextuelles et assistant conversationnel alimentés par un modèle de langage réel.
           </p>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <div className="mb-2 flex items-center gap-2 text-amber-600">
-            <AlertTriangle className="h-4 w-4" />
-            <span className="text-sm font-semibold">Retards probables</span>
+      </div>
+
+      {/* Feature cards */}
+      <div className={cn('grid gap-3', isInvite ? 'sm:grid-cols-2' : 'sm:grid-cols-3')}>
+        <div className="rounded-xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-white p-4 shadow-sm dark:border-indigo-900/40 dark:from-indigo-950/30 dark:to-transparent">
+          <div className="mb-2 flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+            <Target className="h-4 w-4" />
+            <span className="text-sm font-semibold">Estimation intelligente</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Score de risque (priorité, échéance, avancement vs calendrier, dépendances bloquantes).
+            Durée estimée par heuristiques + justification générée par IA à partir de la complexité et du contexte.
+          </p>
+        </div>
+        <div className="rounded-xl border border-amber-200/60 bg-gradient-to-br from-amber-50/80 to-white p-4 shadow-sm dark:border-amber-900/40 dark:from-amber-950/30 dark:to-transparent">
+          <div className="mb-2 flex items-center gap-2 text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-4 w-4" />
+            <span className="text-sm font-semibold">Détection de risques</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Score de risque multi-facteurs enrichi par des insights et recommandations générés par LLM.
           </p>
         </div>
         {!isInvite && (
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-            <div className="mb-2 flex items-center gap-2 text-violet-600">
-              <Scale className="h-4 w-4" />
-              <span className="text-sm font-semibold">Répartition &amp; charge</span>
+          <div className="rounded-xl border border-violet-200/60 bg-gradient-to-br from-violet-50/80 to-white p-4 shadow-sm dark:border-violet-900/40 dark:from-violet-950/30 dark:to-transparent">
+            <div className="mb-2 flex items-center gap-2 text-violet-600 dark:text-violet-400">
+              <MessageSquare className="h-4 w-4" />
+              <span className="text-sm font-semibold">Assistant conversationnel</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Synthèse projet, équilibre de charge et vue globale des risques (onglets dédiés).
+              Posez toutes vos questions sur le projet à l'assistant IA en langage naturel.
             </p>
           </div>
         )}
       </div>
 
+      {/* Tabs */}
       <div className="flex flex-wrap gap-1 border-b border-border">
         {tabDefs.map((t) => (
           <button
@@ -127,6 +143,11 @@ export default function AiPage() {
           >
             <t.icon className="h-4 w-4" />
             {t.label}
+            {t.key === 'chat' && (
+              <span className="ml-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
+                NEW
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -136,10 +157,14 @@ export default function AiPage() {
       {tab === 'risk-project' && !isInvite && <ProjectRiskPanel />}
       {tab === 'recommendations' && !isInvite && <RecommendationsPanel />}
       {tab === 'balance' && !isInvite && <WorkloadBalancePanel />}
+      {tab === 'chat' && <ChatPanel />}
     </div>
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  ESTIMATE PANEL                                                              */
+/* ─────────────────────────────────────────────────────────────────────────── */
 function EstimatePanel() {
   const [taskId, setTaskId] = useState('');
   const [run, setRun] = useState(false);
@@ -156,15 +181,14 @@ function EstimatePanel() {
         <CardTitle className="flex items-center gap-2 text-lg">
           <Clock className="h-5 w-5 text-primary" /> Estimation de durée
         </CardTitle>
-        <CardDescription>L'IA estime la durée d'une tâche selon sa complexité et priorité</CardDescription>
+        <CardDescription>
+          Estimation basée sur les story points, la priorité et l'historique — justifiée par l'IA
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <TaskPickerByProject
           taskId={taskId}
-          onTaskChange={(id) => {
-            setTaskId(id);
-            setRun(false);
-          }}
+          onTaskChange={(id) => { setTaskId(id); setRun(false); }}
         />
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={() => setRun(true)} disabled={!taskId || isLoading}>
@@ -173,17 +197,20 @@ function EstimatePanel() {
           </Button>
           {taskId && (
             <span className="text-sm text-muted-foreground">
-              Tâche sélectionnée : <span className="font-medium text-foreground">#{taskId}</span>
+              Tâche : <span className="font-medium text-foreground">#{taskId}</span>
             </span>
           )}
         </div>
-        {error && <p className="text-sm text-destructive">Erreur&nbsp;: {error.response?.data?.message || error.message}</p>}
+        {error && <ErrorMessage error={error} />}
         {data && <EstimateResultView data={data} />}
       </CardContent>
     </Card>
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  TASK RISK PANEL                                                             */
+/* ─────────────────────────────────────────────────────────────────────────── */
 function TaskRiskPanel() {
   const [taskId, setTaskId] = useState('');
   const [run, setRun] = useState(false);
@@ -198,17 +225,14 @@ function TaskRiskPanel() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
-          <AlertTriangle className="h-5 w-5 text-amber-500" /> Analyse de risque (Tâche)
+          <AlertTriangle className="h-5 w-5 text-amber-500" /> Analyse de risque — Tâche
         </CardTitle>
-        <CardDescription>Évalue le risque de retard d'une tâche spécifique</CardDescription>
+        <CardDescription>Détection multi-facteurs enrichie par des recommandations IA</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <TaskPickerByProject
           taskId={taskId}
-          onTaskChange={(id) => {
-            setTaskId(id);
-            setRun(false);
-          }}
+          onTaskChange={(id) => { setTaskId(id); setRun(false); }}
         />
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={() => setRun(true)} disabled={!taskId || isLoading}>
@@ -221,13 +245,16 @@ function TaskRiskPanel() {
             </span>
           )}
         </div>
-        {error && <p className="text-sm text-destructive">Erreur&nbsp;: {error.response?.data?.message || error.message}</p>}
+        {error && <ErrorMessage error={error} />}
         {data && <TaskRiskResultView data={data} />}
       </CardContent>
     </Card>
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  PROJECT RISK PANEL                                                          */
+/* ─────────────────────────────────────────────────────────────────────────── */
 function ProjectRiskPanel() {
   const [projectId, setProjectId] = useState('');
   const [run, setRun] = useState(false);
@@ -247,15 +274,15 @@ function ProjectRiskPanel() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
-          <TrendingUp className="h-5 w-5 text-orange-500" /> Analyse de risque (Projet)
+          <TrendingUp className="h-5 w-5 text-orange-500" /> Analyse de risque — Projet
         </CardTitle>
-        <CardDescription>Évalue le risque global de retard d'un projet</CardDescription>
+        <CardDescription>Vue globale du risque de retard sur toutes les tâches actives</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-end gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-sm font-medium">Projet</label>
-            <Select value={projectId} onChange={(e) => { setProjectId(e.target.value); setRun(false); }} className="w-60">
+            <Select value={projectId} onChange={(e) => { setProjectId(e.target.value); setRun(false); }} className="w-64">
               <option value="">Choisir un projet</option>
               {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
@@ -265,13 +292,16 @@ function ProjectRiskPanel() {
             Analyser
           </Button>
         </div>
-        {error && <p className="text-sm text-destructive">Erreur&nbsp;: {error.response?.data?.message || error.message}</p>}
+        {error && <ErrorMessage error={error} />}
         {data && <ProjectRiskResultView data={data} />}
       </CardContent>
     </Card>
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  RECOMMENDATIONS PANEL                                                       */
+/* ─────────────────────────────────────────────────────────────────────────── */
 function RecommendationsPanel() {
   const [projectId, setProjectId] = useState('');
   const [run, setRun] = useState(false);
@@ -293,17 +323,17 @@ function RecommendationsPanel() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Lightbulb className="h-5 w-5 text-amber-500" /> Synthèse et recommandations projet
+          <Lightbulb className="h-5 w-5 text-amber-500" /> Synthèse et recommandations
         </CardTitle>
         <CardDescription>
-          Priorité suggérée, échéance indicative et pistes de rééquilibrage lorsque des retards sont détectés.
+          Analyse de l'état du projet avec synthèse narrative et actions prioritaires générées par IA
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-sm font-medium">Projet</label>
-            <Select value={projectId} onChange={(e) => { setProjectId(e.target.value); setRun(false); }} className="w-60">
+            <Select value={projectId} onChange={(e) => { setProjectId(e.target.value); setRun(false); }} className="w-64">
               <option value="">Choisir un projet</option>
               {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
@@ -313,43 +343,71 @@ function RecommendationsPanel() {
             Générer
           </Button>
         </div>
-        {error && <p className="text-sm text-destructive">Erreur&nbsp;: {error.response?.data?.message || error.message}</p>}
+        {error && <ErrorMessage error={error} />}
         {data && (
-          <div className="space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+          <div className="space-y-4">
+            {/* Metrics */}
             {sum && (
               <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-center">
-                  <p className="text-xs font-medium text-muted-foreground">Tâches actives</p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums">{sum.active_tasks}</p>
-                </div>
-                <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-4 py-3 text-center dark:border-amber-900 dark:bg-amber-950/30">
-                  <p className="text-xs font-medium text-muted-foreground">En retard</p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums text-amber-900 dark:text-amber-200">{sum.overdue_tasks}</p>
-                </div>
-                <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-center">
-                  <p className="text-xs font-medium text-muted-foreground">Focus priorité</p>
-                  <p className="mt-1 text-sm font-semibold capitalize">{PRIORITY_LABEL_FR[sum.suggested_priority_focus] || sum.suggested_priority_focus}</p>
-                </div>
+                <MetricCard label="Tâches actives" value={sum.active_tasks} />
+                <MetricCard label="En retard" value={sum.overdue_tasks} variant="warning" />
+                <MetricCard label="Focus priorité" value={PRIORITY_LABEL_FR[sum.suggested_priority_focus] || sum.suggested_priority_focus} small />
               </div>
             )}
+
+            {/* AI Synthesis */}
+            {data.ai_synthesis && (
+              <div className="rounded-xl border border-violet-200/70 bg-gradient-to-br from-violet-50/60 to-white p-4 dark:border-violet-900/40 dark:from-violet-950/20 dark:to-transparent">
+                <div className="mb-2 flex items-center gap-2">
+                  <Bot className="h-4 w-4 text-violet-600" />
+                  <span className="text-sm font-semibold text-violet-900 dark:text-violet-300">Synthèse IA</span>
+                  <AiPoweredBadge powered={data.ai_powered} />
+                </div>
+                <p className="text-sm leading-relaxed text-foreground">{data.ai_synthesis}</p>
+              </div>
+            )}
+
+            {/* AI Actions */}
+            {Array.isArray(data.ai_actions) && data.ai_actions.length > 0 && (
+              <div className="rounded-xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/50 to-white p-4 dark:border-emerald-900/40 dark:from-emerald-950/20 dark:to-transparent">
+                <div className="mb-3 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <span className="text-sm font-semibold text-emerald-900 dark:text-emerald-300">Actions prioritaires recommandées</span>
+                </div>
+                <ol className="space-y-2">
+                  {data.ai_actions.map((action, i) => (
+                    <li key={i} className="flex items-start gap-3 text-sm">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                        {i + 1}
+                      </span>
+                      <span className="text-foreground">{action}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {/* Deadline */}
             {data.deadline_suggestion && (
-              <div className="rounded-lg border border-sky-200/80 bg-sky-50/50 px-4 py-3 dark:border-sky-900 dark:bg-sky-950/20">
+              <div className="rounded-xl border border-sky-200/70 bg-gradient-to-br from-sky-50/60 to-white px-4 py-3 dark:border-sky-900/40 dark:from-sky-950/20 dark:to-transparent">
                 <p className="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-300">Échéance indicative</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{data.deadline_suggestion}</p>
+                <p className="mt-1 text-xl font-bold tabular-nums text-foreground">{data.deadline_suggestion}</p>
                 {data.deadline_suggestion_label && (
-                  <p className="mt-1 text-sm text-muted-foreground">{data.deadline_suggestion_label}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{data.deadline_suggestion_label}</p>
                 )}
               </div>
             )}
+
+            {/* Redistribution */}
             {data.redistribution_suggestion && (
-              <div className="overflow-hidden rounded-lg border border-violet-200/70 bg-violet-50/40 dark:border-violet-900 dark:bg-violet-950/20">
-                <div className="border-b border-violet-200/60 px-4 py-2 text-sm font-semibold dark:border-violet-800">
-                  Répartition ({data.redistribution_suggestion.tasks_overdue_count} tâche(s) en retard)
+              <div className="overflow-hidden rounded-xl border border-violet-200/60 bg-violet-50/30 dark:border-violet-900 dark:bg-violet-950/20">
+                <div className="border-b border-violet-200/60 px-4 py-2.5 text-sm font-semibold dark:border-violet-800">
+                  Répartition — {data.redistribution_suggestion.tasks_overdue_count} tâche(s) en retard
                 </div>
                 <p className="px-4 py-2 text-sm text-muted-foreground">{data.redistribution_suggestion.reason}</p>
                 {Array.isArray(data.redistribution_suggestion.target_users_low_workload) && (
                   <div className="overflow-x-auto px-2 pb-3">
-                    <table className="w-full min-w-[400px] text-sm">
+                    <table className="w-full min-w-[360px] text-sm">
                       <thead>
                         <tr className="text-left text-xs text-muted-foreground">
                           <th className="px-2 py-1.5">Membre</th>
@@ -369,8 +427,9 @@ function RecommendationsPanel() {
                 )}
               </div>
             )}
-            {!data.deadline_suggestion && !data.redistribution_suggestion && (
-              <p className="text-sm text-muted-foreground">Aucune alerte de synthèse pour ce projet.</p>
+
+            {!data.ai_synthesis && !data.deadline_suggestion && !data.redistribution_suggestion && (
+              <p className="text-sm text-muted-foreground">Aucune alerte pour ce projet.</p>
             )}
           </div>
         )}
@@ -379,6 +438,9 @@ function RecommendationsPanel() {
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  WORKLOAD BALANCE PANEL                                                      */
+/* ─────────────────────────────────────────────────────────────────────────── */
 function WorkloadBalancePanel() {
   const [projectId, setProjectId] = useState('');
   const [run, setRun] = useState(false);
@@ -401,17 +463,17 @@ function WorkloadBalancePanel() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Scale className="h-5 w-5 text-violet-500" /> Équilibre de charge par membre
+          <Scale className="h-5 w-5 text-violet-500" /> Équilibre de charge
         </CardTitle>
         <CardDescription>
-          Heures ouvertes estimées, tâches actives et retard par personne ; dispersion de l’équipe pour repérer les surcharges.
+          Métriques de charge par membre avec conseils de rééquilibrage générés par IA
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="mb-1 block text-sm font-medium">Projet</label>
-            <Select value={projectId} onChange={(e) => { setProjectId(e.target.value); setRun(false); }} className="w-60">
+            <Select value={projectId} onChange={(e) => { setProjectId(e.target.value); setRun(false); }} className="w-64">
               <option value="">Choisir un projet</option>
               {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
@@ -421,33 +483,33 @@ function WorkloadBalancePanel() {
             Analyser
           </Button>
         </div>
-        {error && <p className="text-sm text-destructive">Erreur&nbsp;: {error.response?.data?.message || error.message}</p>}
+        {error && <ErrorMessage error={error} />}
         {data && (
           <div className="space-y-4">
             {metrics && (
-              <div className="flex flex-wrap gap-3 rounded-lg border border-border bg-muted/20 px-4 py-3 text-sm">
-                <span>
-                  Moyenne charge : <strong className="tabular-nums">{metrics.average_workload_score}</strong>
-                </span>
-                <span className="text-muted-foreground">|</span>
-                <span>
-                  Dispersion : <strong className="tabular-nums">{metrics.spread}</strong>
-                </span>
-                {metrics.imbalanced && (
-                  <Badge variant="warning">Équipe déséquilibrée</Badge>
-                )}
+              <div className="flex flex-wrap items-center gap-4 rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Charge moyenne : </span>
+                  <strong className="tabular-nums">{metrics.average_workload_score}</strong>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Dispersion : </span>
+                  <strong className="tabular-nums">{metrics.spread}</strong>
+                </div>
+                {metrics.imbalanced && <Badge variant="warning">Équipe déséquilibrée</Badge>}
+                <AiPoweredBadge powered={data.ai_powered} />
               </div>
             )}
             {Array.isArray(data.members) && data.members.length > 0 ? (
-              <div className="overflow-hidden rounded-lg border border-border">
+              <div className="overflow-hidden rounded-xl border border-border shadow-sm">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/40 text-left text-xs font-medium text-muted-foreground">
-                      <th className="px-4 py-2">Membre</th>
-                      <th className="px-4 py-2 text-right">Score charge</th>
-                      <th className="px-4 py-2 text-right">Heures ouvertes</th>
-                      <th className="px-4 py-2 text-right">Actives</th>
-                      <th className="px-4 py-2 text-right">Retard</th>
+                      <th className="px-4 py-2.5">Membre</th>
+                      <th className="px-4 py-2.5 text-right">Score</th>
+                      <th className="px-4 py-2.5 text-right">Heures ouvertes</th>
+                      <th className="px-4 py-2.5 text-right">Actives</th>
+                      <th className="px-4 py-2.5 text-right">Retard</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -457,7 +519,7 @@ function WorkloadBalancePanel() {
                           <span className="font-medium">{m.name}</span>
                           <span className="ml-2 block text-xs text-muted-foreground">{m.email}</span>
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums font-medium">{m.workload_score}</td>
+                        <td className="px-4 py-3 text-right tabular-nums font-semibold">{m.workload_score}</td>
                         <td className="px-4 py-3 text-right tabular-nums">{m.open_estimated_hours}</td>
                         <td className="px-4 py-3 text-right tabular-nums">{m.active_tasks}</td>
                         <td className="px-4 py-3 text-right tabular-nums">{m.overdue_tasks}</td>
@@ -470,11 +532,17 @@ function WorkloadBalancePanel() {
               <p className="text-sm text-muted-foreground">Aucun membre trouvé pour ce projet.</p>
             )}
             {hints.length > 0 && (
-              <div className="rounded-lg border border-violet-200/60 bg-violet-50/30 px-4 py-3 dark:border-violet-900 dark:bg-violet-950/20">
-                <p className="mb-2 text-sm font-semibold">Conseils</p>
-                <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
+              <div className="rounded-xl border border-violet-200/60 bg-violet-50/30 p-4 dark:border-violet-900 dark:bg-violet-950/20">
+                <div className="mb-2.5 flex items-center gap-2">
+                  <Bot className="h-4 w-4 text-violet-600" />
+                  <span className="text-sm font-semibold">Conseils IA</span>
+                </div>
+                <ul className="space-y-2">
                   {hints.map((h, i) => (
-                    <li key={i}>{h}</li>
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span className="mt-0.5 text-violet-500">›</span>
+                      <span className="text-muted-foreground">{h}</span>
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -486,6 +554,203 @@ function WorkloadBalancePanel() {
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  CHAT PANEL — Assistant conversationnel IA                                  */
+/* ─────────────────────────────────────────────────────────────────────────── */
+function ChatPanel() {
+  const [projectId, setProjectId] = useState('');
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: 'Bonjour ! Je suis votre assistant IA de gestion de projet. Posez-moi toutes vos questions : état du projet, risques, priorisation, organisation d\'équipe…',
+    },
+  ]);
+  const bottomRef = useRef(null);
+
+  const { data: projects } = useQuery({
+    queryKey: ['projects-for-ai'],
+    queryFn: () => api.get('/projects?per_page=100').then((r) => r.data.data),
+  });
+
+  const { mutate: sendMessage, isPending } = useMutation({
+    mutationFn: (payload) => api.post('/ai/chat', payload).then((r) => r.data),
+    onSuccess: (data) => {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: data.response, ai_powered: data.ai_powered },
+      ]);
+    },
+    onError: (err) => {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: `Erreur : ${err.response?.data?.message || err.message}`, error: true },
+      ]);
+    },
+  });
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isPending]);
+
+  const handleSend = () => {
+    const trimmed = input.trim();
+    if (!trimmed || isPending) return;
+    setMessages((prev) => [...prev, { role: 'user', content: trimmed }]);
+    setInput('');
+    sendMessage({ message: trimmed, project_id: projectId || null });
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const SUGGESTIONS = [
+    'Quelles tâches sont les plus à risque ?',
+    'Comment équilibrer la charge de l\'équipe ?',
+    'Quelle est la priorité recommandée ?',
+    'Y a-t-il des blocages détectés ?',
+  ];
+
+  return (
+    <Card className="flex flex-col">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <MessageSquare className="h-5 w-5 text-violet-500" />
+          Assistant IA
+          <AiPoweredBadge powered />
+        </CardTitle>
+        <CardDescription>
+          Posez vos questions en langage naturel — l'IA analyse le contexte de votre projet en temps réel
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {/* Project selector */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              Contexte projet (optionnel)
+            </label>
+            <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-64">
+              <option value="">Sans contexte de projet</option>
+              {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </Select>
+          </div>
+          {projectId && (
+            <Badge variant="outline" className="mt-4 text-xs">
+              Contexte : {projects?.find((p) => String(p.id) === projectId)?.name}
+            </Badge>
+          )}
+        </div>
+
+        {/* Messages */}
+        <div className="flex max-h-[420px] min-h-[280px] flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-muted/10 p-4">
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              className={cn(
+                'flex gap-3',
+                msg.role === 'user' ? 'flex-row-reverse' : 'flex-row',
+              )}
+            >
+              {/* Avatar */}
+              <div
+                className={cn(
+                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-sm',
+                  msg.role === 'user'
+                    ? 'bg-primary text-primary-foreground'
+                    : msg.error
+                      ? 'bg-destructive/10 text-destructive'
+                      : 'bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300',
+                )}
+              >
+                {msg.role === 'user' ? <UserIcon className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+              </div>
+              {/* Bubble */}
+              <div
+                className={cn(
+                  'max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm',
+                  msg.role === 'user'
+                    ? 'rounded-tr-sm bg-primary text-primary-foreground'
+                    : msg.error
+                      ? 'rounded-tl-sm bg-destructive/10 text-destructive'
+                      : 'rounded-tl-sm bg-card text-foreground ring-1 ring-border',
+                )}
+              >
+                {msg.content}
+                {msg.ai_powered && (
+                  <div className="mt-1.5 flex items-center gap-1 text-[10px] text-violet-500 dark:text-violet-400">
+                    <Zap className="h-2.5 w-2.5" /> Réponse générée par LLM
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {isPending && (
+            <div className="flex gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="rounded-2xl rounded-tl-sm bg-card px-4 py-3 ring-1 ring-border">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:0ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:150ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:300ms]" />
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Suggestions rapides */}
+        {messages.length <= 1 && (
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => { setInput(s); }}
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Input */}
+        <div className="flex items-end gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Posez votre question sur le projet… (Entrée pour envoyer)"
+            rows={2}
+            className="flex-1 resize-none rounded-xl border border-border bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+          />
+          <Button
+            onClick={handleSend}
+            disabled={!input.trim() || isPending}
+            className="h-[52px] w-12 shrink-0 rounded-xl"
+          >
+            {isPending ? <Spinner /> : <Send className="h-4 w-4" />}
+          </Button>
+        </div>
+        <p className="text-center text-[11px] text-muted-foreground">
+          Maj+Entrée pour un saut de ligne · L'IA peut faire des erreurs, vérifiez les informations critiques
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  RESULT VIEWS                                                                */
+/* ─────────────────────────────────────────────────────────────────────────── */
 function estimationMethodLabel(method) {
   const labels = {
     rule_based: 'Règles métier (priorité, description, historique)',
@@ -514,7 +779,8 @@ function EstimateResultView({ data }) {
           <div>
             <div className="mb-1 flex items-center gap-2 text-indigo-600">
               <Sparkles className="h-4 w-4 shrink-0" />
-              <span className="text-xs font-semibold uppercase tracking-wide">Résultat d’estimation</span>
+              <span className="text-xs font-semibold uppercase tracking-wide">Résultat d'estimation</span>
+              <AiPoweredBadge powered={data.ai_powered} />
             </div>
             <h3 className="text-lg font-semibold leading-snug text-foreground">{data.title}</h3>
             <p className="mt-0.5 text-xs text-muted-foreground">Tâche n° {data.task_id}</p>
@@ -527,28 +793,25 @@ function EstimateResultView({ data }) {
         </div>
 
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-emerald-200/90 bg-gradient-to-b from-emerald-50 to-white px-4 py-4 text-center shadow-sm">
-            <p className="text-xs font-medium text-emerald-800">Charge estimée</p>
-            <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-emerald-950">
+          <div className="rounded-xl border border-emerald-200/90 bg-gradient-to-b from-emerald-50 to-white px-4 py-4 text-center shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/20 dark:to-transparent">
+            <p className="text-xs font-medium text-emerald-800 dark:text-emerald-400">Charge estimée</p>
+            <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-emerald-950 dark:text-emerald-200">
               {hours != null ? `${Number(hours).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h` : '—'}
             </p>
           </div>
-          <div className="rounded-xl border border-sky-200/90 bg-gradient-to-b from-sky-50 to-white px-4 py-4 text-center shadow-sm">
-            <p className="text-xs font-medium text-sky-800">Durée calendaire</p>
-            <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-sky-950">
+          <div className="rounded-xl border border-sky-200/90 bg-gradient-to-b from-sky-50 to-white px-4 py-4 text-center shadow-sm dark:border-sky-900/40 dark:from-sky-950/20 dark:to-transparent">
+            <p className="text-xs font-medium text-sky-800 dark:text-sky-400">Durée calendaire</p>
+            <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-sky-950 dark:text-sky-200">
               {days != null ? `${Number(days).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} j` : '—'}
             </p>
             {mins != null && (
-              <p className="mt-1 text-[11px] text-sky-800/95">
-                {mins} min ({data.method === 'rule_based' ? 'estimation automatique' : 'planification'})
-              </p>
+              <p className="mt-1 text-[11px] text-sky-700 dark:text-sky-500">{mins} min</p>
             )}
-            <p className="mt-1 text-[11px] text-sky-700/90">Ordre de grandeur pour la planification</p>
           </div>
-          <div className="rounded-xl border border-violet-200/90 bg-gradient-to-b from-violet-50 to-white px-4 py-4 text-center shadow-sm">
-            <p className="text-xs font-medium text-violet-800">Confiance</p>
-            <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-violet-950">{confidencePct} %</p>
-            <div className="mx-auto mt-2 h-2 max-w-[9rem] overflow-hidden rounded-full bg-violet-200">
+          <div className="rounded-xl border border-violet-200/90 bg-gradient-to-b from-violet-50 to-white px-4 py-4 text-center shadow-sm dark:border-violet-900/40 dark:from-violet-950/20 dark:to-transparent">
+            <p className="text-xs font-medium text-violet-800 dark:text-violet-400">Confiance</p>
+            <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-violet-950 dark:text-violet-200">{confidencePct} %</p>
+            <div className="mx-auto mt-2 h-2 max-w-[9rem] overflow-hidden rounded-full bg-violet-200 dark:bg-violet-900/50">
               <div
                 className="h-full rounded-full bg-violet-500 transition-all"
                 style={{ width: `${Math.min(100, confidencePct)}%` }}
@@ -556,6 +819,14 @@ function EstimateResultView({ data }) {
             </div>
           </div>
         </div>
+
+        {/* AI Justification */}
+        {data.ai_justification && (
+          <div className="mb-5 flex items-start gap-3 rounded-xl border border-violet-200/60 bg-violet-50/40 px-4 py-3 dark:border-violet-900/40 dark:bg-violet-950/20">
+            <Bot className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
+            <p className="text-sm text-foreground">{data.ai_justification}</p>
+          </div>
+        )}
 
         <div className="mb-6 overflow-hidden rounded-xl border border-border shadow-sm">
           <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-4 py-2.5">
@@ -565,16 +836,16 @@ function EstimateResultView({ data }) {
           <table className="w-full text-sm">
             <tbody className="divide-y divide-border">
               <tr>
-                <td className="w-[40%] px-4 py-2.5 text-muted-foreground">Méthode</td>
-                <td className="px-4 py-2.5 font-medium text-foreground">{estimationMethodLabel(data.method)}</td>
+                <td className="w-[42%] px-4 py-2.5 text-muted-foreground">Méthode</td>
+                <td className="px-4 py-2.5 font-medium">{estimationMethodLabel(data.method)}</td>
               </tr>
               <tr>
-                <td className="px-4 py-2.5 text-muted-foreground">Taille de l’échantillon</td>
+                <td className="px-4 py-2.5 text-muted-foreground">Taille de l'échantillon</td>
                 <td className="px-4 py-2.5 font-medium tabular-nums">{data.sample_size != null ? data.sample_size : '—'}</td>
               </tr>
               {data.average_completion_time_days != null && (
                 <tr>
-                  <td className="px-4 py-2.5 text-muted-foreground">Temps moyen de complétion (historique)</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">Temps moyen historique</td>
                   <td className="px-4 py-2.5 font-medium tabular-nums">
                     {`${Number(data.average_completion_time_days).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} j`}
                   </td>
@@ -582,7 +853,7 @@ function EstimateResultView({ data }) {
               )}
               {data.comparable_range && (
                 <tr>
-                  <td className="px-4 py-2.5 text-muted-foreground">Fourchette (heures réelles, comparables)</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">Fourchette (heures réelles)</td>
                   <td className="px-4 py-2.5 font-medium tabular-nums">
                     {data.comparable_range.min} — {data.comparable_range.max} h
                   </td>
@@ -605,7 +876,7 @@ function EstimateResultView({ data }) {
                     <th className="px-4 py-2">ID</th>
                     <th className="px-4 py-2">Titre</th>
                     <th className="px-4 py-2 text-right">Heures réelles</th>
-                    <th className="px-4 py-2 text-right">Jours (réalis.)</th>
+                    <th className="px-4 py-2 text-right">Jours</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -641,35 +912,35 @@ function TaskRiskResultView({ data }) {
   const health = data.schedule_health;
 
   return (
-    <div className="space-y-4 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-50/60 via-white to-orange-50/30 p-5 shadow-sm">
+    <div className="space-y-4 rounded-2xl border border-amber-200/70 bg-gradient-to-br from-amber-50/60 via-white to-orange-50/30 p-5 shadow-sm dark:border-amber-900/50 dark:from-slate-900 dark:via-slate-900 dark:to-amber-950/20">
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="text-lg font-semibold text-foreground">{data.title}</h3>
         {data.risk_score != null && <RiskBadge score={data.risk_score} />}
         {delayPct != null && (
-          <Badge variant="outline" className="tabular-nums" title="Probabilité de retard (modèle heuristique)">
+          <Badge variant="outline" className="tabular-nums">
             Retard probable : {delayPct}%
           </Badge>
         )}
         {health && (
-          <Badge
-            variant={health === 'critical' ? 'destructive' : health === 'watch' ? 'warning' : 'success'}
-          >
+          <Badge variant={health === 'critical' ? 'destructive' : health === 'watch' ? 'warning' : 'success'}>
             {SCHEDULE_HEALTH_LABEL[health] || health}
           </Badge>
         )}
-        {data.risk_level && (
-          <Badge variant={data.risk_level === 'high' ? 'destructive' : data.risk_level === 'medium' ? 'warning' : 'success'}>
-            {data.risk_level === 'high' ? 'Risque élevé' : data.risk_level === 'medium' ? 'Risque moyen' : 'Risque faible'}
-          </Badge>
-        )}
+        <AiPoweredBadge powered={data.ai_powered} />
       </div>
 
       {insights.length > 0 && (
         <div className="rounded-xl border border-amber-100 bg-white/80 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20">
-          <p className="mb-2 text-sm font-semibold text-foreground">Analyse</p>
-          <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
+          <div className="mb-2 flex items-center gap-2">
+            <Bot className="h-4 w-4 text-amber-600" />
+            <span className="text-sm font-semibold">Analyse</span>
+          </div>
+          <ul className="space-y-1.5">
             {insights.map((line, i) => (
-              <li key={i} className="leading-relaxed">{line}</li>
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <span className="mt-0.5 text-amber-500">›</span>
+                <span className="text-muted-foreground">{line}</span>
+              </li>
             ))}
           </ul>
         </div>
@@ -680,7 +951,7 @@ function TaskRiskResultView({ data }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/50 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <th className="px-3 py-2.5">Code</th>
+                <th className="px-3 py-2.5">Facteur</th>
                 <th className="px-3 py-2.5">Détail</th>
                 <th className="px-3 py-2.5">Impact</th>
               </tr>
@@ -691,9 +962,7 @@ function TaskRiskResultView({ data }) {
                   <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-muted-foreground">{f.factor}</td>
                   <td className="px-3 py-2.5 text-foreground">{f.detail}</td>
                   <td className="px-3 py-2.5">
-                    <Badge variant="outline" className="font-normal">
-                      {impactLabel(f.impact)}
-                    </Badge>
+                    <Badge variant="outline" className="font-normal">{impactLabel(f.impact)}</Badge>
                   </td>
                 </tr>
               ))}
@@ -702,16 +971,22 @@ function TaskRiskResultView({ data }) {
         </div>
       ) : (
         <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          Aucun facteur de risque identifié pour cette tâche.
+          Aucun facteur de risque identifié.
         </p>
       )}
 
       {recs.length > 0 && (
         <div className="rounded-xl border border-amber-100 bg-card px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/20">
-          <p className="mb-2 text-sm font-semibold text-foreground">Recommandations</p>
-          <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
+          <div className="mb-2 flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-amber-600" />
+            <span className="text-sm font-semibold">Recommandations</span>
+          </div>
+          <ul className="space-y-1.5">
             {recs.map((r, i) => (
-              <li key={i} className="leading-relaxed">{r}</li>
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <span className="mt-0.5 text-amber-500">›</span>
+                <span className="text-muted-foreground">{r}</span>
+              </li>
             ))}
           </ul>
         </div>
@@ -741,11 +1016,11 @@ function ProjectRiskResultView({ data }) {
                 'rounded-xl border px-4 py-3 text-center shadow-sm',
                 m.highlight
                   ? 'border-amber-300 bg-amber-50/90 dark:border-amber-700 dark:bg-amber-950/40'
-                  : 'border-border bg-card dark:bg-slate-900/60'
+                  : 'border-border bg-card dark:bg-slate-900/60',
               )}
             >
               <p className="text-xs font-medium text-muted-foreground">{m.label}</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{m.value}</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums">{m.value}</p>
             </div>
           ))}
         </div>
@@ -772,14 +1047,10 @@ function ProjectRiskResultView({ data }) {
                       <span className="font-medium">{t.title}</span>
                       <span className="ml-2 font-mono text-xs text-muted-foreground">#{t.task_id}</span>
                     </td>
-                    <td className="px-4 py-2.5">
-                      {PRIORITY_LABEL_FR[t.priority] || t.priority || '—'}
-                    </td>
+                    <td className="px-4 py-2.5">{PRIORITY_LABEL_FR[t.priority] || t.priority || '—'}</td>
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{t.due_date || '—'}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{t.progress ?? t.progress_percent ?? '—'}%</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <RiskBadge score={t.risk_score} />
-                    </td>
+                    <td className="px-4 py-2.5 text-right"><RiskBadge score={t.risk_score} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -788,14 +1059,41 @@ function ProjectRiskResultView({ data }) {
         </div>
       ) : (
         <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          Aucune tâche à risque détectée sur ce projet.
+          Aucune tâche à risque détectée.
         </p>
       )}
     </div>
   );
 }
 
-/** Sélecteur en deux étapes : projet puis tâche. */
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  SHARED COMPONENTS                                                           */
+/* ─────────────────────────────────────────────────────────────────────────── */
+function MetricCard({ label, value, variant, small }) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border px-4 py-3 text-center',
+        variant === 'warning'
+          ? 'border-amber-200 bg-amber-50/80 dark:border-amber-900 dark:bg-amber-950/30'
+          : 'border-border bg-muted/30',
+      )}
+    >
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className={cn('mt-1 font-bold tabular-nums', small ? 'text-sm capitalize' : 'text-2xl')}>{value}</p>
+    </div>
+  );
+}
+
+function ErrorMessage({ error }) {
+  return (
+    <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+      Erreur : {error.response?.data?.message || error.message}
+    </p>
+  );
+}
+
+/** Sélecteur deux étapes : projet → tâche */
 function TaskPickerByProject({ taskId, onTaskChange }) {
   const [projectId, setProjectId] = useState('');
 
@@ -816,35 +1114,15 @@ function TaskPickerByProject({ taskId, onTaskChange }) {
       try {
         const r = await api.get(`/projects/${projectId}/tasks?all=1`);
         const list = normalizeList(r.data?.tasks?.data ?? r.data?.tasks ?? r.data?.data ?? []);
-        if (import.meta.env.DEV) {
-          console.debug('[AiPage] project tasks response', {
-            projectId: selectedProjectId,
-            count: list.length,
-          });
-        }
         if (list.length > 0) return list;
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.warn('[AiPage] /projects/{id}/tasks failed, using fallback', error?.response?.data ?? error?.message);
-        }
+      } catch {
+        // fallback
       }
 
       const fallback = await api.get(`/tasks?all=1&project_id=${selectedProjectId}`);
-      const fallbackList = normalizeList(fallback.data?.tasks?.data ?? fallback.data?.tasks ?? fallback.data?.data ?? []);
-      if (import.meta.env.DEV) {
-        console.debug('[AiPage] fallback global tasks response', {
-          projectId: selectedProjectId,
-          count: fallbackList.length,
-        });
-      }
-      return fallbackList;
+      return normalizeList(fallback.data?.tasks?.data ?? fallback.data?.tasks ?? fallback.data?.data ?? []);
     },
   });
-
-  const handleProjectSelect = (id) => {
-    setProjectId(id);
-    onTaskChange('');
-  };
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -852,20 +1130,17 @@ function TaskPickerByProject({ taskId, onTaskChange }) {
         <label className="mb-1 block text-sm font-medium text-foreground">1. Choisir un projet</label>
         <Select
           value={projectId}
-          onChange={(e) => handleProjectSelect(e.target.value)}
+          onChange={(e) => { setProjectId(e.target.value); onTaskChange(''); }}
           disabled={loadingProjects}
           className="w-full"
         >
-          <option value="">{loadingProjects ? 'Chargement des projets…' : 'Choisir un projet'}</option>
+          <option value="">{loadingProjects ? 'Chargement…' : 'Choisir un projet'}</option>
           {projects.map((p) => (
             <option key={p.id} value={String(p.id)}>
               {p.name}{p.code ? ` (${p.code})` : ''}
             </option>
           ))}
         </Select>
-        {!loadingProjects && projects.length === 0 && (
-          <p className="mt-1 text-xs text-muted-foreground">Aucun projet accessible.</p>
-        )}
       </div>
       <div>
         <label className="mb-1 block text-sm font-medium text-foreground">2. Choisir une tâche</label>
@@ -877,16 +1152,16 @@ function TaskPickerByProject({ taskId, onTaskChange }) {
         >
           <option value="">
             {!projectId
-              ? 'Sélectionnez d’abord un projet'
+              ? 'Sélectionnez un projet d\'abord'
               : loadingTasks
-                ? 'Chargement des tâches…'
+                ? 'Chargement…'
                 : tasks.length === 0
-                  ? 'Aucune tâche dans ce projet'
+                  ? 'Aucune tâche'
                   : 'Choisir une tâche'}
           </option>
           {tasks.map((t) => (
             <option key={t.id} value={String(t.id)}>
-              #{t.id} - {t.title}
+              #{t.id} — {t.title}
             </option>
           ))}
         </Select>
