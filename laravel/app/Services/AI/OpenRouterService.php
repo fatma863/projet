@@ -16,9 +16,10 @@ class OpenRouterService
 
     /** Modèles de secours si le modèle principal est rate-limité ou indisponible */
     private const FALLBACK_MODELS = [
-        'google/gemma-3-27b-it:free',
-        'meta-llama/llama-3.1-8b-instruct:free',
-        'mistralai/mistral-7b-instruct:free',
+        'openai/gpt-oss-20b:free',
+        'nvidia/nemotron-nano-9b-v2:free',
+        'liquid/lfm-2.5-1.2b-instruct:free',
+        'google/gemma-3-12b-it:free',
         'nousresearch/hermes-3-llama-3.1-405b:free',
     ];
 
@@ -156,9 +157,12 @@ SYS;
     public function askAboutProject(string $question, array $projectContext = []): string
     {
         $system = <<<'SYS'
-Tu es un assistant de gestion de projet expert et professionnel. Tu réponds en français de manière concise,
-structurée et actionnable. Tu t'appuies sur les données du projet fournies dans le contexte.
-Si une donnée est absente, indique-le clairement. Ne génère pas de code.
+Tu es un assistant de gestion de projet. Règles strictes :
+- Pour les salutations ou questions simples (ex: "bonjour", "merci", "ça va") : réponds en 1 phrase courte, naturelle, sans liste ni structure.
+- Pour les questions métier (risques, priorités, planning, équipe) : réponds de façon concise et structurée avec des puces si nécessaire.
+- N'utilise jamais de titres gras pour les réponses simples.
+- Maximum 4 points si tu fais une liste.
+- Ne génère pas de code. Réponds toujours en français.
 SYS;
 
         $contextPart = $projectContext !== []
