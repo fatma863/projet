@@ -189,12 +189,13 @@ class SprintService
             return;
         }
 
-        $keys = array_keys($validatedData);
-        $allowedOnlySprintMove = count($keys) === 1 && $keys[0] === 'sprint_id';
+        // Champs autorisés même sur un sprint terminé
+        $allowed = ['sprint_id', 'workflow_status', 'progress_percent', 'updated_by'];
+        $keys = array_diff(array_keys($validatedData), $allowed);
 
-        if (! $allowedOnlySprintMove) {
+        if (! empty($keys)) {
             throw ValidationException::withMessages([
-                'task' => 'Ce sprint est terminé : modifiez uniquement le sprint (retrait ou autre sprint) pour cette tâche.',
+                'task' => 'Ce sprint est terminé : seuls le statut, la progression et le déplacement de sprint sont autorisés.',
             ]);
         }
     }

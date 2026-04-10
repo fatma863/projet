@@ -51,16 +51,20 @@ function AiPoweredBadge({ powered }) {
 export default function AiPage() {
   const { user } = useAuth();
   const isInvite = isGuestViewer(user);
+  const isAdmin = user?.roles?.includes('admin');
+  const isMember = !isAdmin && !isInvite;
+
+  const [chatOpen, setChatOpen] = useState(false);
 
   const tabDefs = useMemo(
     () => {
+      // Chat tab is NOT shown to admins — it's a floating icon for members only
       const all = [
         { key: 'estimate', label: 'Estimation', icon: Clock },
         { key: 'risk-task', label: 'Risque tâche', icon: AlertTriangle },
         { key: 'risk-project', label: 'Risque projet', icon: TrendingUp },
         { key: 'recommendations', label: 'Synthèse', icon: Lightbulb },
         { key: 'balance', label: 'Charge', icon: Scale },
-        { key: 'chat', label: 'Assistant', icon: MessageSquare },
       ];
       if (isInvite) {
         return all.filter((t) => !['risk-project', 'recommendations', 'balance'].includes(t.key));
@@ -115,14 +119,14 @@ export default function AiPage() {
             Score de risque multi-facteurs enrichi par des insights et recommandations générés par LLM.
           </p>
         </div>
-        {!isInvite && (
+        {isMember && (
           <div className="rounded-xl border border-violet-200/60 bg-gradient-to-br from-violet-50/80 to-white p-4 shadow-sm dark:border-violet-900/40 dark:from-violet-950/30 dark:to-transparent">
             <div className="mb-2 flex items-center gap-2 text-violet-600 dark:text-violet-400">
-              <MessageSquare className="h-4 w-4" />
-              <span className="text-sm font-semibold">Assistant conversationnel</span>
+              <span className="text-lg">🤖</span>
+              <span className="text-sm font-semibold">Assistant IA personnel</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Posez toutes vos questions sur le projet à l'assistant IA en langage naturel.
+              Votre assistant personnel flottant — posez toutes vos questions en bas à droite.
             </p>
           </div>
         )}
@@ -157,7 +161,16 @@ export default function AiPage() {
       {tab === 'risk-project' && !isInvite && <ProjectRiskPanel />}
       {tab === 'recommendations' && !isInvite && <RecommendationsPanel />}
       {tab === 'balance' && !isInvite && <WorkloadBalancePanel />}
-      {tab === 'chat' && <ChatPanel />}
+
+      {/* Floating animated assistant — members only */}
+      {isMember && (
+        <>
+          <FloatingAssistantButton onClick={() => setChatOpen(true)} />
+          {chatOpen && (
+            <ChatModal onClose={() => setChatOpen(false)} />
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -555,9 +568,109 @@ function WorkloadBalancePanel() {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
+/*  FLOATING ASSISTANT BUTTON — Members only                                   */
+/* ─────────────────────────────────────────────────────────────────────────── */
+function FloatingAssistantButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Ouvrir l'assistant IA"
+      style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 50 }}
+      className="group flex h-16 w-16 items-center justify-center rounded-full shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+    >
+      {/* Pulse ring */}
+      <span
+        className="absolute h-16 w-16 rounded-full bg-violet-400 opacity-30"
+        style={{ animation: 'ping 2s cubic-bezier(0,0,0.2,1) infinite' }}
+      />
+      {/* Glow ring */}
+      <span className="absolute h-16 w-16 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 opacity-80 blur-sm" />
+      {/* Button face */}
+      <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg transition-transform duration-200 group-hover:scale-110 group-active:scale-95">
+        {/* Cartoon robot face */}
+        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-9 w-9">
+          {/* Antenna */}
+          <line x1="20" y1="3" x2="20" y2="9" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+          <circle cx="20" cy="2.5" r="2" fill="#fbbf24"/>
+          {/* Head */}
+          <rect x="8" y="9" width="24" height="20" rx="5" fill="white" fillOpacity="0.95"/>
+          {/* Eyes */}
+          <rect x="12" y="14" width="6" height="5" rx="2" fill="#6d28d9"/>
+          <rect x="22" y="14" width="6" height="5" rx="2" fill="#6d28d9"/>
+          {/* Eye shine */}
+          <circle cx="14" cy="15.5" r="1" fill="white"/>
+          <circle cx="24" cy="15.5" r="1" fill="white"/>
+          {/* Smile */}
+          <path d="M14 23 Q20 27 26 23" stroke="#6d28d9" strokeWidth="2" strokeLinecap="round" fill="none"/>
+          {/* Cheeks */}
+          <circle cx="11" cy="22" r="2.5" fill="#f9a8d4" fillOpacity="0.6"/>
+          <circle cx="29" cy="22" r="2.5" fill="#f9a8d4" fillOpacity="0.6"/>
+          {/* Neck */}
+          <rect x="17" y="29" width="6" height="3" rx="1" fill="white" fillOpacity="0.7"/>
+          {/* Body */}
+          <rect x="11" y="32" width="18" height="6" rx="3" fill="white" fillOpacity="0.5"/>
+        </svg>
+      </span>
+      {/* Tooltip */}
+      <span className="absolute right-[4.5rem] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+        Assistant IA
+      </span>
+    </button>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  CHAT MODAL — Floating panel for members                                    */
+/* ─────────────────────────────────────────────────────────────────────────── */
+function ChatModal({ onClose }) {
+  return (
+    <div
+      style={{ position: 'fixed', bottom: '6.5rem', right: '2rem', zIndex: 50 }}
+      className="flex w-[370px] flex-col overflow-hidden rounded-2xl border border-violet-200/60 bg-white shadow-2xl dark:border-violet-900/40 dark:bg-slate-900"
+    >
+      {/* Header */}
+      <div className="flex items-center gap-3 border-b border-violet-100 bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 dark:border-violet-900">
+        {/* Mini robot */}
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-6 w-6">
+            <circle cx="20" cy="2.5" r="2" fill="#fbbf24"/>
+            <line x1="20" y1="4" x2="20" y2="8" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+            <rect x="8" y="8" width="24" height="18" rx="5" fill="white" fillOpacity="0.9"/>
+            <rect x="12" y="13" width="5" height="4" rx="1.5" fill="#6d28d9"/>
+            <rect x="23" y="13" width="5" height="4" rx="1.5" fill="#6d28d9"/>
+            <circle cx="13.5" cy="14" r="0.8" fill="white"/>
+            <circle cx="24.5" cy="14" r="0.8" fill="white"/>
+            <path d="M14 21 Q20 25 26 21" stroke="#6d28d9" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
+            <circle cx="11" cy="20" r="2" fill="#f9a8d4" fillOpacity="0.5"/>
+            <circle cx="29" cy="20" r="2" fill="#f9a8d4" fillOpacity="0.5"/>
+          </svg>
+        </div>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-white">Assistant IA</p>
+          <p className="text-[11px] text-violet-200">En ligne · Propulsé par LLM</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full p-1 text-white/70 transition-colors hover:bg-white/20 hover:text-white"
+          aria-label="Fermer"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+            <path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"/>
+          </svg>
+        </button>
+      </div>
+      {/* Chat body */}
+      <ChatPanel compact />
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
 /*  CHAT PANEL — Assistant conversationnel IA                                  */
 /* ─────────────────────────────────────────────────────────────────────────── */
-function ChatPanel() {
+function ChatPanel({ compact = false }) {
   const [projectId, setProjectId] = useState('');
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([
@@ -615,20 +728,10 @@ function ChatPanel() {
     'Y a-t-il des blocages détectés ?',
   ];
 
-  return (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <MessageSquare className="h-5 w-5 text-violet-500" />
-          Assistant IA
-          <AiPoweredBadge powered />
-        </CardTitle>
-        <CardDescription>
-          Posez vos questions en langage naturel — l'IA analyse le contexte de votre projet en temps réel
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {/* Project selector */}
+  const inner = (
+    <div className={cn('flex flex-col gap-3', compact ? 'p-3' : 'p-0')}>
+      {/* Project selector */}
+      {!compact && (
         <div className="flex flex-wrap items-center gap-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -645,9 +748,20 @@ function ChatPanel() {
             </Badge>
           )}
         </div>
+      )}
 
-        {/* Messages */}
-        <div className="flex max-h-[420px] min-h-[280px] flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-muted/10 p-4">
+      {compact && (
+        <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-full text-xs">
+          <option value="">Sans contexte projet</option>
+          {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </Select>
+      )}
+
+      {/* Messages */}
+      <div className={cn(
+        'flex flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-muted/10',
+        compact ? 'max-h-[260px] min-h-[160px] p-3' : 'max-h-[420px] min-h-[280px] p-4',
+      )}>
           {messages.map((msg, i) => (
             <div
               key={i}
@@ -728,22 +842,42 @@ function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Posez votre question sur le projet… (Entrée pour envoyer)"
-            rows={2}
-            className="flex-1 resize-none rounded-xl border border-border bg-background px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            placeholder="Posez votre question… (Entrée pour envoyer)"
+            rows={compact ? 1 : 2}
+            className="flex-1 resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
           <Button
             onClick={handleSend}
             disabled={!input.trim() || isPending}
-            className="h-[52px] w-12 shrink-0 rounded-xl"
+            className={cn('shrink-0 rounded-xl', compact ? 'h-10 w-10' : 'h-[52px] w-12')}
           >
             {isPending ? <Spinner /> : <Send className="h-4 w-4" />}
           </Button>
         </div>
-        <p className="text-center text-[11px] text-muted-foreground">
-          Maj+Entrée pour un saut de ligne · L'IA peut faire des erreurs, vérifiez les informations critiques
-        </p>
-      </CardContent>
+        {!compact && (
+          <p className="text-center text-[11px] text-muted-foreground">
+            Maj+Entrée pour un saut de ligne · L'IA peut faire des erreurs
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
+  if (compact) return inner;
+
+  return (
+    <Card className="flex flex-col">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <MessageSquare className="h-5 w-5 text-violet-500" />
+          Assistant IA
+          <AiPoweredBadge powered />
+        </CardTitle>
+        <CardDescription>
+          Posez vos questions en langage naturel — l'IA analyse le contexte de votre projet en temps réel
+        </CardDescription>
+      </CardHeader>
+      <CardContent>{inner}</CardContent>
     </Card>
   );
 }

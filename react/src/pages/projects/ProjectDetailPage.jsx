@@ -134,7 +134,10 @@ export default function ProjectDetailPage() {
           })
           .map((t) => ({
             ...t,
-            workflow_status: normalizeWorkflowStatus(getTaskStatus(t)),
+            // Priorité à workflow_status (valeur canonique du backend) ; fallback sur le nom du statut Kanban.
+            workflow_status: t.workflow_status
+              ? normalizeWorkflowStatus(t.workflow_status)
+              : normalizeWorkflowStatus(getTaskStatus(t)),
           }));
 
         if (import.meta.env.DEV) {
@@ -247,6 +250,12 @@ export default function ProjectDetailPage() {
     mutationFn: ({ taskId, workflow_status }) =>
       api.put(`/tasks/${taskId}`, { workflow_status }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks', id] }),
+    onError: (err) => {
+      const msg = err?.response?.data?.errors?.task
+        || err?.response?.data?.message
+        || 'Impossible de déplacer la tâche.';
+      toast.error(msg);
+    },
   });
 
   const filteredTasks = useMemo(() => {
