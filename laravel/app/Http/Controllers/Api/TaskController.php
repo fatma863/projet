@@ -1003,12 +1003,18 @@ class TaskController extends Controller
             return;
         }
 
-        $plannedStartRaw = array_key_exists('planned_start', $data)
-            ? $data['planned_start']
-            : $existingTask?->planned_start?->toDateString();
-        $plannedEndRaw = array_key_exists('planned_end', $data)
-            ? $data['planned_end']
-            : $existingTask?->planned_end?->toDateString();
+        // Ne valider que les dates explicitement fournies dans la requête.
+        // Lorsqu'on fait un update partiel (ex: workflow_status uniquement),
+        // les dates existantes ne doivent pas être re-validées.
+        $updatingStart = array_key_exists('planned_start', $data);
+        $updatingEnd   = array_key_exists('planned_end', $data);
+
+        if (! $updatingStart && ! $updatingEnd) {
+            return;
+        }
+
+        $plannedStartRaw = $updatingStart ? $data['planned_start'] : null;
+        $plannedEndRaw   = $updatingEnd   ? $data['planned_end']   : null;
 
         $plannedStart = $plannedStartRaw ? Carbon::parse((string) $plannedStartRaw)->startOfDay() : null;
         $plannedEnd = $plannedEndRaw ? Carbon::parse((string) $plannedEndRaw)->startOfDay() : null;

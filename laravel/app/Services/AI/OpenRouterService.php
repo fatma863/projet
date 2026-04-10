@@ -14,18 +14,18 @@ class OpenRouterService
     private string $model;
     private string $baseUrl = 'https://openrouter.ai/api/v1';
 
-    /** Modèles de secours si le modèle principal est rate-limité */
+    /** Modèles de secours si le modèle principal est rate-limité ou indisponible */
     private const FALLBACK_MODELS = [
-        'mistralai/mistral-small-3.2-24b-instruct:free',
         'google/gemma-3-27b-it:free',
         'meta-llama/llama-3.1-8b-instruct:free',
         'mistralai/mistral-7b-instruct:free',
+        'nousresearch/hermes-3-llama-3.1-405b:free',
     ];
 
     public function __construct()
     {
         $this->apiKey = config('services.openrouter.api_key', '');
-        $this->model  = config('services.openrouter.model', 'mistralai/mistral-small-3.2-24b-instruct:free');
+        $this->model  = config('services.openrouter.model', 'google/gemma-3-27b-it:free');
     }
 
     public function isAvailable(): bool
@@ -68,9 +68,9 @@ class OpenRouterService
                     return $response->json('choices.0.message.content');
                 }
 
-                // Rate-limit : essayer le modèle suivant
-                if ($response->status() === 429) {
-                    Log::info('[OpenRouter] Rate-limit sur '.$model.', passage au suivant.');
+                // Rate-limit ou modèle introuvable : essayer le suivant
+                if (in_array($response->status(), [429, 404], true)) {
+                    Log::info('[OpenRouter] Modèle '.$model.' indisponible ('.$response->status().'), passage au suivant.');
                     continue;
                 }
 
