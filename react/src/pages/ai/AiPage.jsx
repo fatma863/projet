@@ -860,7 +860,6 @@ function ChatPanel({ compact = false }) {
           </p>
         )}
       </div>
-    </div>
   );
 
   if (compact) return inner;

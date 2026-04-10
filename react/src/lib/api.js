@@ -1,8 +1,14 @@
 import axios from 'axios';
 import { disconnectEcho } from './echo';
 
+const envApiBase = (import.meta.env.VITE_API_BASE_URL || '').trim();
+if (envApiBase === '') {
+  throw new Error('Missing VITE_API_BASE_URL. Define it in react/.env.');
+}
+const apiBaseUrl = envApiBase.replace(/\/$/, '');
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBaseUrl,
   headers: {
     'Accept': 'application/json',
     'Content-Type': 'application/json',

@@ -3,6 +3,11 @@ import Pusher from 'pusher-js';
 
 let echoInstance = null;
 let echoDisabled = false;
+const envApiBase = (import.meta.env.VITE_API_BASE_URL || '').trim();
+if (envApiBase === '') {
+  throw new Error('Missing VITE_API_BASE_URL. Define it in react/.env.');
+}
+const apiBaseUrl = envApiBase.replace(/\/$/, '');
 
 function createNoopEcho() {
   const noopChannel = {
@@ -34,7 +39,7 @@ function buildOptions() {
     forceTLS: (useReverb ? import.meta.env.VITE_REVERB_SCHEME : import.meta.env.VITE_PUSHER_SCHEME) === 'https',
     enabledTransports: ['ws', 'wss'],
     cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER || 'mt1',
-    authEndpoint: '/api/broadcasting/auth',
+    authEndpoint: `${apiBaseUrl}/broadcasting/auth`,
     auth: {
       headers: {
         Authorization: token ? `Bearer ${token}` : '',
