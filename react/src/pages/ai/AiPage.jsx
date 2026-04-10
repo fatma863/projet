@@ -39,6 +39,79 @@ const PRIORITY_LABEL_FR = {
   urgent: 'Urgente',
 };
 
+function ChatMessage({ content }) {
+  // Parse simple markdown: **bold**, bullet lists (- or *), numbered lists, line breaks
+  const lines = content.split('\n');
+  const elements = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i].trim();
+
+    if (!line) { i++; continue; }
+
+    // Bullet list item
+    if (/^[-*•]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^[-*•]\s+/.test(lines[i].trim())) {
+        items.push(lines[i].trim().replace(/^[-*•]\s+/, ''));
+        i++;
+      }
+      elements.push(
+        <ul key={i} className="mt-1 space-y-0.5 pl-3">
+          {items.map((item, j) => (
+            <li key={j} className="flex gap-1.5 text-sm">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+              <span>{renderInline(item)}</span>
+            </li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    // Numbered list
+    if (/^\d+\.\s+/.test(line)) {
+      const items = [];
+      let num = 1;
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+        items.push(lines[i].trim().replace(/^\d+\.\s+/, ''));
+        i++; num++;
+      }
+      elements.push(
+        <ol key={i} className="mt-1 space-y-0.5 pl-3">
+          {items.map((item, j) => (
+            <li key={j} className="flex gap-1.5 text-sm">
+              <span className="shrink-0 font-semibold text-violet-500">{j + 1}.</span>
+              <span>{renderInline(item)}</span>
+            </li>
+          ))}
+        </ol>
+      );
+      continue;
+    }
+
+    // Regular paragraph
+    elements.push(
+      <p key={i} className="text-sm leading-relaxed">{renderInline(line)}</p>
+    );
+    i++;
+  }
+
+  return <div className="flex flex-col gap-1">{elements}</div>;
+}
+
+function renderInline(text) {
+  // Split by **bold**
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+}
+
 function AiPoweredBadge({ powered }) {
   if (!powered) return null;
   return (
@@ -794,10 +867,13 @@ function ChatPanel({ compact = false }) {
                       : 'rounded-tl-sm bg-card text-foreground ring-1 ring-border',
                 )}
               >
-                {msg.content}
+                {msg.role === 'assistant' && !msg.error
+                  ? <ChatMessage content={msg.content} />
+                  : <p className="text-sm leading-relaxed">{msg.content}</p>
+                }
                 {msg.ai_powered && (
                   <div className="mt-1.5 flex items-center gap-1 text-[10px] text-violet-500 dark:text-violet-400">
-                    <Zap className="h-2.5 w-2.5" /> Réponse générée par LLM
+                    <Zap className="h-2.5 w-2.5" /> IA
                   </div>
                 )}
               </div>
