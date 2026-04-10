@@ -36,9 +36,11 @@ COPY --chown=www-data:www-data . /var/www
 
 # Ensure Laravel runtime directories exist before Composer scripts run
 RUN mkdir -p bootstrap/cache \
+    && mkdir -p database \
+    && touch database/database.sqlite \
     && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views \
-    && chown -R www-data:www-data bootstrap storage \
-    && chmod -R ug+rwx bootstrap/cache storage
+    && chown -R www-data:www-data bootstrap storage database \
+    && chmod -R ug+rwx bootstrap/cache storage database
 
 # Install PHP dependencies
 RUN composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev

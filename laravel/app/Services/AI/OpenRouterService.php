@@ -14,10 +14,18 @@ class OpenRouterService
     private string $model;
     private string $baseUrl = 'https://openrouter.ai/api/v1';
 
+    /** Modèles de secours si le modèle principal est rate-limité */
+    private const FALLBACK_MODELS = [
+        'mistralai/mistral-small-3.2-24b-instruct:free',
+        'google/gemma-3-27b-it:free',
+        'meta-llama/llama-3.1-8b-instruct:free',
+        'mistralai/mistral-7b-instruct:free',
+    ];
+
     public function __construct()
     {
         $this->apiKey = config('services.openrouter.api_key', '');
-        $this->model  = config('services.openrouter.model', 'meta-llama/llama-3.3-70b-instruct:free');
+        $this->model  = config('services.openrouter.model', 'mistralai/mistral-small-3.2-24b-instruct:free');
     }
 
     public function isAvailable(): bool
@@ -26,7 +34,7 @@ class OpenRouterService
     }
 
     /**
-     * Appel simple au modèle : retourne la réponse texte ou null en cas d'erreur.
+     * Appel au modèle avec fallback automatique sur rate-limit (429).
      */
     public function chat(string $userMessage, string $systemPrompt = '', int $maxTokens = 800): ?string
     {
@@ -40,30 +48,46 @@ class OpenRouterService
         }
         $messages[] = ['role' => 'user', 'content' => $userMessage];
 
-        try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer '.$this->apiKey,
-                'HTTP-Referer'  => config('app.url', 'http://localhost:8000'),
-                'X-Title'       => config('app.name', 'Gestion Projets PFE'),
-            ])->timeout(30)->post("{$this->baseUrl}/chat/completions", [
-                'model'       => $this->model,
-                'messages'    => $messages,
-                'max_tokens'  => $maxTokens,
-                'temperature' => 0.3,
-            ]);
+        // Liste des modèles à essayer : modèle configuré + fallbacks (sans doublons)
+        $candidates = array_unique(array_merge([$this->model], self::FALLBACK_MODELS));
 
-            if ($response->successful()) {
-                return $response->json('choices.0.message.content');
+        foreach ($candidates as $model) {
+            try {
+                $response = Http::withHeaders([
+                    'Authorization' => 'Bearer '.$this->apiKey,
+                    'HTTP-Referer'  => config('app.url', 'http://localhost:8000'),
+                    'X-Title'       => config('app.name', 'Gestion Projets PFE'),
+                ])->timeout(30)->post("{$this->baseUrl}/chat/completions", [
+                    'model'       => $model,
+                    'messages'    => $messages,
+                    'max_tokens'  => $maxTokens,
+                    'temperature' => 0.3,
+                ]);
+
+                if ($response->successful()) {
+                    return $response->json('choices.0.message.content');
+                }
+
+                // Rate-limit : essayer le modèle suivant
+                if ($response->status() === 429) {
+                    Log::info('[OpenRouter] Rate-limit sur '.$model.', passage au suivant.');
+                    continue;
+                }
+
+                Log::warning('[OpenRouter] Erreur API', [
+                    'model'  => $model,
+                    'status' => $response->status(),
+                    'body'   => $response->body(),
+                ]);
+                return null;
+
+            } catch (\Throwable $e) {
+                Log::error('[OpenRouter] Exception HTTP', ['model' => $model, 'error' => $e->getMessage()]);
+                return null;
             }
-
-            Log::warning('[OpenRouter] Erreur API', [
-                'status' => $response->status(),
-                'body'   => $response->body(),
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('[OpenRouter] Exception HTTP', ['error' => $e->getMessage()]);
         }
 
+        Log::warning('[OpenRouter] Tous les modèles sont rate-limités.');
         return null;
     }
 
