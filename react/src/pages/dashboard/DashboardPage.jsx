@@ -15,7 +15,7 @@ import UserManagement from '../../components/admin/UserManagement';
 import { DashboardPageSkeleton, SkeletonActivityRow, Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { UserAvatar } from '../../components/ui/UserAvatar';
-import { formatRelativeTimeFr, startOfLocalDay } from '../../lib/formatRelativeTime';
+import { formatRelativeTimeFr } from '../../lib/formatRelativeTime';
 import { humanizeActivityLine } from '../../lib/activityHumanize';
 import {
   FolderKanban,
@@ -31,7 +31,6 @@ import {
   History,
   XCircle,
   Plus,
-  PartyPopper,
   UserPlus,
   Calendar,
 } from 'lucide-react';
@@ -120,7 +119,7 @@ export default function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: ['member-dashboard'] });
     },
     onError: (err) => {
-      toast.error(err?.response?.data?.message || err?.message || 'Impossible d’accepter l’invitation.');
+      toast.error(err?.response?.data?.message || err?.message || "Impossible d'accepter l'invitation.");
     },
   });
 
@@ -166,7 +165,7 @@ export default function DashboardPage() {
   }
 
   const activeProjects = projects.filter((p) => p.status === 'active');
-  /** Compteurs globaux admin : alignés sur l’API /admin/dashboard (vérité métier) */
+  /** Compteurs globaux admin : alignés sur l'API /admin/dashboard (vérité métier) */
   const totalProjects =
     isAdmin && adminDash?.projects_total != null ? adminDash.projects_total : projectsListTotal;
   const flatTasks = projectTasks.flatMap((entry) => entry.tasks || []);
@@ -335,34 +334,6 @@ export default function DashboardPage() {
 
   const activities = unwrapCollection(activityData, 'activities');
 
-  const dayStart = startOfLocalDay();
-  const isDueToday = (iso) => {
-    if (!iso) return false;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return false;
-    return startOfLocalDay(d).getTime() === dayStart.getTime();
-  };
-
-  let todayTasksList = [];
-  if (usePersonalDashboardApi) {
-    if (memberDash) {
-      const pool = [
-        ...(memberDash.upcoming_deadlines || []),
-        ...(memberDash.overdue_tasks || []),
-        ...(memberDash.recent_tasks || []),
-      ];
-      const seen = new Map();
-      pool.forEach((t) => seen.set(t.id, t));
-      todayTasksList = [...seen.values()].filter(
-        (t) => !t.is_done && isDueToday(t.due_date || t.effective_end_date),
-      );
-    }
-  } else {
-    todayTasksList = scopeTasks.filter(
-      (t) => (t.progress_percent || 0) < 100 && isDueToday(t.due_date),
-    );
-  }
-
   const guestOverdueList = isViewerUser && memberDash ? (memberDash.overdue_tasks || []).slice(0, 12) : [];
   /** Projets dérivés des tâches assignées ; sinon liste des projets visibles (invité). */
   const guestAssignedProjects = (() => {
@@ -380,6 +351,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Error banner */}
       {(projectsError || memberDashError || adminDashError || (!isViewerUser && activityError) || invitesError) && (
         <Card className="border-red-200 bg-red-50/90 dark:border-red-900/60 dark:bg-red-950/40">
           <CardContent className="space-y-1 py-3 text-sm text-red-900 dark:text-red-100">
@@ -392,24 +364,26 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-r from-blue-50 via-indigo-50 to-violet-50 p-6 shadow-sm">
+      {/* Hero / Welcome */}
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-r from-blue-50 via-indigo-50 to-violet-50 p-6 shadow-sm dark:from-blue-950/30 dark:via-indigo-950/30 dark:to-violet-950/30">
         <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-blue-200/40 blur-2xl" />
         <div className="absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-violet-200/40 blur-2xl" />
-        <div className="relative flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wider text-indigo-500/80 dark:text-indigo-300/60">
+              {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
             <h1 className="text-2xl font-bold text-foreground">Bonjour, {user?.name} 👋</h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-muted-foreground">
               {isAdmin
-                ? 'Vue administrateur globale (projets, équipes, charge, retards)'
+                ? "Vue administrateur — supervision globale des projets, équipes et indicateurs clés."
                 : isMember && !isViewerUser
-                  ? 'Vue membre : projets auxquels vous participez, tâches qui vous sont assignées et vos échéances.'
-                  : isViewerUser
-                    ? 'Vue invité : uniquement vos tâches assignées et les projets auxquels vous participez (lecture).'
-                    : 'Vue personnelle (vos projets et tâches).'}
+                  ? "Vue membre — vos projets actifs, tâches assignées et prochaines échéances."
+                  : "Vue invité — vos tâches assignées et les projets auxquels vous participez."}
             </p>
           </div>
           {!isViewerUser && (
-            <div className="inline-flex items-center gap-2 self-start rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-indigo-700 shadow-sm ring-1 ring-indigo-100 dark:bg-slate-800/95 dark:text-indigo-200 dark:ring-slate-600">
+            <div className="inline-flex shrink-0 items-center gap-2 self-start rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-indigo-700 shadow-sm ring-1 ring-indigo-100 dark:bg-slate-800/95 dark:text-indigo-200 dark:ring-slate-600">
               <Sparkles size={14} className="shrink-0" />
               Dashboard intelligent
             </div>
@@ -417,6 +391,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Quick actions */}
       <motion.div
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
@@ -426,9 +401,9 @@ export default function DashboardPage() {
         {!isViewerUser && (
           <Link
             to="/projects"
-            className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-card px-4 py-2.5 text-sm font-medium text-foreground shadow-sm transition-all hover:border-primary/30 hover:bg-accent hover:shadow-md"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow-md"
           >
-            <Plus className="h-4 w-4 text-primary" />
+            <Plus className="h-4 w-4" />
             Nouvelle tâche
           </Link>
         )}
@@ -450,6 +425,7 @@ export default function DashboardPage() {
         )}
       </motion.div>
 
+      {/* ─── Viewer: compact KPIs ─────────────────────────────────── */}
       {isViewerUser && memberDash && (
         <div className="grid gap-3 sm:grid-cols-3">
           <StatCard
@@ -460,10 +436,10 @@ export default function DashboardPage() {
             color="text-emerald-600 bg-emerald-50"
           />
           <StatCard
-            icon={Calendar}
-            label="Aujourd&apos;hui"
-            value={todayTasksList.length}
-            sub="Échéance du jour"
+            icon={Clock}
+            label="En cours"
+            value={ms?.in_progress ?? 0}
+            sub="Tâches actives"
             color="text-blue-600 bg-blue-50"
           />
           <StatCard
@@ -476,70 +452,589 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <Card className="shadow-sm transition-shadow hover:shadow-md">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Calendar className="h-4 w-4" />
-            {isViewerUser ? 'Mes tâches aujourd&apos;hui' : 'Pour aujourd&apos;hui'}
-          </CardTitle>
-          <p className="text-sm font-normal text-muted-foreground">
-            {isViewerUser
-              ? 'Tâches qui vous sont assignées, échéance aujourd’hui (non terminées).'
-              : 'Tâches non terminées avec échéance aujourd&apos;hui.'}
-          </p>
-        </CardHeader>
-        <CardContent>
-          {todayTasksList.length === 0 ? (
-            <EmptyState
-              icon={PartyPopper}
-              title="Aucune tâche pour aujourd'hui"
-              description={
-                isViewerUser
-                  ? 'Rien d’urgent aujourd’hui — consultez vos projets ou la liste des tâches.'
-                  : "Rien d'urgent aujourd'hui — vous pouvez vous concentrer sur la suite."
-              }
-              className="border-0 bg-transparent py-8"
-            >
-              {!isViewerUser && (
-                <Link
-                  to="/projects"
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                >
-                  <Plus className="h-4 w-4" />
-                  Créer une tâche
-                </Link>
-              )}
-              <Link
-                to="/tasks"
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-accent"
+      {/* ─── Admin: platform overview ─────────────────────────────── */}
+      {isAdmin && (
+        <Card className="border-indigo-100 bg-indigo-50/50 shadow-sm dark:border-indigo-900/30 dark:bg-indigo-950/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base text-foreground">Vue d'ensemble plateforme</CardTitle>
+            <p className="text-sm font-normal text-muted-foreground">Indicateurs globaux — actualisation automatique.</p>
+          </CardHeader>
+          <CardContent>
+            {loadingAdminDash && !adminDash ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-[4.25rem] rounded-xl" />
+                ))}
+              </div>
+            ) : adminDash ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><Users size={16} /></div>
+                  <div><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Utilisateurs</p><p className="text-xl font-bold tabular-nums">{adminDash.users_total ?? 0}</p></div>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><FolderKanban size={16} /></div>
+                  <div><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Projets</p><p className="text-xl font-bold tabular-nums">{adminDash.projects_total ?? 0}</p></div>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"><ListTodo size={16} /></div>
+                  <div><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Tâches</p><p className="text-xl font-bold tabular-nums">{adminDash.tasks_total ?? 0}</p></div>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><CheckCircle2 size={16} /></div>
+                  <div><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Complétion</p><p className="text-xl font-bold tabular-nums">{adminDash.global_completion_rate_percent ?? 0}%</p></div>
+                </div>
+                <div className="flex items-center gap-3 rounded-xl border border-red-100 bg-red-50/60 px-4 py-3 dark:border-red-900/40 dark:bg-red-950/20">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600"><AlertTriangle size={16} /></div>
+                  <div><p className="text-[11px] font-medium uppercase tracking-wide text-red-700/70 dark:text-red-300/60">En retard</p><p className="text-xl font-bold tabular-nums text-red-700">{adminDash.tasks_overdue ?? 0}</p></div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Indisponible</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Stats cards — key metrics (admin + member) ───────────── */}
+      {!isViewerUser && (
+        <div className={`grid gap-4 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
+          <StatCard
+            icon={FolderKanban}
+            label={isAdmin ? 'Projets totaux' : 'Mes projets'}
+            value={totalProjects}
+            sub={`${activeProjects.length} actifs`}
+            color="text-blue-600 bg-blue-50"
+          />
+          <StatCard
+            icon={ListTodo}
+            label={isAdmin ? 'Tâches totales' : isMember && !isViewerUser ? 'Mes tâches assignées' : 'Mes tâches'}
+            value={totalTasks}
+            sub={`${completedCount} terminées`}
+            color="text-emerald-600 bg-emerald-50"
+          />
+          <StatCard
+            icon={Clock}
+            label="Progression projets"
+            value={`${projectProgress}%`}
+            sub="Moyenne globale"
+            color="text-indigo-600 bg-indigo-50"
+          />
+          <StatCard
+            icon={AlertTriangle}
+            label={isAdmin ? 'Tâches en retard' : 'Mes tâches à risque'}
+            value={tasksAtRiskCount}
+            sub={`${overdueCount} en retard`}
+            color={tasksAtRiskCount > 0 ? 'text-red-600 bg-red-50' : 'text-emerald-600 bg-emerald-50'}
+          />
+          {isAdmin && (
+            <StatCard
+              icon={AlertTriangle}
+              label="Projets à risque"
+              value={riskyProjects.length}
+              sub={`${riskyProjects.filter((p) => (p.overdue_tasks || 0) > 0).length} avec retard`}
+              color={riskyProjects.length > 0 ? 'text-amber-600 bg-amber-50' : 'text-emerald-600 bg-emerald-50'}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ─── Invitations en attente ───────────────────────────────── */}
+      {pendingInvites?.pending_count > 0 && (
+        <Card className="border-amber-200 bg-amber-50/90 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-lg text-amber-950 dark:text-amber-100">
+              <Mail className="h-5 w-5 shrink-0" />
+              Invitations en attente
+              <span className="rounded-full bg-amber-600 px-2 py-0.5 text-xs font-semibold text-white">
+                {pendingInvites.pending_count}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-amber-900/90 dark:text-amber-100/90">
+              Vous avez été invité à rejoindre des projets. Acceptez ou refusez depuis la page dédiée.
+            </p>
+            {pendingInvites.invitations?.map((inv) => (
+              <div
+                key={inv.id}
+                className="flex flex-col gap-3 rounded-lg border border-amber-100 bg-white/70 p-4 dark:border-amber-900/40 dark:bg-slate-900/60 sm:flex-row sm:items-center sm:justify-between"
               >
-                <ListTodo className="h-4 w-4" />
-                Voir mes tâches
+                <div>
+                  <p className="font-semibold text-foreground">{inv.project?.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Rôle proposé :{' '}
+                    {inv.role === 'client' || inv.role === 'guest' || inv.role === 'viewer'
+                      ? PROJECT_ROLE_LABELS.client
+                      : PROJECT_ROLE_LABELS.member}
+                    {inv.invited_by?.name ? ` · Invité par ${inv.invited_by.name}` : ''}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    type="button"
+                    disabled={acceptInviteMut.isPending || declineInviteMut.isPending}
+                    onClick={() => acceptInviteMut.mutate(inv.token)}
+                  >
+                    Accepter
+                  </Button>
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                    disabled={acceptInviteMut.isPending || declineInviteMut.isPending}
+                    onClick={() => declineInviteMut.mutate(inv.token)}
+                  >
+                    <XCircle className="mr-1 h-4 w-4" />
+                    Refuser
+                  </Button>
+                  <Link to={`/accept-invite?token=${encodeURIComponent(inv.token)}`}>
+                    <Button size="sm" variant="ghost" type="button">
+                      Détails
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            ))}
+            {(acceptInviteMut.isError || declineInviteMut.isError) && (
+              <p className="text-sm text-red-700 dark:text-red-300">
+                {acceptInviteMut.error?.response?.data?.message ||
+                  declineInviteMut.error?.response?.data?.message ||
+                  'Action impossible.'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Member: charge & dépendances ────────────────────────── */}
+      {isMember && !isViewerUser && ms && (
+        <Card className="border-slate-200 bg-slate-50/80 shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base text-foreground">
+              <Lock className="h-4 w-4 shrink-0 text-slate-600" />
+              Charge &amp; dépendances
+            </CardTitle>
+            <p className="text-sm font-normal text-muted-foreground">
+              Synthèse de votre charge — tâches bloquées, à risque, critiques et retards (actualisation automatique).
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-4 text-sm">
+            <div className="rounded-lg border border-border bg-card px-4 py-3">
+              <p className="text-muted-foreground">Bloquées</p>
+              <p className="text-2xl font-semibold text-foreground">{ms.blocked_count ?? 0}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card px-4 py-3">
+              <p className="text-muted-foreground">À risque</p>
+              <p className="text-2xl font-semibold text-amber-800">{ms.at_risk_count ?? 0}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card px-4 py-3">
+              <p className="text-muted-foreground">Critiques</p>
+              <p className="text-2xl font-semibold text-red-700">{ms.critical_count ?? 0}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card px-4 py-3">
+              <p className="text-muted-foreground">En retard</p>
+              <p className="text-2xl font-semibold text-foreground">{ms.overdue_count ?? 0}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Admin: alertes IA ────────────────────────────────────── */}
+      {isAdmin && (
+        <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Alertes IA — vue globale</CardTitle>
+            <p className="text-sm font-normal text-foreground">
+              Tâches à risque (score IA) :{' '}
+              <span className="font-semibold text-amber-700">{aiRiskTotal}</span> sur l'ensemble des projets.
+              {' · '}
+              Estimé cumulé {estActualAgg.est.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h vs réel{' '}
+              {estActualAgg.act.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h
+              {estActualAgg.est - estActualAgg.act !== 0 && (
+                <span className="text-muted-foreground">
+                  {' '}
+                  (écart {(estActualAgg.est - estActualAgg.act).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h)
+                </span>
+              )}
+            </p>
+            <p className="text-sm font-normal text-muted-foreground">
+              Retards, charge et suggestions d'assignation — détail dans IA &amp; Analytics.
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-6 lg:grid-cols-2">
+            <div>
+              <p className="mb-2 text-sm font-medium text-foreground">Tâches prioritaires</p>
+              {flatTasks.filter((t) => t.is_overdue || tasksAtRisk.some((x) => x.id === t.id)).length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucune alerte tâche pour le moment.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {flatTasks
+                    .filter((t) => t.is_overdue || tasksAtRisk.some((x) => x.id === t.id))
+                    .slice(0, 6)
+                    .map((t) => {
+                      const pname = projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
+                      return (
+                        <li key={t.id}>
+                          <Link
+                            to={`/projects/${t.project_id}?highlightTask=${t.id}`}
+                            className="block rounded-xl border border-border/80 bg-card px-3 py-2.5 text-sm shadow-sm transition-all hover:border-primary/25 hover:shadow-md"
+                          >
+                            <span className="font-medium text-foreground">{t.title}</span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">{pname}</span>
+                            <DashboardTaskBadges task={t} />
+                          </Link>
+                        </li>
+                      );
+                    })}
+                </ul>
+              )}
+            </div>
+            <div>
+              <p className="mb-2 text-sm font-medium text-foreground">Projets à risque</p>
+              {riskyProjects.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucun projet signalé.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {riskyProjects.slice(0, 6).map((rp) => {
+                    const pname = projects?.find((p) => p.id === rp.projectId)?.name || `Projet #${rp.projectId}`;
+                    return (
+                      <li key={rp.projectId}>
+                        <Link
+                          to={`/projects/${rp.projectId}`}
+                          className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-accent/50"
+                        >
+                          <span className="font-medium text-foreground">{pname}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {(rp.overdue_tasks || 0) > 0 ? `${rp.overdue_tasks} retard` : ''}{' '}
+                            {Math.round(rp.avg_progress || 0)}% av.
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            <div className="lg:col-span-2">
+              <Link
+                to="/ai"
+                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+              >
+                Ouvrir IA &amp; Analytics <ArrowRight size={14} />
               </Link>
-            </EmptyState>
-          ) : (
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Admin: user management ───────────────────────────────── */}
+      {isAdmin && <UserManagement variant="dashboard" />}
+
+      {/* ─── Member: tâches à risque ──────────────────────────────── */}
+      {!isAdmin && !isViewerUser && tasksAtRiskList.length > 0 && (
+        <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">
+              {isMember && !isViewerUser ? 'Vos tâches en retard ou à risque' : 'Alertes personnelles'}
+            </CardTitle>
+            {isMember && !isViewerUser && (
+              <p className="text-sm font-normal text-muted-foreground">
+                Uniquement les tâches qui vous sont assignées.
+              </p>
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {tasksAtRiskList
+                .slice()
+                .sort((a, b) => (a.due_date || a.effective_end_date || '').localeCompare(b.due_date || b.effective_end_date || ''))
+                .slice(0, 5)
+                .map((t) => (
+                  <Link
+                    key={t.id}
+                    to={`/projects/${t.project_id}?highlightTask=${t.id}`}
+                    className="flex flex-col gap-2 rounded-xl border border-border/80 bg-card p-3 shadow-sm transition-all hover:border-amber-200/80 hover:shadow-md"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{t.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(t.due_date || t.effective_end_date)
+                            ? `Échéance : ${new Date(t.due_date || t.effective_end_date).toLocaleDateString('fr-FR')}`
+                            : 'Échéance : —'}
+                        </p>
+                      </div>
+                      <Badge variant="destructive" className="shrink-0">
+                        {t.is_overdue ? 'En retard' : 'À risque'}
+                      </Badge>
+                    </div>
+                    <DashboardTaskBadges task={t} />
+                  </Link>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Activité récente ─────────────────────────────────────── */}
+      {!isViewerUser && (
+        <Card className="shadow-sm transition-shadow hover:shadow-md">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4" />
+              Activité récente
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activityLoading && activities.length === 0 ? (
+              <div className="divide-y divide-border/60">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <SkeletonActivityRow key={i} />
+                ))}
+              </div>
+            ) : activities.length === 0 ? (
+              <EmptyState
+                icon={History}
+                title="Aucune activité récente"
+                description="Les actions sur vos projets apparaîtront ici."
+              >
+                {!isViewerUser && (
+                  <Link
+                    to="/projects"
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Créer une tâche
+                  </Link>
+                )}
+              </EmptyState>
+            ) : (
+              <ul className="divide-y divide-border/60 text-sm">
+                {activities.map((a, idx) => {
+                  const { line, quote, extra } = humanizeActivityLine(a, user);
+                  const actorName = a.actor?.name || 'Membre';
+                  return (
+                    <motion.li
+                      key={a.id}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.04, duration: 0.2 }}
+                      className="flex gap-3 py-3 first:pt-0"
+                    >
+                      <UserAvatar name={actorName} src={a.actor?.avatar_url} size="lg" className="mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-foreground">
+                          {line}
+                          {quote && <span className="font-semibold"> {quote}</span>}
+                          {extra && (
+                            <span className="mt-0.5 block text-xs text-muted-foreground">{extra}</span>
+                          )}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {a.created_at ? formatRelativeTimeFr(a.created_at) : ''}
+                        </p>
+                      </div>
+                    </motion.li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Charge de travail + Distribution ────────────────────── */}
+      {!isViewerUser && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">
+                {isAdmin ? 'Charge de travail des équipes' : isMember && !isViewerUser ? 'Ma charge (tâches assignées)' : 'Ma charge de travail'}
+              </CardTitle>
+              {usePersonalDashboardApi && ms?.workload_percent != null && (
+                <div className="mt-3">
+                  <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                    <span>Charge relative (tâches non terminées / seuil)</span>
+                    <span className="font-semibold text-foreground">{ms.workload_percent}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-accent">
+                    <div
+                      className="h-2 rounded-full bg-amber-500 transition-all"
+                      style={{ width: `${ms.workload_percent}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {ms.workload_open_tasks ?? 0} tâche(s) ouverte(s)
+                  </p>
+                </div>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {workloadEntries.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucune affectation trouvée</p>
+              ) : workloadEntries.map((entry) => {
+                const max = Math.max(...workloadEntries.map((u) => u.count), 1);
+                return (
+                  <div key={entry.id}>
+                    <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                      <span>{entry.name}</span>
+                      <span>{entry.count} tâches</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-2 rounded-full transition-all ${(entry.count / max) > 0.7 ? 'bg-red-500' : (entry.count / max) > 0.4 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                        style={{ width: `${(entry.count / max) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{isAdmin ? 'Distribution globale des tâches' : 'Distribution de mes tâches'}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SimplePieChart data={statusDistribution} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── Flux workflow + Prochaines échéances ────────────────── */}
+      {!isViewerUser && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Flux workflow</CardTitle>
+              <p className="text-sm font-normal text-muted-foreground">Répartition par statut : à faire, en cours, terminé, à risque.</p>
+            </CardHeader>
+            <CardContent>
+              <SimplePieChart data={workflowDistribution} />
+            </CardContent>
+          </Card>
+          <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Prochaines échéances</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {upcomingDeadlines.length === 0 ? (
+                <EmptyState
+                  icon={Calendar}
+                  title="Aucune échéance à venir"
+                  description="Les prochaines dates limites s'afficheront ici."
+                  className="border-0 bg-transparent py-6"
+                >
+                  <Link
+                    to="/projects"
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Créer une tâche
+                  </Link>
+                </EmptyState>
+              ) : (
+                <ul className="space-y-2">
+                  {upcomingDeadlines.map((t) => {
+                    const pname =
+                      t.project_name || projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
+                    const end = t.due_date || t.effective_end_date;
+                    return (
+                      <li key={t.id}>
+                        <Link
+                          to={`/projects/${t.project_id}?highlightTask=${t.id}`}
+                          className="block rounded-xl border border-border/80 bg-card px-3 py-2.5 text-sm shadow-sm transition-all hover:border-primary/25 hover:shadow-md"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="min-w-0 truncate font-medium text-foreground">{t.title}</span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {end ? new Date(end).toLocaleDateString('fr-FR') : '—'}
+                            </span>
+                          </div>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">{pname}</span>
+                          <DashboardTaskBadges task={t} />
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── Member: tâches récentes ──────────────────────────────── */}
+      {usePersonalDashboardApi && !isViewerUser && (memberDash?.recent_tasks?.length > 0) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Mes tâches récentes (assignées)</CardTitle>
+            <p className="text-sm font-normal text-muted-foreground">Liste issue de votre espace membre.</p>
+          </CardHeader>
+          <CardContent>
             <ul className="space-y-2">
-              {todayTasksList.map((t) => {
-                const pname =
-                  t.project_name || projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
+              {memberDash.recent_tasks.map((t) => {
+                const pname = t.project_name || projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
                 return (
                   <li key={t.id}>
                     <Link
-                      to={`/projects/${t.project_id}?highlightTask=${t.id}`}
-                      className="block rounded-xl border border-border/80 bg-card px-3 py-2.5 text-sm shadow-sm transition-all hover:border-primary/25 hover:shadow-md"
+                      to={`/projects/${t.project_id}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-accent/50"
                     >
                       <span className="font-medium text-foreground">{t.title}</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">{pname}</span>
-                      <DashboardTaskBadges task={t} />
+                      <span className="text-xs text-muted-foreground">
+                        {pname} · {t.progress_percent ?? 0}%
+                      </span>
                     </Link>
                   </li>
                 );
               })}
             </ul>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
+      {/* ─── Projects list (admin + member) ──────────────────────── */}
+      {!isViewerUser && (
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="h-5 w-1 rounded-full bg-primary" />
+              <h2 className="text-base font-semibold text-foreground">{isAdmin ? 'Tous les projets' : 'Mes projets'}</h2>
+            </div>
+            <Link to="/projects" className="flex items-center gap-1 text-sm text-primary transition-transform hover:translate-x-0.5 hover:underline">
+              Voir tout <ArrowRight size={14} />
+            </Link>
+          </div>
+          {projects.length === 0 ? (
+            <EmptyState
+              icon={FolderKanban}
+              title="Aucun projet pour l'instant"
+              description="Créez un projet pour organiser vos tâches et inviter votre équipe."
+            >
+              <Link
+                to="/projects"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <Plus className="h-4 w-4" />
+                Nouveau projet
+              </Link>
+            </EmptyState>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {projects.slice(0, 6).map((project) => (
+                <ProjectCard key={project.id} project={project} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Viewer: tâches en retard + projets assignés ─────────── */}
       {isViewerUser && (
         <>
           <Card className="border-red-100/80 shadow-sm dark:border-red-900/40">
@@ -549,7 +1044,7 @@ export default function DashboardPage() {
                 Mes tâches en retard
               </CardTitle>
               <p className="text-sm font-normal text-muted-foreground">
-                Tâches assignées dont l&apos;échéance est dépassée (non terminées).
+                Tâches assignées dont l'échéance est dépassée (non terminées).
               </p>
             </CardHeader>
             <CardContent>
@@ -634,572 +1129,6 @@ export default function DashboardPage() {
           )}
         </>
       )}
-
-      {pendingInvites?.pending_count > 0 && (
-        <Card className="border-amber-200 bg-amber-50/90 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-lg text-amber-950 dark:text-amber-100">
-              <Mail className="h-5 w-5 shrink-0" />
-              Invitations en attente
-              <span className="rounded-full bg-amber-600 px-2 py-0.5 text-xs font-semibold text-white">
-                {pendingInvites.pending_count}
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-amber-900/90 dark:text-amber-100/90">
-              Vous avez été invité à rejoindre des projets. Acceptez ou refusez depuis la page dédiée.
-            </p>
-            {pendingInvites.invitations?.map((inv) => (
-              <div
-                key={inv.id}
-                className="flex flex-col gap-3 rounded-lg border border-amber-100 bg-white/70 p-4 dark:border-amber-900/40 dark:bg-slate-900/60 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <p className="font-semibold text-foreground">{inv.project?.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Rôle proposé :{' '}
-                    {inv.role === 'client' || inv.role === 'guest' || inv.role === 'viewer'
-                      ? PROJECT_ROLE_LABELS.client
-                      : PROJECT_ROLE_LABELS.member}
-                    {inv.invited_by?.name ? ` · Invité par ${inv.invited_by.name}` : ''}
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    type="button"
-                    disabled={acceptInviteMut.isPending || declineInviteMut.isPending}
-                    onClick={() => acceptInviteMut.mutate(inv.token)}
-                  >
-                    Accepter
-                  </Button>
-                  <Button
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                    disabled={acceptInviteMut.isPending || declineInviteMut.isPending}
-                    onClick={() => declineInviteMut.mutate(inv.token)}
-                  >
-                    <XCircle className="mr-1 h-4 w-4" />
-                    Refuser
-                  </Button>
-                  <Link to={`/accept-invite?token=${encodeURIComponent(inv.token)}`}>
-                    <Button size="sm" variant="ghost" type="button">
-                      Détails
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            ))}
-            {(acceptInviteMut.isError || declineInviteMut.isError) && (
-              <p className="text-sm text-red-700 dark:text-red-300">
-                {acceptInviteMut.error?.response?.data?.message ||
-                  declineInviteMut.error?.response?.data?.message ||
-                  'Action impossible.'}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {isMember && !isViewerUser && ms && (
-        <Card className="border-slate-200 bg-slate-50/80 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex flex-wrap items-center gap-2 text-base text-foreground">
-              <Lock className="h-4 w-4 shrink-0 text-slate-600" />
-              Charge &amp; dépendances (actualisation ~15 s)
-            </CardTitle>
-            <p className="text-sm font-normal text-muted-foreground">
-              Synthèse de votre charge : tâches bloquées, à risque, critiques et retards (actualisation automatique).
-            </p>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-4 text-sm">
-            <div className="rounded-lg border border-border bg-card px-4 py-3">
-              <p className="text-muted-foreground">Bloquées</p>
-              <p className="text-2xl font-semibold text-foreground">{ms.blocked_count ?? 0}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-card px-4 py-3">
-              <p className="text-muted-foreground">À risque</p>
-              <p className="text-2xl font-semibold text-amber-800">{ms.at_risk_count ?? 0}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-card px-4 py-3">
-              <p className="text-muted-foreground">Critiques</p>
-              <p className="text-2xl font-semibold text-red-700">{ms.critical_count ?? 0}</p>
-            </div>
-            <div className="rounded-lg border border-border bg-card px-4 py-3">
-              <p className="text-muted-foreground">En retard</p>
-              <p className="text-2xl font-semibold text-foreground">{ms.overdue_count ?? 0}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {isAdmin && (
-        <Card className="border-indigo-100 bg-indigo-50/50 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base text-foreground">Vue d’ensemble plateforme</CardTitle>
-            <p className="text-sm font-normal text-muted-foreground">Indicateurs globaux pour les administrateurs — actualisation automatique.</p>
-          </CardHeader>
-          <CardContent>
-            {loadingAdminDash && !adminDash ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-[4.25rem] rounded-xl" />
-                ))}
-              </div>
-            ) : adminDash ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <div className="rounded-lg border border-border bg-card px-4 py-3">
-                  <p className="text-xs text-muted-foreground">Utilisateurs</p>
-                  <p className="text-xl font-semibold">{adminDash.users_total ?? 0}</p>
-                </div>
-                <div className="rounded-lg border border-border bg-card px-4 py-3">
-                  <p className="text-xs text-muted-foreground">Projets</p>
-                  <p className="text-xl font-semibold">{adminDash.projects_total ?? 0}</p>
-                </div>
-                <div className="rounded-lg border border-border bg-card px-4 py-3">
-                  <p className="text-xs text-muted-foreground">Tâches</p>
-                  <p className="text-xl font-semibold">{adminDash.tasks_total ?? 0}</p>
-                </div>
-                <div className="rounded-lg border border-border bg-card px-4 py-3">
-                  <p className="text-xs text-muted-foreground">Taux complétion</p>
-                  <p className="text-xl font-semibold">{adminDash.global_completion_rate_percent ?? 0}%</p>
-                </div>
-                <div className="rounded-lg border border-border bg-card px-4 py-3">
-                  <p className="text-xs text-muted-foreground">Tâches en retard</p>
-                  <p className="text-xl font-semibold text-red-700">{adminDash.tasks_overdue ?? 0}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Indisponible</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {!isViewerUser && (
-      <Card className="shadow-sm transition-shadow hover:shadow-md">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <History className="h-4 w-4" />
-            Activité récente
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {activityLoading && activities.length === 0 ? (
-            <div className="divide-y divide-border/60">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <SkeletonActivityRow key={i} />
-              ))}
-            </div>
-          ) : activities.length === 0 ? (
-            <EmptyState
-              icon={History}
-              title="Aucune activité récente"
-              description="Les actions sur vos projets apparaîtront ici."
-            >
-              {!isViewerUser && (
-                <Link
-                  to="/projects"
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Créer une tâche
-                </Link>
-              )}
-            </EmptyState>
-          ) : (
-            <ul className="divide-y divide-border/60 text-sm">
-              {activities.map((a, idx) => {
-                const { line, quote, extra } = humanizeActivityLine(a, user);
-                const actorName = a.actor?.name || 'Membre';
-                return (
-                  <motion.li
-                    key={a.id}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.04, duration: 0.2 }}
-                    className="flex gap-3 py-3 first:pt-0"
-                  >
-                    <UserAvatar name={actorName} src={a.actor?.avatar_url} size="lg" className="mt-0.5 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-foreground">
-                        {line}
-                        {quote && <span className="font-semibold"> {quote}</span>}
-                        {extra && (
-                          <span className="mt-0.5 block text-xs text-muted-foreground">{extra}</span>
-                        )}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {a.created_at ? formatRelativeTimeFr(a.created_at) : ''}
-                      </p>
-                    </div>
-                  </motion.li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-      )}
-
-      {/* Stats (vue globale / membre — masqué pour invités : stats compactes plus haut) */}
-      {!isViewerUser && (
-      <div className={`grid gap-4 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
-        <StatCard
-          icon={FolderKanban}
-          label={isAdmin ? 'Projets totaux' : 'Mes projets'}
-          value={totalProjects}
-          sub={`${activeProjects.length} actifs`}
-          color="text-blue-600 bg-blue-50"
-        />
-        <StatCard
-          icon={ListTodo}
-          label={isAdmin ? 'Tâches totales' : isMember && !isViewerUser ? 'Mes tâches assignées' : 'Mes tâches'}
-          value={totalTasks}
-          sub={`${completedCount} terminées`}
-          color="text-emerald-600 bg-emerald-50"
-        />
-        <StatCard
-          icon={Clock}
-          label="Progression projets"
-          value={`${projectProgress}%`}
-          sub="Moyenne globale"
-          color="text-indigo-600 bg-indigo-50"
-        />
-        <StatCard
-          icon={AlertTriangle}
-          label={isAdmin ? 'Tâches en retard' : 'Mes tâches à risque'}
-          value={tasksAtRiskCount}
-          sub={`${overdueCount} en retard`}
-          color={tasksAtRiskCount > 0 ? 'text-red-600 bg-red-50' : 'text-emerald-600 bg-emerald-50'}
-        />
-
-        {isAdmin && (
-          <StatCard
-            icon={AlertTriangle}
-            label="Projets à risque"
-            value={riskyProjects.length}
-            sub={`${riskyProjects.filter((p) => (p.overdue_tasks || 0) > 0).length} avec retard`}
-            color={riskyProjects.length > 0 ? 'text-amber-600 bg-amber-50' : 'text-emerald-600 bg-emerald-50'}
-          />
-        )}
-      </div>
-      )}
-
-      {isAdmin && (
-        <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Alertes IA — vue globale</CardTitle>
-            <p className="text-sm font-normal text-foreground">
-              Tâches à risque (score IA) :{' '}
-              <span className="font-semibold text-amber-700">{aiRiskTotal}</span> sur l’ensemble des projets.
-              {' · '}
-              Estimé cumulé {estActualAgg.est.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h vs réel{' '}
-              {estActualAgg.act.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h
-              {estActualAgg.est - estActualAgg.act !== 0 && (
-                <span className="text-muted-foreground">
-                  {' '}
-                  (écart { (estActualAgg.est - estActualAgg.act).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) } h)
-                </span>
-              )}
-            </p>
-            <p className="text-sm font-normal text-muted-foreground">
-              Retards, charge et suggestions d’assignation — détail dans IA &amp; Analytics.
-            </p>
-          </CardHeader>
-          <CardContent className="grid gap-6 lg:grid-cols-2">
-            <div>
-              <p className="mb-2 text-sm font-medium text-foreground">Tâches prioritaires</p>
-              {flatTasks.filter((t) => t.is_overdue || tasksAtRisk.some((x) => x.id === t.id)).length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucune alerte tâche pour le moment.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {flatTasks
-                    .filter((t) => t.is_overdue || tasksAtRisk.some((x) => x.id === t.id))
-                    .slice(0, 6)
-                    .map((t) => {
-                      const pname = projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
-                      return (
-                        <li key={t.id}>
-                          <Link
-                            to={`/projects/${t.project_id}?highlightTask=${t.id}`}
-                            className="block rounded-xl border border-border/80 bg-card px-3 py-2.5 text-sm shadow-sm transition-all hover:border-primary/25 hover:shadow-md"
-                          >
-                            <span className="font-medium text-foreground">{t.title}</span>
-                            <span className="mt-0.5 block text-xs text-muted-foreground">{pname}</span>
-                            <DashboardTaskBadges task={t} />
-                          </Link>
-                        </li>
-                      );
-                    })}
-                </ul>
-              )}
-            </div>
-            <div>
-              <p className="mb-2 text-sm font-medium text-foreground">Projets à risque</p>
-              {riskyProjects.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucun projet signalé.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {riskyProjects.slice(0, 6).map((rp) => {
-                    const pname = projects?.find((p) => p.id === rp.projectId)?.name || `Projet #${rp.projectId}`;
-                    return (
-                      <li key={rp.projectId}>
-                        <Link
-                          to={`/projects/${rp.projectId}`}
-                          className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-accent/50"
-                        >
-                          <span className="font-medium text-foreground">{pname}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {(rp.overdue_tasks || 0) > 0 ? `${rp.overdue_tasks} retard` : ''}{' '}
-                            {Math.round(rp.avg_progress || 0)}% av.
-                          </span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-            <div className="lg:col-span-2">
-              <Link
-                to="/ai"
-                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-              >
-                Ouvrir IA &amp; Analytics <ArrowRight size={14} />
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {isAdmin && <UserManagement variant="dashboard" />}
-
-      {!isAdmin && !isViewerUser && tasksAtRiskList.length > 0 && (
-        <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">
-              {isMember && !isViewerUser ? 'Vos tâches en retard ou à risque' : 'Alertes personnelles'}
-            </CardTitle>
-            {isMember && !isViewerUser && (
-              <p className="text-sm font-normal text-muted-foreground">
-                Uniquement les tâches qui vous sont assignées.
-              </p>
-            )}
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {tasksAtRiskList
-                .slice()
-                .sort((a, b) => (a.due_date || a.effective_end_date || '').localeCompare(b.due_date || b.effective_end_date || ''))
-                .slice(0, 5)
-                .map((t) => (
-                  <Link
-                    key={t.id}
-                    to={`/projects/${t.project_id}?highlightTask=${t.id}`}
-                    className="flex flex-col gap-2 rounded-xl border border-border/80 bg-card p-3 shadow-sm transition-all hover:border-amber-200/80 hover:shadow-md"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">{t.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {(t.due_date || t.effective_end_date)
-                            ? `Échéance : ${new Date(t.due_date || t.effective_end_date).toLocaleDateString('fr-FR')}`
-                            : 'Échéance : —'}
-                        </p>
-                      </div>
-                      <Badge variant="destructive" className="shrink-0">
-                        {t.is_overdue ? 'En retard' : 'À risque'}
-                      </Badge>
-                    </div>
-                    <DashboardTaskBadges task={t} />
-                  </Link>
-                ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!isViewerUser && (
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">
-              {isAdmin ? 'Charge de travail des équipes' : isMember && !isViewerUser ? 'Ma charge (tâches assignées)' : 'Ma charge de travail'}
-            </CardTitle>
-            {usePersonalDashboardApi && ms?.workload_percent != null && (
-              <div className="mt-3">
-                <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                  <span>Charge relative (tâches non terminées / seuil)</span>
-                  <span className="font-semibold text-foreground">{ms.workload_percent}%</span>
-                </div>
-                <div className="h-2 rounded-full bg-accent">
-                  <div
-                    className="h-2 rounded-full bg-amber-500 transition-all"
-                    style={{ width: `${ms.workload_percent}%` }}
-                  />
-                </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {ms.workload_open_tasks ?? 0} tâche(s) ouverte(s)
-                </p>
-              </div>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {workloadEntries.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune affectation trouvée</p>
-            ) : workloadEntries.map((entry) => {
-              const max = Math.max(...workloadEntries.map((u) => u.count), 1);
-              return (
-                <div key={entry.id}>
-                  <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                    <span>{entry.name}</span>
-                    <span>{entry.count} tâches</span>
-                  </div>
-                  <div className="h-2 rounded bg-accent">
-                    <div className="h-2 rounded bg-blue-500" style={{ width: `${(entry.count / max) * 100}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-
-        <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{isAdmin ? 'Distribution globale des tâches' : 'Distribution de mes tâches'}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SimplePieChart data={statusDistribution} />
-          </CardContent>
-        </Card>
-      </div>
-      )}
-
-      {!isViewerUser && (
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Flux workflow (à faire / en cours / terminé / à risque)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SimplePieChart data={workflowDistribution} />
-          </CardContent>
-        </Card>
-          <Card className="transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Prochaines échéances</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {upcomingDeadlines.length === 0 ? (
-                <EmptyState
-                  icon={Calendar}
-                  title="Aucune échéance à venir"
-                  description="Les prochaines dates limites s’afficheront ici."
-                  className="border-0 bg-transparent py-6"
-                >
-                  <Link
-                    to="/projects"
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Créer une tâche
-                  </Link>
-                </EmptyState>
-              ) : (
-                <ul className="space-y-2">
-                  {upcomingDeadlines.map((t) => {
-                    const pname =
-                      t.project_name || projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
-                    const end = t.due_date || t.effective_end_date;
-                    return (
-                      <li key={t.id}>
-                        <Link
-                          to={`/projects/${t.project_id}?highlightTask=${t.id}`}
-                          className="block rounded-xl border border-border/80 bg-card px-3 py-2.5 text-sm shadow-sm transition-all hover:border-primary/25 hover:shadow-md"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="min-w-0 truncate font-medium text-foreground">{t.title}</span>
-                            <span className="shrink-0 text-xs text-muted-foreground">
-                              {end ? new Date(end).toLocaleDateString('fr-FR') : '—'}
-                            </span>
-                          </div>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">{pname}</span>
-                          <DashboardTaskBadges task={t} />
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-      </div>
-      )}
-
-      {usePersonalDashboardApi && !isViewerUser && (memberDash?.recent_tasks?.length > 0) && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Mes tâches récentes (assignées)</CardTitle>
-            <p className="text-sm font-normal text-muted-foreground">Liste issue de votre espace membre.</p>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2">
-              {memberDash.recent_tasks.map((t) => {
-                const pname = t.project_name || projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
-                return (
-                  <li key={t.id}>
-                    <Link
-                      to={`/projects/${t.project_id}`}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm hover:bg-accent/50"
-                    >
-                      <span className="font-medium text-foreground">{t.title}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {pname} · {t.progress_percent ?? 0}%
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Liste projets (invités : section « Mes projets assignés » plus haut) */}
-      {!isViewerUser && (
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-foreground">{isAdmin ? 'Tous les projets' : 'Mes projets'}</h2>
-          <Link to="/projects" className="flex items-center gap-1 text-sm text-primary transition-transform hover:translate-x-0.5 hover:underline">
-            Voir tout <ArrowRight size={14} />
-          </Link>
-        </div>
-        {projects.length === 0 ? (
-          <EmptyState
-            icon={FolderKanban}
-            title="Aucun projet pour l’instant"
-            description="Créez un projet pour organiser vos tâches et inviter votre équipe."
-          >
-            <Link
-              to="/projects"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              <Plus className="h-4 w-4" />
-              Nouveau projet
-            </Link>
-          </EmptyState>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {projects.slice(0, 6).map((project) => (
-              <ProjectCard key={project.id} project={project} />
-            ))}
-          </div>
-        )}
-      </div>
-      )}
     </div>
   );
 }
@@ -1278,16 +1207,23 @@ function SimplePieChart({ data }) {
 }
 
 function StatCard({ icon: Icon, label, value, sub, color }) {
+  const accentBar = color.includes('blue') ? 'from-blue-400 to-blue-600'
+    : color.includes('emerald') ? 'from-emerald-400 to-emerald-600'
+    : color.includes('indigo') ? 'from-indigo-400 to-indigo-600'
+    : color.includes('red') ? 'from-red-400 to-red-600'
+    : color.includes('amber') ? 'from-amber-400 to-amber-600'
+    : 'from-slate-300 to-slate-500';
   return (
-    <Card className="group rounded-2xl border-border/80 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
-      <CardContent className="flex items-center gap-4 p-6">
-        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${color}`}>
-          <Icon size={24} />
+    <Card className="group relative overflow-hidden rounded-2xl border-border/80 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
+      <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${accentBar}`} />
+      <CardContent className="flex items-center gap-4 p-5">
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${color}`}>
+          <Icon size={22} />
         </div>
-        <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="text-2xl font-bold text-foreground transition-colors group-hover:text-primary">{value}</p>
-          {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+          <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground transition-colors group-hover:text-primary">{value}</p>
+          {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
         </div>
       </CardContent>
     </Card>
@@ -1295,14 +1231,13 @@ function StatCard({ icon: Icon, label, value, sub, color }) {
 }
 
 function ProjectCard({ project }) {
-  const statusVariant = {
-    active: 'success',
-    planning: 'warning',
-    on_hold: 'secondary',
-    completed: 'default',
-    cancelled: 'destructive',
+  const statusBar = {
+    active: 'from-emerald-400 to-emerald-500',
+    planning: 'from-amber-400 to-amber-500',
+    on_hold: 'from-slate-300 to-slate-400',
+    completed: 'from-blue-400 to-blue-500',
+    cancelled: 'from-red-400 to-red-500',
   };
-
   const statusLabel = {
     active: 'Actif',
     planning: 'Planification',
@@ -1310,49 +1245,55 @@ function ProjectCard({ project }) {
     completed: 'Terminé',
     cancelled: 'Annulé',
   };
-
+  const statusVariant = {
+    active: 'success',
+    planning: 'warning',
+    on_hold: 'secondary',
+    completed: 'default',
+    cancelled: 'destructive',
+  };
   const progress = project.progress_percent || 0;
+  const bar = statusBar[project.status] || 'from-slate-300 to-slate-400';
+  const progressColor = progress >= 80 ? 'bg-emerald-500' : progress >= 40 ? 'bg-blue-500' : 'bg-amber-500';
 
   return (
     <Link to={`/projects/${project.id}`}>
-      <Card className="h-full cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base truncate mr-2">{project.name}</CardTitle>
-            <Badge variant={statusVariant[project.status] || 'outline'}>
+      <Card className="group relative h-full cursor-pointer overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
+        <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${bar}`} />
+        <CardHeader className="pb-2 pt-4">
+          <div className="flex items-start justify-between gap-2">
+            <CardTitle className="line-clamp-1 text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{project.name}</CardTitle>
+            <Badge variant={statusVariant[project.status] || 'outline'} className="shrink-0 text-xs">
               {statusLabel[project.status] || project.status}
             </Badge>
           </div>
         </CardHeader>
-        <CardContent>
-          <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">
+        <CardContent className="pt-0">
+          <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">
             {project.description || 'Aucune description'}
           </p>
-
-          {/* Progress bar */}
           <div className="mb-3">
             <div className="flex justify-between text-xs text-muted-foreground mb-1">
               <span>Progression</span>
-              <span>{progress}%</span>
+              <span className="font-semibold tabular-nums">{progress}%</span>
             </div>
-            <div className="h-1.5 w-full rounded-full bg-gray-100">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className="h-1.5 rounded-full bg-primary transition-all duration-500"
+                className={`h-1.5 rounded-full transition-all duration-700 ${progressColor}`}
                 style={{ width: `${Math.min(progress, 100)}%` }}
               />
             </div>
           </div>
-
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {project.tasks_count !== undefined && (
               <span className="flex items-center gap-1">
-                <CheckCircle2 size={14} />
+                <CheckCircle2 size={12} className="text-emerald-500" />
                 {project.tasks_count} tâches
               </span>
             )}
             {project.members_count !== undefined && (
               <span className="flex items-center gap-1">
-                <Users size={14} />
+                <FolderKanban size={12} className="text-blue-500" />
                 {project.members_count} membres
               </span>
             )}
