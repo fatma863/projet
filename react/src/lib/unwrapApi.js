@@ -9,4 +9,4 @@ export function unwrapCollection(payload, key) {
   return [];
 }
 
-export const POLL_INTERVAL_MS = 15000;
+export const POLL_INTERVAL_MS = 60_000;

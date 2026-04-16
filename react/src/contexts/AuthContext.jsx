@@ -5,23 +5,39 @@ import { applyAppTheme, applyPublicTheme, resolveThemeForUser } from '../lib/the
 
 const AuthContext = createContext(null);
 
+/** Shared post-auth setup */
+function applyUserSession(userData) {
+  localStorage.setItem('user', JSON.stringify(userData));
+  applyAppTheme(resolveThemeForUser(userData));
+  if (userData.locale) {
+    document.documentElement.lang = userData.locale === 'en' ? 'en' : 'fr';
+  }
+}
+
+function clearSession() {
+  disconnectEcho();
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  applyPublicTheme();
+  document.documentElement.lang = 'fr';
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     if (!localStorage.getItem('token')) {
       return null;
     }
     const stored = localStorage.getItem('user');
-    return stored ? JSON.parse(stored) : null;
+    if (!stored) return null;
+    try { return JSON.parse(stored); } catch { return null; }
   });
   const [loading, setLoading] = useState(true);
 
   const fetchUser = useCallback(async () => {
     const token = localStorage.getItem('token');
     if (!token) {
-      localStorage.removeItem('user');
+      clearSession();
       setUser(null);
-      applyPublicTheme();
-      document.documentElement.lang = 'fr';
       setLoading(false);
       return;
     }
@@ -29,18 +45,10 @@ export function AuthProvider({ children }) {
       const { data } = await api.get('/me');
       const userData = data.user || data;
       setUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
-      applyAppTheme(resolveThemeForUser(userData));
-      if (userData.locale) {
-        document.documentElement.lang = userData.locale === 'en' ? 'en' : 'fr';
-      }
+      applyUserSession(userData);
     } catch {
-      disconnectEcho();
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      clearSession();
       setUser(null);
-      applyPublicTheme();
-      document.documentElement.lang = 'fr';
     } finally {
       setLoading(false);
     }
@@ -50,17 +58,25 @@ export function AuthProvider({ children }) {
     fetchUser();
   }, [fetchUser]);
 
+  // Cross-tab logout detection
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === 'token' && !e.newValue) {
+        clearSession();
+        setUser(null);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   const login = async (email, password) => {
     disconnectEcho();
     const { data } = await api.post('/auth/login', { email, password });
     localStorage.setItem('token', data.token);
     const userData = data.user;
-    localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
-    applyAppTheme(resolveThemeForUser(userData));
-    if (userData.locale) {
-      document.documentElement.lang = userData.locale === 'en' ? 'en' : 'fr';
-    }
+    applyUserSession(userData);
     return data;
   };
 
@@ -71,12 +87,8 @@ export function AuthProvider({ children }) {
     });
     localStorage.setItem('token', data.token);
     const userData = data.user;
-    localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
-    applyAppTheme(resolveThemeForUser(userData));
-    if (userData.locale) {
-      document.documentElement.lang = userData.locale === 'en' ? 'en' : 'fr';
-    }
+    applyUserSession(userData);
     return data;
   };
 
@@ -86,12 +98,8 @@ export function AuthProvider({ children }) {
     } catch {
       // ignore
     }
-    disconnectEcho();
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearSession();
     setUser(null);
-    applyPublicTheme();
-    document.documentElement.lang = 'fr';
   };
 
   return (

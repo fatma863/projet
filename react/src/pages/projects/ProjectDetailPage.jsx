@@ -12,7 +12,7 @@ import { Card, CardContent } from '../../components/ui/Card';
 import TaskModal from './TaskModal';
 import { DueDateRangeFilter } from '../../components/tasks/DueDateRangeFilter';
 import { WORKFLOW_COLUMNS, ISSUE_TYPE_LABELS } from '../../lib/taskConstants';
-import { PROJECT_ROLE_LABELS, formatProjectRole } from '../../lib/roles';
+import { PROJECT_ROLE_LABELS, formatProjectRole, isGuestViewer } from '../../lib/roles';
 import {
   ArrowLeft, Plus, GripVertical, Clock, User, AlertTriangle,
   BarChart3, Users, Calendar, Mail, Download, History, Layers, ChevronDown,
@@ -105,6 +105,7 @@ export default function ProjectDetailPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [tab, setTab] = useState('kanban');
   const isAdmin = user?.roles?.includes('admin');
+  const isViewer = isGuestViewer(user);
 
   const { data: project, isLoading, error } = useQuery({
     queryKey: ['project', id],
@@ -495,6 +496,8 @@ export default function ProjectDetailPage() {
           { key: 'members', label: 'Membres' },
           { key: 'activity', label: 'Historique' },
           ...(isAdmin ? [{ key: 'gantt', label: 'Gantt' }] : []),
+          { key: 'files', label: 'Fichiers' },
+          ...(isViewer ? [{ key: 'reports', label: 'Rapports IA' }] : []),
         ].map((t) => (
           <button
             key={t.key}
@@ -613,7 +616,6 @@ export default function ProjectDetailPage() {
         <MembersTab projectId={id} canEditProject={canEditProject} canInvite={canInvite} onOpenInvite={() => setInviteOpen(true)} />
       )}
       {tab === 'activity' && <ProjectActivityTab projectId={id} />}
-      {/* Onglet Agile supprimé */}
       {tab === 'gantt' && (
         <div className="pt-4">
           {loadingGantt ? (
@@ -623,6 +625,9 @@ export default function ProjectDetailPage() {
           )}
         </div>
       )}
+
+      {tab === 'files' && <ProjectFilesTab projectId={id} tasks={tasks} />}
+      {tab === 'reports' && <ProjectReportsTab projectId={id} />}
 
       {/* Modale tâche */}
       <TaskModal
@@ -753,558 +758,6 @@ function InviteUserModal({ open, onClose, projectId, onInvited }) {
         )}
       </div>
     </Modal>
-  );
-}
-
-function AgileTab({ projectId, canWriteProject, onOpenTask }) {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const isAdmin = user?.roles?.includes('admin');
-  const [newSprint, setNewSprint] = useState({ name: '', goal: '', start_date: '', end_date: '' });
-  const [agileSection, setAgileSection] = useState('backlog');
-  const [dragBacklogIndex, setDragBacklogIndex] = useState(null);
-
-  const { data: sprints, isLoading: loadingSprints } = useQuery({
-    queryKey: ['sprints', projectId],
-    queryFn: () => api.get(`/projects/${projectId}/sprints`).then((r) => r.data.sprints?.data || r.data.sprints || []),
-  });
-
-  const { data: backlog, isLoading: loadingBacklog } = useQuery({
-    queryKey: ['backlog', projectId],
-    queryFn: () => api.get(`/projects/${projectId}/backlog`).then((r) => r.data.tasks?.data || r.data.tasks || []),
-  });
-
-  const activeSprint = useMemo(
-    () => (sprints || []).find((s) => s.status === 'active'),
-    [sprints],
-  );
-
-  const plannedSprints = useMemo(
-    () => (sprints || []).filter((s) => s.status === 'planned').sort((a, b) => (b.id || 0) - (a.id || 0)),
-    [sprints],
-  );
-
-  const completedSprints = useMemo(
-    () => (sprints || []).filter((s) => s.status === 'completed').sort((a, b) => {
-      const ta = a.ended_at ? new Date(a.ended_at).getTime() : 0;
-      const tb = b.ended_at ? new Date(b.ended_at).getTime() : 0;
-      return tb - ta;
-    }),
-    [sprints],
-  );
-
-  const velocitySprints = useMemo(
-    () => completedSprints.filter((s) => Number(s.velocity ?? s.completed_story_points ?? 0) > 0),
-    [completedSprints],
-  );
-
-  const { data: sprintTasksRaw, isLoading: loadingSprintTasks } = useQuery({
-    queryKey: ['sprint-tasks', projectId, activeSprint?.id],
-    queryFn: () => api.get(`/projects/${projectId}/tasks?all=1&sprint_id=${activeSprint.id}`).then((r) => (
-      r.data?.tasks?.data ?? r.data?.tasks ?? r.data?.data ?? []
-    )),
-    enabled: Boolean(activeSprint?.id),
-  });
-
-  const sprintTasks = useMemo(() => {
-    const list = sprintTasksRaw || [];
-    return list.map((t) => ({
-      ...t,
-      workflow_status: normalizeWorkflowStatus(getTaskStatus(t)),
-    }));
-  }, [sprintTasksRaw]);
-
-  const workflowMoveMutation = useMutation({
-    mutationFn: ({ taskId, workflow_status }) =>
-      api.put(`/tasks/${taskId}`, { workflow_status }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['sprint-tasks', projectId] });
-    },
-  });
-
-  const createSprint = useMutation({
-    mutationFn: (payload) => api.post(`/projects/${projectId}/sprints`, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sprints', projectId] });
-      setNewSprint({ name: '', goal: '', start_date: '', end_date: '' });
-      toast.success('Sprint créé.');
-    },
-    onError: (e) => {
-      const msg =
-        e?.response?.data?.message
-        || (e?.response?.data?.errors && Object.values(e.response.data.errors).flat().join(' '))
-        || 'Impossible de créer le sprint.';
-      toast.error(msg);
-    },
-  });
-
-  const startSprint = useMutation({
-    mutationFn: (sprintId) => api.post(`/projects/${projectId}/sprints/${sprintId}/start`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', projectId] }),
-    onError: (e) => toast.error(e.response?.data?.message || 'Impossible de démarrer le sprint'),
-  });
-
-  const completeSprint = useMutation({
-    mutationFn: (sprintId) => api.post(`/projects/${projectId}/sprints/${sprintId}/complete`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', projectId] }),
-    onError: (e) => toast.error(e.response?.data?.message || 'Impossible de terminer le sprint'),
-  });
-
-  const assignToSprint = useMutation({
-    mutationFn: ({ sprintId, taskId }) => api.post(`/projects/${projectId}/sprints/${sprintId}/tasks/${taskId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['backlog', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['sprints', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['sprint-tasks', projectId] });
-    },
-    onError: (e) => toast.error(e.response?.data?.message || 'Assignation impossible'),
-  });
-
-  const reorderBacklog = useMutation({
-    mutationFn: (taskIds) => api.patch(`/projects/${projectId}/backlog/reorder`, { task_ids: taskIds }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backlog', projectId] }),
-    onError: (e) => toast.error(e.response?.data?.message || 'Erreur de réordonnancement'),
-  });
-
-  const handleBacklogReorder = (fromIndex, toIndex) => {
-    const list = [...(backlog || [])];
-    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
-    const [x] = list.splice(fromIndex, 1);
-    list.splice(toIndex, 0, x);
-    reorderBacklog.mutate(list.map((t) => t.id));
-  };
-
-  const sprintTasksByWorkflow = (columnId) =>
-    sprintTasks
-      .filter((t) => normalizeWorkflowStatus(getTaskStatus(t)) === columnId)
-      .sort((a, b) => (a.kanban_order || 0) - (b.kanban_order || 0));
-
-  const handleSprintDrop = (e, workflow) => {
-    e.preventDefault();
-    const taskId = parseInt(e.dataTransfer.getData('taskId'), 10);
-    if (!taskId) return;
-    workflowMoveMutation.mutate({ taskId, workflow_status: workflow });
-  };
-
-  const handleSprintDragOver = (e) => e.preventDefault();
-
-  const maxVelocity = Math.max(
-    1,
-    ...(velocitySprints.length ? velocitySprints.map((s) => Number(s.velocity ?? s.completed_story_points ?? 0)) : [0]),
-  );
-
-  const sprintStatusLabel = (s) => {
-    if (s === 'planned') return 'Planifié';
-    if (s === 'active') return 'En cours';
-    if (s === 'completed') return 'Terminé';
-    return s;
-  };
-
-  const sprintStatusBadgeClass = (s) => {
-    if (s === 'planned') return 'bg-slate-200 text-slate-800';
-    if (s === 'active') return 'bg-emerald-100 text-emerald-800';
-    if (s === 'completed') return 'bg-blue-100 text-blue-800';
-    return 'bg-secondary/20 text-secondary-foreground';
-  };
-
-  const renderSprintMetrics = (s) => {
-    const done = s.tasks_done_count ?? 0;
-    const total = s.tasks_count ?? 0;
-    const rem = s.tasks_remaining_count ?? Math.max(0, total - done);
-    const spDone = s.completed_story_points ?? 0;
-    const spTot = s.total_story_points ?? 0;
-    const spRem = s.remaining_story_points ?? Math.max(0, spTot - spDone);
-    return { done, total, rem, spDone, spTot, spRem };
-  };
-
-  const SprintMetricsRow = ({ s }) => {
-    const pct = s.progress_percent ?? 0;
-    const m = renderSprintMetrics(s);
-    return (
-      <div className="space-y-2">
-        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${Math.min(100, pct)}%` }}
-          />
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>
-            <span className="font-medium text-foreground">{pct}%</span> avancement
-          </span>
-          <span>
-            {m.spDone}/{m.spTot || '—'} pts story
-          </span>
-          <span>
-            {m.done}/{m.total} tâches terminées
-          </span>
-          <span>
-            {m.rem} restante{m.rem > 1 ? 's' : ''}
-          </span>
-        </div>
-      </div>
-    );
-  };
-
-  const sprintDropProps = (sprintId) => ({
-    onDragOver: (e) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-    },
-    onDrop: (e) => {
-      e.preventDefault();
-      const tid = Number(e.dataTransfer.getData('taskId') || e.dataTransfer.getData('text/plain'));
-      if (tid) assignToSprint.mutate({ sprintId, taskId: tid });
-    },
-  });
-
-  const sprintSummaryLine = (s) => {
-    if (!s) return '';
-    if (s.start_date && s.end_date) return `${s.start_date} → ${s.end_date}`;
-    if (s.start_date) return `Début : ${s.start_date}`;
-    if (s.end_date) return `Fin : ${s.end_date}`;
-    return 'Dates non définies';
-  };
-
-  return (
-    <div className="space-y-8">
-      {canWriteProject && (
-        <Card>
-          <CardContent className="p-5">
-            <h3 className="mb-1 font-semibold text-foreground">Nouveau sprint</h3>
-            <p className="mb-4 text-xs text-muted-foreground">
-              La date de fin doit être après la date de début. Un seul sprint actif à la fois.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <input className="h-10 rounded-md border border-input bg-card px-3 text-sm text-foreground" placeholder="Nom du sprint" value={newSprint.name} onChange={(e) => setNewSprint((s) => ({ ...s, name: e.target.value }))} />
-              <input className="h-10 rounded-md border border-input bg-card px-3 text-sm text-foreground" placeholder="Objectif" value={newSprint.goal} onChange={(e) => setNewSprint((s) => ({ ...s, goal: e.target.value }))} />
-              <input className="h-10 rounded-md border border-input bg-card px-3 text-sm text-foreground" type="date" value={newSprint.start_date} onChange={(e) => setNewSprint((s) => ({ ...s, start_date: e.target.value }))} />
-              <input className="h-10 rounded-md border border-input bg-card px-3 text-sm text-foreground" type="date" value={newSprint.end_date} onChange={(e) => setNewSprint((s) => ({ ...s, end_date: e.target.value }))} />
-            </div>
-            <div className="mt-4">
-              <Button size="sm" onClick={() => createSprint.mutate(newSprint)} disabled={!newSprint.name || createSprint.isPending}>
-                {createSprint.isPending ? 'Création…' : 'Créer le sprint'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {loadingSprints ? (
-        <div className="flex justify-center py-12"><Spinner size="lg" /></div>
-      ) : (
-        <div className="space-y-6">
-          {activeSprint && (
-            <div>
-              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Sprint actif</h3>
-              <div
-                className={cn(
-                  'rounded-xl border-2 border-primary/40 bg-primary/[0.06] p-4 shadow-sm dark:bg-primary/10',
-                )}
-                {...(canWriteProject && activeSprint ? sprintDropProps(activeSprint.id) : {})}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-lg font-semibold text-foreground">{activeSprint.name}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {activeSprint.start_date && activeSprint.end_date
-                        ? `${activeSprint.start_date} → ${activeSprint.end_date}`
-                        : 'Dates non définies'}
-                    </p>
-                    <p className="mt-2 text-sm text-muted-foreground">{activeSprint.goal || '—'}</p>
-                  </div>
-                  <span className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${sprintStatusBadgeClass('active')}`}>
-                    {sprintStatusLabel('active')}
-                  </span>
-                </div>
-                <div className="mt-4">
-                  <SprintMetricsRow s={activeSprint} />
-                </div>
-                {canWriteProject && (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={completeSprint.isPending}
-                      onClick={() => completeSprint.mutate(activeSprint.id)}
-                    >
-                      Terminer le sprint
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {plannedSprints.length > 0 && (
-            <div>
-              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Planifiés</h3>
-              <div className="space-y-3">
-                {plannedSprints.map((s) => (
-                  <div
-                    key={s.id}
-                    className="rounded-xl border border-border bg-card p-4"
-                    {...(canWriteProject ? sprintDropProps(s.id) : {})}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-foreground">{s.name}</p>
-                        <div className="mt-3">
-                          <SprintMetricsRow s={s} />
-                        </div>
-                        <p className="mt-2 text-xs text-muted-foreground">{s.goal || 'Aucun objectif'}</p>
-                      </div>
-                      <span className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${sprintStatusBadgeClass('planned')}`}>
-                        {sprintStatusLabel('planned')}
-                      </span>
-                    </div>
-                    {canWriteProject && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" disabled={startSprint.isPending} onClick={() => startSprint.mutate(s.id)}>
-                          Démarrer le sprint
-                        </Button>
-                      </div>
-                    )}
-                    {canWriteProject && (
-                      <p className="mt-2 text-[11px] text-muted-foreground">Déposez une tâche du backlog (onglet Backlog) sur cette carte pour l’assigner au sprint.</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {completedSprints.length > 0 && (
-            <details className="group rounded-xl border border-border bg-card">
-              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-foreground marker:content-none [&::-webkit-details-marker]:hidden">
-                <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
-                Sprints terminés ({completedSprints.length})
-              </summary>
-              <div className="space-y-3 border-t border-border px-4 pb-4 pt-2">
-                {completedSprints.map((s) => (
-                  <div key={s.id} className="rounded-lg border border-border/80 bg-muted/20 p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="font-medium text-foreground">{s.name}</p>
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${sprintStatusBadgeClass('completed')}`}>
-                        Terminé
-                      </span>
-                    </div>
-                    <div className="mt-2">
-                      <SprintMetricsRow s={s} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
-
-          {(!sprints || sprints.length === 0) && (
-            <p className="text-sm text-muted-foreground">Aucun sprint pour ce projet.</p>
-          )}
-        </div>
-      )}
-
-      <Card>
-        <CardContent className="p-5">
-          <h3 className="mb-1 font-semibold text-foreground">Vélocité (points terminés par sprint)</h3>
-          <p className="mb-4 text-xs text-muted-foreground">Basée sur les story points des tâches marquées terminées dans chaque sprint.</p>
-          {loadingSprints ? (
-            <div className="flex justify-center py-8"><Spinner /></div>
-          ) : velocitySprints.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-              Pas encore de données : terminez au moins un sprint avec des tâches « terminées » pour afficher la vélocité.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {velocitySprints.map((s) => {
-                const v = Number(s.velocity ?? s.completed_story_points ?? 0);
-                const w = Math.min(100, Math.round((v / maxVelocity) * 100));
-                return (
-                  <div key={s.id} className="flex items-center gap-3">
-                    <span className="w-32 shrink-0 truncate text-xs font-medium text-foreground">{s.name}</span>
-                    <div className="h-2.5 min-w-0 flex-1 rounded-full bg-muted">
-                      <div className="h-2.5 rounded-full bg-primary transition-all" style={{ width: `${w}%` }} />
-                    </div>
-                    <span className="w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{v} pts</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="flex flex-wrap gap-2 border-b border-border pb-2">
-        <button
-          type="button"
-          onClick={() => setAgileSection('backlog')}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-            agileSection === 'backlog'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-          }`}
-        >
-          Backlog
-        </button>
-        <button
-          type="button"
-          onClick={() => setAgileSection('sprint')}
-          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-            agileSection === 'sprint'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-          }`}
-        >
-          <Layers className="h-4 w-4" />
-          Sprint actif
-        </button>
-      </div>
-
-      {agileSection === 'backlog' && (
-        <Card>
-          <CardContent className="p-5">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="font-semibold text-foreground">Backlog</h3>
-                <p className="text-xs text-muted-foreground">
-                  Priorité · story points · ordre par glisser-déposer. Assignation par boutons ou en déposant sur un sprint (ci-dessus).
-                </p>
-              </div>
-            </div>
-            {loadingBacklog ? (
-              <div className="flex justify-center py-12"><Spinner size="lg" /></div>
-            ) : (backlog || []).length === 0 ? (
-              <EmptyState
-                title="Backlog vide"
-                description="Aucune tâche hors sprint pour ce projet. Créez une tâche ou retirez-en une d’un sprint."
-              />
-            ) : (
-              <div className={`space-y-2 ${reorderBacklog.isPending ? 'opacity-70' : ''}`}>
-                {(backlog || []).map((task, index) => {
-                  const pr = task.priority || 'medium';
-                  return (
-                    <div
-                      key={task.id}
-                      draggable={canWriteProject}
-                      onDragStart={(e) => {
-                        setDragBacklogIndex(index);
-                        const tid = String(task.id);
-                        e.dataTransfer.setData('text/plain', tid);
-                        e.dataTransfer.setData('taskId', tid);
-                        e.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const dragged = Number(e.dataTransfer.getData('text/plain'));
-                        const from = dragBacklogIndex;
-                        if (from == null || Number.isNaN(dragged)) return;
-                        handleBacklogReorder(from, index);
-                        setDragBacklogIndex(null);
-                      }}
-                      className={cn(
-                        'rounded-xl border border-border bg-card p-3 transition-shadow',
-                        canWriteProject && 'cursor-grab active:cursor-grabbing hover:border-primary/30',
-                      )}
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex min-w-0 items-start gap-3">
-                          {canWriteProject && <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span
-                                className={cn(
-                                  'inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                                  PRIORITY_COLORS[pr] || PRIORITY_COLORS.medium,
-                                  'dark:ring-1 dark:ring-white/10',
-                                )}
-                              >
-                                {PRIORITY_LABELS_FR[pr] || pr}
-                              </span>
-                              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-foreground">
-                                {task.story_points != null ? `${task.story_points} pts` : '— pts'}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-sm font-medium text-foreground">{task.title}</p>
-                          </div>
-                        </div>
-                        {canWriteProject && (
-                          <div className="flex flex-wrap justify-end gap-1.5">
-                            {(sprints || [])
-                              .filter((s) => s.status === 'active' || s.status === 'planned')
-                              .map((s) => (
-                                <Button
-                                  key={s.id}
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 shrink-0 px-2 text-xs"
-                                  disabled={assignToSprint.isPending}
-                                  onClick={() => assignToSprint.mutate({ sprintId: s.id, taskId: task.id })}
-                                  title={`Assigner à ${s.name}`}
-                                >
-                                  → {s.name.length > 18 ? `${s.name.slice(0, 16)}…` : s.name}
-                                </Button>
-                              ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {canWriteProject && (backlog || []).length > 1 && (
-              <p className="mt-4 text-xs text-muted-foreground">
-                Glissez les lignes pour changer l’ordre (priorité visuelle). Glissez une ligne vers la carte « Sprint actif » ou « Planifiés » plus haut pour l’assigner.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {agileSection === 'sprint' && (
-        <div className="space-y-3">
-          {!activeSprint ? (
-            <EmptyState
-              icon={Layers}
-              title="Aucun sprint actif"
-              description="Démarrez un sprint planifié pour afficher le tableau Kanban filtré sur ce sprint."
-            />
-          ) : loadingSprintTasks ? (
-            <div className="flex justify-center py-16"><Spinner size="lg" /></div>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{activeSprint.name}</span>
-                <span>·</span>
-                <span>{sprintSummaryLine(activeSprint)}</span>
-              </div>
-              {sprintTasks.length === 0 ? (
-                <EmptyState
-                  title="Aucune tâche dans ce sprint"
-                  description="Assignez des tâches depuis le backlog ou déplacez-les vers ce sprint."
-                />
-              ) : (
-                <KanbanBoard
-                  columns={WORKFLOW_COLUMNS}
-                  tasksByWorkflow={sprintTasksByWorkflow}
-                  onDrop={handleSprintDrop}
-                  onDragOver={handleSprintDragOver}
-                  onAddTask={() => {}}
-                  onEditTask={(task) => onOpenTask?.(task)}
-                  canWriteProject={canWriteProject}
-                  isAdmin={isAdmin}
-                  movePending={workflowMoveMutation.isPending}
-                />
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1493,7 +946,7 @@ function KanbanBoard({
                 {tasksByWorkflow(col.id).length}
               </span>
             </div>
-            {canWriteProject && (
+            {canWriteProject && col.id !== 'done' && (
               <button
                 type="button"
                 onClick={() => onAddTask(col.id)}
@@ -1511,6 +964,11 @@ function KanbanBoard({
                 task={task}
                 onClick={() => onEditTask(task)}
                 canWriteTask={canWriteProject && (isAdmin || task?.access?.can_edit !== false)}
+                columns={columns}
+                currentColumn={col.id}
+                onMoveToColumn={(targetCol) => {
+                  onDrop({ preventDefault: () => {}, dataTransfer: { getData: () => String(task.id) } }, targetCol);
+                }}
               />
             ))}
           </div>
@@ -1520,7 +978,7 @@ function KanbanBoard({
   );
 }
 
-function KanbanCard({ task, onClick, canWriteTask }) {
+function KanbanCard({ task, onClick, canWriteTask, columns, currentColumn, onMoveToColumn }) {
   const handleDragStart = (e) => {
     e.dataTransfer.setData('taskId', task.id.toString());
   };
@@ -1628,6 +1086,24 @@ function KanbanCard({ task, onClick, canWriteTask }) {
           </div>
         )}
       </div>
+      {/* Mobile: move-to-column select (touch devices can't drag) */}
+      {canWriteTask && columns && onMoveToColumn && (
+        <div className="mt-2 sm:hidden">
+          <select
+            className="w-full rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs text-foreground"
+            value={currentColumn}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => {
+              e.stopPropagation();
+              if (e.target.value !== currentColumn) onMoveToColumn(e.target.value);
+            }}
+          >
+            {columns.map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -1637,15 +1113,9 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
   const [showAdd, setShowAdd] = useState(false);
   const [role, setRole] = useState('member');
   const [userSearch, setUserSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const searchWrapRef = useRef(null);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(userSearch.trim()), 150);
-    return () => clearTimeout(t);
-  }, [userSearch]);
 
   useEffect(() => {
     const onDoc = (e) => {
@@ -1664,31 +1134,34 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
     )),
   });
 
-  const searchReady = debouncedSearch.length >= 2;
-
-  const { data: searchUsers = [], isFetching: searchLoading } = useQuery({
-    queryKey: ['project-user-search', projectId, debouncedSearch],
+  const { data: allUsers = [], isFetching: usersLoading } = useQuery({
+    queryKey: ['project-user-search', projectId],
     queryFn: () =>
       api
-        .get(`/projects/${projectId}/user-search`, { params: { search: debouncedSearch } })
+        .get(`/projects/${projectId}/user-search`)
         .then((r) => {
           const raw = r.data?.users ?? r.data?.data ?? [];
           return Array.isArray(raw) ? raw : [];
         }),
-    enabled: showAdd && canEditProject && searchReady,
-    staleTime: 20_000,
+    enabled: showAdd && canEditProject,
+    staleTime: 30_000,
   });
 
-  const trimmedInput = userSearch.trim();
-  const waitingDebounce = trimmedInput.length >= 2 && !searchReady;
+  const trimmedInput = userSearch.trim().toLowerCase();
+  const filteredUsers = trimmedInput.length > 0
+    ? allUsers.filter((u) =>
+        u.name?.toLowerCase().includes(trimmedInput) ||
+        u.email?.toLowerCase().includes(trimmedInput)
+      )
+    : allUsers;
 
   const addMutation = useMutation({
     mutationFn: (data) => api.post(`/projects/${projectId}/members`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['project-user-search', projectId] });
       setShowAdd(false);
       setUserSearch('');
-      setDebouncedSearch('');
       setSelectedUser(null);
       setDropdownOpen(false);
     },
@@ -1706,11 +1179,6 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold text-foreground">Membres du projet</h3>
         <div className="flex flex-wrap gap-2">
-          {canInvite && (
-            <Button size="sm" variant="outline" onClick={onOpenInvite}>
-              <Mail className="mr-1 h-4 w-4" /> Inviter par e-mail
-            </Button>
-          )}
           {canEditProject && (
             <Button size="sm" onClick={() => setShowAdd(!showAdd)}>
               <Plus className="mr-1 h-4 w-4" /> Ajouter un membre
@@ -1725,10 +1193,12 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
             <div className="relative z-20 min-w-0 flex-1" ref={searchWrapRef}>
               <label className="mb-1 block text-sm font-medium">Utilisateur</label>
               {selectedUser ? (
-                <div className="flex h-10 items-center justify-between gap-2 rounded-md border border-input bg-muted/30 px-3 text-sm">
+                <div className="flex h-10 items-center justify-between gap-2 rounded-lg border border-input bg-muted/30 px-3 text-sm">
                   <span className="truncate">
                     <span className="font-medium text-foreground">{selectedUser.name}</span>
-                    <span className="text-muted-foreground"> · {selectedUser.email}</span>
+                    {selectedUser.specialties?.length > 0 && (
+                      <span className="text-muted-foreground"> · {selectedUser.specialties.map((s) => s.name || s).join(', ')}</span>
+                    )}
                   </span>
                   <button
                     type="button"
@@ -1736,7 +1206,6 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
                     onClick={() => {
                       setSelectedUser(null);
                       setUserSearch('');
-                      setDebouncedSearch('');
                       setDropdownOpen(false);
                     }}
                   >
@@ -1758,7 +1227,7 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
                       if (e.key === 'Escape') setDropdownOpen(false);
                     }}
                     className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground shadow-sm"
-                    placeholder="Rechercher par nom ou e-mail…"
+                    placeholder="Filtrer par nom ou e-mail…"
                     aria-autocomplete="list"
                     aria-expanded={dropdownOpen}
                     aria-controls="project-member-user-suggestions"
@@ -1769,27 +1238,16 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
                       role="listbox"
                       className="absolute left-0 right-0 z-[200] mt-1 max-h-60 overflow-y-auto rounded-md border border-border bg-card text-card-foreground shadow-lg ring-1 ring-black/5 dark:ring-white/10"
                     >
-                      {trimmedInput.length < 2 && (
-                        <p className="px-3 py-2.5 text-xs text-muted-foreground">
-                          Tapez au moins <strong className="text-foreground">2 caractères</strong> pour afficher les
-                          utilisateurs pas encore dans ce projet.
-                        </p>
-                      )}
-                      {trimmedInput.length >= 2 && waitingDebounce && (
-                        <p className="px-3 py-2.5 text-xs text-muted-foreground">Recherche…</p>
-                      )}
-                      {trimmedInput.length >= 2 && searchReady && searchLoading && (
+                      {usersLoading && (
                         <p className="px-3 py-2.5 text-xs text-muted-foreground">Chargement…</p>
                       )}
-                      {trimmedInput.length >= 2 && searchReady && !searchLoading && searchUsers.length === 0 && (
+                      {!usersLoading && filteredUsers.length === 0 && (
                         <p className="px-3 py-2.5 text-xs text-muted-foreground">
                           Aucun utilisateur disponible (déjà membre ou aucune correspondance).
                         </p>
                       )}
-                      {trimmedInput.length >= 2 &&
-                        searchReady &&
-                        !searchLoading &&
-                        searchUsers.map((u) => (
+                      {!usersLoading &&
+                        filteredUsers.map((u) => (
                           <button
                             key={u.id}
                             type="button"
@@ -1799,12 +1257,20 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
                             onClick={() => {
                               setSelectedUser(u);
                               setUserSearch('');
-                              setDebouncedSearch('');
                               setDropdownOpen(false);
                             }}
                           >
                             <span className="font-medium text-foreground">{u.name}</span>
                             <span className="block text-xs text-muted-foreground">{u.email}</span>
+                            {u.specialties?.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {u.specialties.map((s) => (
+                                  <span key={s.id || s.name} className="inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                                    {s.name || s}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </button>
                         ))}
                     </div>
@@ -1837,7 +1303,16 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
       )}
 
       <div className="space-y-2">
-        {members?.map((m) => (
+        {members?.map((m) => {
+          const memberRole = m.role || m.project_role || m.pivot?.project_role || 'member';
+          const roleBadgeClass =
+            memberRole === 'admin'
+              ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+              : memberRole === 'client'
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+          const specs = m.specialties || [];
+          return (
           <div key={m.id} className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
@@ -1845,13 +1320,23 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
               </div>
               <div>
                 <p className="text-sm font-medium text-foreground">{m.name || m.user?.name}</p>
-                <p className="text-xs text-muted-foreground">{m.email || m.user?.email}</p>
+                {specs.length > 0 ? (
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {specs.map((s) => (
+                      <span key={s.id || s.name} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                        {s.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{m.email || m.user?.email}</p>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="secondary">
-                {formatProjectRole(m.role || m.project_role || m.pivot?.project_role || 'member')}
-              </Badge>
+              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleBadgeClass}`}>
+                {formatProjectRole(memberRole)}
+              </span>
               {canEditProject && (
                 <button
                 onClick={() => {
@@ -1866,11 +1351,261 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
         {members?.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground">Aucun membre ajouté</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ── Onglet Fichiers : liste les pièces jointes de toutes les tâches du projet ── */
+function ProjectFilesTab({ projectId, tasks }) {
+  const { data: allAttachments, isLoading } = useQuery({
+    queryKey: ['project-attachments', projectId],
+    queryFn: async () => {
+      const taskList = Array.isArray(tasks) ? tasks : [];
+      if (taskList.length === 0) return [];
+      const results = await Promise.all(
+        taskList.slice(0, 50).map((t) =>
+          api.get(`/tasks/${t.id}/attachments`).then((r) => {
+            const list = r.data?.attachments?.data ?? r.data?.attachments ?? r.data?.data ?? r.data ?? [];
+            return (Array.isArray(list) ? list : []).map((a) => ({ ...a, task_title: t.title, task_id: t.id }));
+          }).catch(() => [])
+        )
+      );
+      return results.flat();
+    },
+    staleTime: 30000,
+  });
+
+  const attachments = allAttachments ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (attachments.length === 0) {
+    return (
+      <EmptyState
+        icon={Download}
+        title="Aucun fichier"
+        description="Les fichiers partagés sur les tâches de ce projet apparaîtront ici."
+        className="py-12"
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-2 pt-2">
+      <p className="text-sm text-muted-foreground mb-3">
+        {attachments.length} fichier{attachments.length > 1 ? 's' : ''} partagé{attachments.length > 1 ? 's' : ''}
+      </p>
+      {attachments.map((att) => (
+        <div
+          key={att.id}
+          className="flex items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-3 text-sm shadow-sm"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium text-foreground">{att.original_name || att.filename || att.name}</p>
+            <p className="text-xs text-muted-foreground">
+              Tâche : {att.task_title}
+              {att.size ? ` · ${(att.size / 1024).toFixed(1)} Ko` : ''}
+            </p>
+          </div>
+          <a
+            href={`/api/tasks/${att.task_id}/attachments/${att.id}/download`}
+            download
+            className="flex shrink-0 items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-accent"
+          >
+            <Download size={14} />
+            Télécharger
+          </a>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Onglet Rapports IA : risques, recommandations, analyse du projet ── */
+function ProjectReportsTab({ projectId }) {
+  const { data: report, isLoading, isError } = useQuery({
+    queryKey: ['client-report', projectId],
+    queryFn: () => api.get(`/client/projects/${projectId}/report`).then((r) => r.data),
+    staleTime: 30000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (isError || !report) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-8 text-center text-sm text-amber-900">
+        Rapport indisponible pour le moment.
+      </div>
+    );
+  }
+
+  const aiRisk = report.ai_risk_analysis;
+  const aiRecs = report.ai_recommendations;
+  const stats = report.stats;
+  const distribution = report.task_distribution || [];
+
+  return (
+    <div className="space-y-4 pt-2">
+      {/* KPIs projet */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <ReportKpi label="Avancement" value={`${report.progress ?? 0}%`} color="emerald" />
+        <ReportKpi label="Tâches terminées" value={`${stats?.completed ?? 0}/${stats?.total_tasks ?? 0}`} color="blue" />
+        <ReportKpi label="En retard" value={stats?.overdue ?? 0} color={stats?.overdue > 0 ? 'red' : 'emerald'} />
+        <ReportKpi label="À risque" value={stats?.at_risk ?? 0} color={stats?.at_risk > 0 ? 'amber' : 'emerald'} />
+      </div>
+
+      {/* Deadline estimée */}
+      {report.estimated_deadline && (
+        <div className="rounded-xl border border-border bg-card p-4 text-sm">
+          <span className="text-muted-foreground">Deadline estimée : </span>
+          <span className="font-semibold text-foreground">
+            {new Date(report.estimated_deadline).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+          </span>
+        </div>
+      )}
+
+      {/* Alertes */}
+      {report.alerts?.length > 0 && (
+        <div className="space-y-2">
+          {report.alerts.map((alert, idx) => (
+            <div key={idx} className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium ${
+              alert.type === 'danger' ? 'bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200' :
+              alert.type === 'warning' ? 'bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200' :
+              'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200'
+            }`}>
+              <AlertTriangle size={16} />
+              {alert.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Analyse IA */}
+      {aiRisk && (
+        <div className="rounded-xl border border-indigo-100 bg-indigo-50/30 p-4 dark:border-indigo-900/30 dark:bg-indigo-950/20">
+          <p className="mb-3 text-sm font-semibold text-foreground flex items-center gap-2">
+            <BarChart3 size={16} className="text-indigo-600" />
+            Analyse IA — Risques
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Risque de retard</p>
+              <p className={`text-2xl font-bold tabular-nums ${aiRisk.delay_probability > 60 ? 'text-red-600' : aiRisk.delay_probability > 30 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                {aiRisk.delay_probability ?? 0}%
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Santé planning</p>
+              <p className={`text-lg font-bold ${aiRisk.schedule_health === 'critical' ? 'text-red-600' : aiRisk.schedule_health === 'watch' ? 'text-amber-600' : 'text-emerald-600'}`}>
+                {aiRisk.schedule_health === 'critical' ? '⚠️ Critique' : aiRisk.schedule_health === 'watch' ? '👀 À surveiller' : '✅ Bonne'}
+              </p>
+            </div>
+            {aiRisk.summary && (
+              <div className="rounded-lg border border-border bg-card p-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Tâches à risque</p>
+                <p className="text-2xl font-bold tabular-nums text-amber-600">{aiRisk.summary.at_risk ?? 0}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Recommandations IA */}
+      {aiRecs?.recommendations && (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="mb-2 text-sm font-semibold text-foreground">💡 Recommandations IA</p>
+          <ul className="space-y-2">
+            {(Array.isArray(aiRecs.recommendations) ? aiRecs.recommendations : []).slice(0, 5).map((rec, idx) => {
+              const text = typeof rec === 'string' ? rec : rec.message || rec.recommendation || JSON.stringify(rec);
+              return (
+                <li key={idx} className="flex items-start gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm">
+                  <span className="mt-0.5 text-indigo-500 shrink-0">→</span>
+                  <span className="text-foreground">{text}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* Activité récente */}
+      {report.recent_activities?.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="mb-2 text-sm font-semibold text-foreground flex items-center gap-2">
+            <History size={16} />
+            Dernières activités
+          </p>
+          <ul className="space-y-2">
+            {report.recent_activities.map((a) => (
+              <li key={a.id} className="flex items-start justify-between gap-2 text-sm">
+                <div className="min-w-0">
+                  <span className="text-foreground">{a.description || a.action}</span>
+                  <span className="ml-1 text-xs text-muted-foreground">— {a.user}</span>
+                </div>
+                {a.date && (
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {new Date(a.date).toLocaleDateString('fr-FR')}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Équipe */}
+      {report.team?.length > 0 && (
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="mb-2 text-sm font-semibold text-foreground flex items-center gap-2">
+            <Users size={16} />
+            Équipe
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {report.team.map((m) => (
+              <div key={m.id} className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-1.5 text-sm">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                  {m.name?.charAt(0)?.toUpperCase()}
+                </div>
+                <span className="text-foreground">{m.name}</span>
+                <span className="text-xs text-muted-foreground capitalize">({m.role})</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReportKpi({ label, value, color }) {
+  const colorMap = {
+    emerald: 'text-emerald-600',
+    blue: 'text-blue-600',
+    red: 'text-red-600',
+    amber: 'text-amber-600',
+  };
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className={`text-2xl font-bold tabular-nums ${colorMap[color] || 'text-foreground'}`}>{value}</p>
     </div>
   );
 }

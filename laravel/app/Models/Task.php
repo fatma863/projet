@@ -32,6 +32,20 @@ class Task extends Model
 
     use SoftDeletes;
 
+    protected static function booted(): void
+    {
+        static::saving(function (Task $task) {
+            if ($task->isDirty('workflow_status')) {
+                $task->progress_percent = match ($task->workflow_status) {
+                    'done'        => 100,
+                    'in_progress' => 50,
+                    'todo'        => 0,
+                    default       => $task->progress_percent,
+                };
+            }
+        });
+    }
+
     protected $fillable = [
         'project_id',
         'sprint_id',

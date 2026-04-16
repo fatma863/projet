@@ -2,7 +2,7 @@
 export const APP_ROLE_LABELS = {
   admin: 'Administrateur',
   member: 'Membre',
-  viewer: 'Invité',
+  viewer: 'Client',
 };
 
 const APP_ROLE_LABELS_EN = {

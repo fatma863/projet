@@ -9,6 +9,20 @@ use Illuminate\Support\Facades\Schema;
 
 class AccessControl
 {
+    /**
+     * Cache en mémoire valable le temps d'une requête HTTP.
+     * Clé : "{user_id}:{project_id}" → rôle normalisé ou null
+     *
+     * @var array<string, string|null>
+     */
+    private static array $projectRoleCache = [];
+
+    /** Vide le cache (utile dans les tests). */
+    public static function flushCache(): void
+    {
+        self::$projectRoleCache = [];
+    }
+
     /** Normalise les anciennes valeurs pivot (viewer/guest -> client). */
     public static function normalizePivotRole(?string $role): ?string
     {
@@ -39,6 +53,11 @@ class AccessControl
 
     public static function projectRole(User $user, Project $project): ?string
     {
+        $cacheKey = $user->id . ':' . $project->id;
+        if (array_key_exists($cacheKey, self::$projectRoleCache)) {
+            return self::$projectRoleCache[$cacheKey];
+        }
+
         $pivotRole = null;
         if (Schema::hasTable('project_user')) {
             $pivotRole = $project->users()
@@ -47,7 +66,7 @@ class AccessControl
         }
 
         if ($pivotRole) {
-            return self::normalizePivotRole($pivotRole);
+            return self::$projectRoleCache[$cacheKey] = self::normalizePivotRole($pivotRole);
         }
 
         $legacyRole = $project->members()
@@ -55,15 +74,17 @@ class AccessControl
             ->first()?->pivot?->project_role;
 
         if (! $legacyRole) {
-            return null;
+            return self::$projectRoleCache[$cacheKey] = null;
         }
 
-        return match (true) {
+        $resolved = match (true) {
             in_array($legacyRole, ['owner', 'manager'], true) => 'admin',
             in_array($legacyRole, ['guest', 'client'], true) => 'client',
             in_array($legacyRole, ['admin', 'member', 'viewer'], true) => self::normalizePivotRole($legacyRole),
             default => 'member',
         };
+
+        return self::$projectRoleCache[$cacheKey] = $resolved;
     }
 
     /**

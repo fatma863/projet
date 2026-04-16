@@ -15,6 +15,7 @@ use App\Services\ProjectInviteService;
 use App\Support\AccessControl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -198,44 +199,61 @@ class ProjectController extends Controller
     {
         Gate::authorize('view', $project);
 
-        $tasks = $project->tasks()->with('status', 'assignees')->get();
-        $statuses = $project->statuses;
+        $cacheKey = 'project_dashboard_' . $project->id;
+        $data = Cache::remember($cacheKey, 60, function () use ($project) {
+            // Agrégats SQL — évite de charger toutes les tâches en mémoire
+            $baseQuery = $project->tasks()->whereNull('deleted_at');
+            $totalTasks     = (clone $baseQuery)->count();
+            $completedTasks = (clone $baseQuery)->where('progress_percent', 100)->count();
+            $overdueTasks   = (clone $baseQuery)
+                ->where('progress_percent', '<', 100)
+                ->where(fn ($q) => $q
+                    ->where(fn ($q2) => $q2->whereNotNull('planned_end')->whereDate('planned_end', '<', now()))
+                    ->orWhere(fn ($q2) => $q2->whereNull('planned_end')->whereNotNull('due_date')->whereDate('due_date', '<', now()))
+                )
+                ->count();
+            $avgProgress = $totalTasks > 0 ? round(100 * $completedTasks / $totalTasks, 1) : 0;
 
-        $totalTasks = $tasks->count();
-        $completedTasks = $tasks->filter(fn (Task $t) => $t->isCompleted())->count();
-        $overdueTasks = $tasks->filter(fn ($t) => $t->isOverdue())->count();
-        $avgProgress = $totalTasks > 0 ? round(100 * $completedTasks / $totalTasks, 1) : 0;
+            $ai       = app(AIService::class)->projectDashboardInsights($project);
+            $statuses = $project->statuses;
 
-        $ai = $this->aiService->projectDashboardInsights($project);
+            $tasksByStatus = $statuses->map(fn ($s) => [
+                'status' => $s->name,
+                'color'  => $s->color,
+                'count'  => (clone $baseQuery)->where('status_id', $s->id)->count(),
+            ]);
 
-        $tasksByStatus = $statuses->map(fn ($s) => [
-            'status' => $s->name,
-            'color' => $s->color,
-            'count' => $tasks->where('status_id', $s->id)->count(),
-        ]);
+            $tasksByPriority = collect(['urgent', 'high', 'medium', 'low'])->map(fn ($p) => [
+                'priority' => $p,
+                'count'    => (clone $baseQuery)->where('priority', $p)->count(),
+            ]);
 
-        $tasksByPriority = collect(['urgent', 'high', 'medium', 'low'])->map(fn ($p) => [
-            'priority' => $p,
-            'count' => $tasks->where('priority', $p)->count(),
-        ]);
+            return [
+                'total_tasks'            => $totalTasks,
+                'completed_tasks'        => $completedTasks,
+                'overdue_tasks'          => $overdueTasks,
+                'avg_progress'           => $avgProgress,
+                'total_estimated_hours'  => $ai['estimated_hours_total'],
+                'total_actual_hours'     => $ai['actual_hours_total'],
+                'ai_tasks_at_risk'       => $ai['ai_tasks_at_risk'],
+                'workload_by_member'     => $ai['workload_by_member'],
+                'estimated_vs_actual'    => [
+                    'estimated' => $ai['estimated_hours_total'],
+                    'actual'    => $ai['actual_hours_total'],
+                    'delta'     => round($ai['estimated_hours_total'] - $ai['actual_hours_total'], 1),
+                ],
+                'tasks_by_status'   => $tasksByStatus,
+                'tasks_by_priority' => $tasksByPriority,
+            ];
+        });
 
-        return response()->json([
-            'total_tasks' => $totalTasks,
-            'completed_tasks' => $completedTasks,
-            'overdue_tasks' => $overdueTasks,
-            'avg_progress' => $avgProgress,
-            'total_estimated_hours' => $ai['estimated_hours_total'],
-            'total_actual_hours' => $ai['actual_hours_total'],
-            'ai_tasks_at_risk' => $ai['ai_tasks_at_risk'],
-            'workload_by_member' => $ai['workload_by_member'],
-            'estimated_vs_actual' => [
-                'estimated' => $ai['estimated_hours_total'],
-                'actual' => $ai['actual_hours_total'],
-                'delta' => round($ai['estimated_hours_total'] - $ai['actual_hours_total'], 1),
-            ],
-            'tasks_by_status' => $tasksByStatus,
-            'tasks_by_priority' => $tasksByPriority,
-        ]);
+        return response()->json($data);
+    }
+
+    /** Invalide le cache dashboard d'un projet (appeler après toute mutation de tâche). */
+    public static function forgetDashboardCache(int $projectId): void
+    {
+        Cache::forget('project_dashboard_' . $projectId);
     }
 
     public function activity(Request $request, Project $project): JsonResponse
@@ -318,9 +336,6 @@ class ProjectController extends Controller
 
         $search = $request->input('search', '');
         $search = is_string($search) ? trim($search) : '';
-        if (mb_strlen($search) < 2) {
-            return response()->json(['users' => []]);
-        }
 
         $excludeIds = collect([$project->owner_id])
             ->merge($project->members()->pluck('users.id'))
@@ -332,18 +347,29 @@ class ProjectController extends Controller
 
         $query = User::query()
             ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'admin'))
-            ->where(function ($q) use ($search) {
+            ->orderBy('name')
+            ->limit(50);
+
+        if (mb_strlen($search) >= 2) {
+            $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', '%'.$search.'%')
                     ->orWhere('email', 'like', '%'.$search.'%');
-            })
-            ->orderBy('name')
-            ->limit(25);
+            });
+        }
 
         if ($excludeIds !== []) {
             $query->whereNotIn('id', $excludeIds);
         }
 
-        $users = $query->get(['id', 'name', 'email', 'avatar']);
+        $users = $query->with('specialties:id,name,color')->get(['id', 'name', 'email', 'avatar']);
+
+        $users->each(function ($user) {
+            $user->setRelation('specialties', $user->specialties->map(fn ($s) => [
+                'id' => $s->id,
+                'name' => $s->name,
+                'color' => $s->color,
+            ]));
+        });
 
         return response()->json(['users' => $users]);
     }

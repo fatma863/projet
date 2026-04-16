@@ -12,9 +12,9 @@ import { Select } from '../../components/ui/Select';
 import { Spinner } from '../../components/ui/Spinner';
 import { toast } from 'sonner';
 import {
-  MessageSquare, Clock, Users, Trash2, Send, Plus, ChevronDown, ChevronRight,
+  MessageSquare, Users, Trash2, Send, Plus, ChevronDown, ChevronRight,
   LayoutGrid, UserCircle, CalendarRange, SlidersHorizontal, Link2, Sparkles,
-  Paperclip, Pencil, Download, Tag, Zap, Star,
+  Pencil, Tag, Zap, Star,
 } from 'lucide-react';
 import { MemberAssigneePicker } from '../../components/tasks/MemberAssigneePicker';
 import { TaskDependencyPicker } from '../../components/tasks/TaskDependencyPicker';
@@ -354,7 +354,8 @@ export default function TaskModal({
           { key: 'details', label: 'Détails' },
           ...(isEdit ? [
             { key: 'comments', label: 'Commentaires', icon: MessageSquare },
-            // Onglets Temps et Assignés supprimés
+            { key: 'assignees', label: 'Assignés', icon: Users },
+            { key: 'assignees', label: 'Assignés', icon: Users },
           ] : []),
         ].map((t) => (
           <button
@@ -831,8 +832,6 @@ export default function TaskModal({
       {activeTab === 'comments' && isEdit && (
         <CommentsTab taskId={task.id} projectId={projectId} canWriteProject={canWriteProject} isAdmin={isAdmin} userId={user?.id} />
       )}
-      {activeTab === 'files' && isEdit && <FilesTab taskId={task.id} canEdit={canEditTask} />}
-      {activeTab === 'time' && isEdit && <TimeEntriesTab taskId={task.id} canEdit={canEditTask} />}
       {activeTab === 'assignees' && isEdit && <AssigneesTab taskId={task.id} isAdmin={isAdmin} canEdit={canEditTask} />}
     </Modal>
   );
@@ -1082,235 +1081,6 @@ function CommentsTab({ taskId, projectId, canWriteProject, isAdmin, userId }) {
         >
           <Send className="h-4 w-4" />
         </Button>
-      </div>
-    </div>
-  );
-}
-
-function FilesTab({ taskId, canEdit }) {
-  const queryClient = useQueryClient();
-  const [linkUrl, setLinkUrl] = useState('');
-  const [linkName, setLinkName] = useState('');
-
-  const { data: attachments = [], isLoading } = useQuery({
-    queryKey: ['attachments', taskId],
-    queryFn: () =>
-      api.get(`/tasks/${taskId}/attachments`).then((r) => (
-        r.data?.attachments?.data ?? r.data?.attachments ?? []
-      )),
-  });
-
-  const addFile = useMutation({
-    mutationFn: (file) => {
-      const fd = new FormData();
-      fd.append('type', 'file');
-      fd.append('file', file);
-      return api.post(`/tasks/${taskId}/attachments`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['attachments', taskId] });
-      toast.success('Fichier ajouté');
-    },
-    onError: (e) => toast.error(e?.response?.data?.message || 'Upload impossible'),
-  });
-
-  const addLinkMut = useMutation({
-    mutationFn: () => api.post(`/tasks/${taskId}/attachments`, {
-      type: 'link',
-      url: linkUrl.trim(),
-      filename: linkName.trim() || linkUrl.trim(),
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['attachments', taskId] });
-      setLinkUrl('');
-      setLinkName('');
-      toast.success('Lien ajouté');
-    },
-  });
-
-  const delMut = useMutation({
-    mutationFn: (id) => api.delete(`/tasks/${taskId}/attachments/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['attachments', taskId] });
-      toast.success('Supprimé');
-    },
-  });
-
-  const downloadBlob = async (path) => {
-    const res = await api.get(path, { responseType: 'blob' });
-    return URL.createObjectURL(res.data);
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      for (const a of attachments) {
-        if (!a.is_previewable || !a.download_url || previews[a.id]) continue;
-        try {
-          const url = await downloadBlob(a.download_url);
-          if (!cancelled) setPreviews((p) => ({ ...p, [a.id]: url }));
-        } catch {
-          /* ignore */
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-      Object.values(previews).forEach((u) => URL.revokeObjectURL(u));
-    };
-  }, [attachments]);
-
-  if (isLoading) return <div className="flex justify-center py-6"><Spinner /></div>;
-
-  return (
-    <div className="space-y-4">
-      {canEdit && (
-        <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium">Fichier (max 10 Mo)</label>
-            <Input
-              type="file"
-              accept="image/*,.pdf,.doc,.docx,.zip"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) addFile.mutate(f);
-                e.target.value = '';
-              }}
-            />
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Input placeholder="URL (lien externe)" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} />
-            <Input placeholder="Libellé du lien" value={linkName} onChange={(e) => setLinkName(e.target.value)} />
-          </div>
-          <Button type="button" size="sm" variant="outline" onClick={() => linkUrl.trim() && addLinkMut.mutate()} disabled={!linkUrl.trim() || addLinkMut.isPending}>
-            Ajouter le lien
-          </Button>
-        </div>
-      )}
-
-      <ul className="space-y-2">
-        {attachments.map((a) => (
-          <li key={a.id} className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border bg-card p-3 text-sm">
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-foreground">{a.filename || 'Sans nom'}</p>
-              <p className="text-xs text-muted-foreground">{a.type === 'link' ? a.url : (a.mime || 'Fichier')}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {a.type === 'file' && a.download_url && (
-                <a
-                  href={a.download_url}
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    try {
-                      const url = await downloadBlob(a.download_url);
-                      const alink = document.createElement('a');
-                      alink.href = url;
-                      alink.download = a.filename || 'fichier';
-                      alink.click();
-                      URL.revokeObjectURL(url);
-                    } catch {
-                      toast.error('Téléchargement impossible');
-                    }
-                  }}
-                >
-                  <Download className="h-3.5 w-3.5" /> Télécharger
-                </a>
-              )}
-              {a.type === 'link' && a.url && (
-                <a href={a.url} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">
-                  Ouvrir
-                </a>
-              )}
-              {canEdit && (
-                <button type="button" className="text-destructive hover:underline text-xs" onClick={() => delMut.mutate(a.id)}>Supprimer</button>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-      {attachments.length === 0 && <p className="text-center text-sm text-muted-foreground">Aucune pièce jointe</p>}
-    </div>
-  );
-}
-
-function TimeEntriesTab({ taskId, canEdit = true }) {
-  const queryClient = useQueryClient();
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), minutes: '', note: '' });
-
-  const { data: entries, isLoading } = useQuery({
-    queryKey: ['time-entries', taskId],
-    queryFn: () => api.get(`/tasks/${taskId}/time-entries`).then((r) => (
-      r.data?.time_entries?.data ?? r.data?.time_entries ?? []
-    )),
-  });
-
-  const addMutation = useMutation({
-    mutationFn: (data) => api.post(`/tasks/${taskId}/time-entries`, { ...data, source: 'manual' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['time-entries', taskId] });
-      setForm((f) => ({ ...f, minutes: '', note: '' }));
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (entryId) => api.delete(`/tasks/${taskId}/time-entries/${entryId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['time-entries', taskId] }),
-  });
-
-  if (isLoading) return <div className="flex justify-center py-6"><Spinner /></div>;
-
-  const totalMinutes = entries?.reduce((sum, e) => sum + e.minutes, 0) || 0;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Total: <span className="font-semibold text-foreground">{Math.floor(totalMinutes / 60)}h {totalMinutes % 60}m</span>
-        </p>
-      </div>
-
-      {canEdit && (
-        <div className="flex flex-wrap items-end gap-2">
-          <div>
-            <label className="mb-1 block text-xs font-medium">Date</label>
-            <Input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} className="w-36" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium">Minutes</label>
-            <Input type="number" min={1} value={form.minutes} onChange={(e) => setForm((f) => ({ ...f, minutes: e.target.value }))} className="w-24" placeholder="60" />
-          </div>
-          <div className="flex-1">
-            <label className="mb-1 block text-xs font-medium">Note</label>
-            <Input value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="Optionnel" />
-          </div>
-          <Button
-            size="sm"
-            onClick={() => addMutation.mutate({ date: form.date, minutes: parseInt(form.minutes), note: form.note || undefined })}
-            disabled={!form.minutes || addMutation.isPending}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
-      <div className="max-h-48 space-y-2 overflow-y-auto">
-        {entries?.map((e) => (
-          <div key={e.id} className="flex items-center justify-between rounded-lg bg-accent/30 p-2 text-sm">
-            <div className="flex items-center gap-3">
-              <span className="font-medium">{Math.floor(e.minutes / 60)}h {e.minutes % 60}m</span>
-              <span className="text-xs text-muted-foreground">{new Date(e.date).toLocaleDateString('fr-FR')}</span>
-              {e.note && <span className="text-xs text-muted-foreground">— {e.note}</span>}
-            </div>
-            {canEdit && (
-              <button type="button" onClick={() => deleteMutation.mutate(e.id)} className="text-muted-foreground hover:text-destructive">
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        ))}
       </div>
     </div>
   );

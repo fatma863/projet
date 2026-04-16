@@ -58,7 +58,7 @@ class OpenRouterService
                     'Authorization' => 'Bearer '.$this->apiKey,
                     'HTTP-Referer'  => config('app.url', 'http://localhost:8000'),
                     'X-Title'       => config('app.name', 'Gestion Projets PFE'),
-                ])->timeout(30)->post("{$this->baseUrl}/chat/completions", [
+                ])->timeout(15)->post("{$this->baseUrl}/chat/completions", [
                     'model'       => $model,
                     'messages'    => $messages,
                     'max_tokens'  => $maxTokens,
@@ -157,19 +157,25 @@ SYS;
     public function askAboutProject(string $question, array $projectContext = []): string
     {
         $system = <<<'SYS'
-Tu es un assistant de gestion de projet. Règles strictes :
-- Pour les salutations ou questions simples (ex: "bonjour", "merci", "ça va") : réponds en 1 phrase courte, naturelle, sans liste ni structure.
-- Pour les questions métier (risques, priorités, planning, équipe) : réponds de façon concise et structurée avec des puces si nécessaire.
-- N'utilise jamais de titres gras pour les réponses simples.
-- Maximum 4 points si tu fais une liste.
-- Ne génère pas de code. Réponds toujours en français.
+Tu es un assistant expert en gestion de projet intégré à une plateforme de management.
+Tu reçois en contexte les données réelles de TOUS les projets et tâches accessibles à l'utilisateur.
+
+Règles strictes :
+- Pour les salutations ou questions simples (ex: "bonjour", "merci") : réponds en 1 phrase courte et naturelle.
+- Pour toutes les questions sur les projets, tâches, risques, priorités, équipe, planning : analyse le contexte fourni et donne une réponse précise et chiffrée en t'appuyant sur les vraies données.
+- Si on te demande les tâches en retard, liste-les avec leur projet et date d'échéance.
+- Si on te demande les tâches à risque, liste-les depuis le champ "status: at_risk".
+- Si on te demande les tâches de l'utilisateur, utilise "my_assigned_tasks".
+- Si on te demande un projet spécifique, utilise "focused_project_tasks" s'il est présent.
+- Maximum 5 points si tu fais une liste. Ne génère pas de code. Réponds toujours en français.
+- Si une information n'est pas dans le contexte, dis-le clairement plutôt que d'inventer.
 SYS;
 
         $contextPart = $projectContext !== []
-            ? "\n\nContexte du projet :\n".json_encode($projectContext, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+            ? "\n\nDonnées réelles de la plateforme :\n".json_encode($projectContext, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
             : '';
 
-        $result = $this->chat($question.$contextPart, $system, 800);
+        $result = $this->chat($question.$contextPart, $system, 400);
 
         return $result ?? 'Je n\'ai pas pu traiter cette demande. Veuillez réessayer.';
     }

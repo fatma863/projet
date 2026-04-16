@@ -415,13 +415,12 @@ export default function SettingsPage() {
             { href: '#notifications', label: t('settings.navNotifications') },
             { href: '#preferences', label: t('settings.navPreferences') },
           ].map(({ href, label }) => (
-            <a
+            <span
               key={href}
-              href={href}
-              className="rounded-full border border-border bg-card px-3 py-1 text-foreground transition-colors hover:bg-accent"
+              className="rounded-full border border-border bg-card px-3 py-1 text-foreground cursor-default"
             >
               {label}
-            </a>
+            </span>
           ))}
         </nav>
       </MotionDiv>

@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SpecialtyController;
 use App\Http\Controllers\Api\CalendarController;
 use App\Http\Controllers\Api\ClientController;
+use App\Http\Controllers\Api\ClientDashboardController;
 use App\Http\Controllers\Api\CriticalPathController;
 use App\Http\Controllers\Api\GanttController;
 use App\Http\Controllers\Api\InvitationController;
@@ -32,10 +33,12 @@ Route::get('/', function () {
     ]);
 });
 
-Route::post('/auth/register', [AuthController::class, 'register']);
-Route::post('/auth/login', [AuthController::class, 'login']);
-Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
-Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+Route::middleware('throttle:5,1')->group(function () {
+    Route::post('/auth/register', [AuthController::class, 'register']);
+    Route::post('/auth/login', [AuthController::class, 'login']);
+    Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+});
 
 Route::get('invitations/verify', [InvitationController::class, 'verify']);
 
@@ -43,7 +46,7 @@ Route::get('invites/{token}', [InviteController::class, 'show'])
     ->where('token', '[A-Za-z0-9\-]+');
 
 // Protected routes
-Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
+Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(function () {
     Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
     // Auth
@@ -88,7 +91,9 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
     });
 
     // Projects / Clients
-    Route::apiResource('clients', ClientController::class);
+    Route::middleware('check.role:admin,member')->group(function () {
+        Route::apiResource('clients', ClientController::class);
+    });
     Route::apiResource('projects', ProjectController::class);
     Route::middleware('check.project:view')->group(function () {
         Route::get('projects/{project}/dashboard', [ProjectController::class, 'dashboard']);
@@ -142,7 +147,7 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
     Route::middleware('check.project:view')->group(function () {
         Route::get('projects/{project}/tasks', [TaskController::class, 'index']);
     });
-    Route::middleware('check.project:view')->group(function () {
+    Route::middleware('check.project:edit')->group(function () {
         Route::post('projects/{project}/tasks', [TaskController::class, 'store']);
     });
     Route::get('tasks/{task}', [TaskController::class, 'show']);
@@ -218,5 +223,13 @@ Route::middleware(['auth:sanctum', 'active.user'])->group(function () {
             Route::get('workload-balance/{project}', [AiController::class, 'workloadBalance']);
             Route::post('chat', [AiController::class, 'chat']);
         });
+    });
+
+    // ── Client / Viewer : rapports lecture seule ──────────────────────────────
+    Route::middleware('check.project:view')->group(function () {
+        Route::get('client/projects/{project}/report', [ClientDashboardController::class, 'projectReport']);
+        // AI en lecture seule pour le client (risques projet + recommandations)
+        Route::get('client/projects/{project}/ai/risk', [AiController::class, 'delayRiskProject']);
+        Route::get('client/projects/{project}/ai/recommendations', [AiController::class, 'projectRecommendations']);
     });
 });

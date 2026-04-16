@@ -63,7 +63,9 @@ class AuthController extends Controller
         }
 
         $user = Auth::user();
-        $user->tokens()->delete();
+        // Keep only the 5 most recent tokens, delete the rest
+        $tokensToKeep = $user->tokens()->latest()->take(5)->pluck('id');
+        $user->tokens()->whereNotIn('id', $tokensToKeep)->delete();
         $token = $user->createToken('auth-token')->plainTextToken;
 
         return response()->json([

@@ -17,7 +17,7 @@ import { formatAppRole, normalizeAppRole } from '../../lib/roles';
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Administrateur' },
   { value: 'member', label: 'Membre' },
-  { value: 'viewer', label: 'Invité' },
+  { value: 'viewer', label: 'Client' },
 ];
 
 /**

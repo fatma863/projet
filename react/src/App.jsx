@@ -1,28 +1,32 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import { Toaster } from 'sonner';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
 import { I18nProvider } from './i18n/I18nContext';
 import { ProtectedRoute, GuestRoute, RoleRoute } from './routes/guards';
 import AppLayout from './components/layout/AppLayout';
-import LandingPage from './pages/landing/LandingPage';
-import NotFoundPage from './pages/NotFoundPage';
-import LoginPage from './pages/auth/LoginPage';
-import RegisterPage from './pages/auth/RegisterPage';
-import ResetPasswordPage from './pages/auth/ResetPasswordPage';
-import DashboardPage from './pages/dashboard/DashboardPage';
-import ProjectsPage from './pages/projects/ProjectsPage';
-import ProjectDetailPage from './pages/projects/ProjectDetailPage';
-import TeamsPage from './pages/teams/TeamsPage';
-import TeamDetailPage from './pages/teams/TeamDetailPage';
-import GanttPage from './pages/gantt/GanttPage';
-import TasksHubPage from './pages/tasks/TasksHubPage';
-import CalendarPage from './pages/calendar/CalendarPage';
-import AiPage from './pages/ai/AiPage';
-import NotificationsPage from './pages/notifications/NotificationsPage';
-import SettingsPage from './pages/settings/SettingsPage';
-import UsersAdminPage from './pages/users/UsersAdminPage';
-import AcceptInvitePage from './pages/invites/AcceptInvitePage';
+
+// Pages chargées uniquement à la demande (code splitting)
+const LandingPage        = lazy(() => import('./pages/landing/LandingPage'));
+const NotFoundPage       = lazy(() => import('./pages/NotFoundPage'));
+const LoginPage          = lazy(() => import('./pages/auth/LoginPage'));
+const RegisterPage       = lazy(() => import('./pages/auth/RegisterPage'));
+const ResetPasswordPage  = lazy(() => import('./pages/auth/ResetPasswordPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'));
+const DashboardPage      = lazy(() => import('./pages/dashboard/DashboardPage'));
+const ProjectsPage       = lazy(() => import('./pages/projects/ProjectsPage'));
+const ProjectDetailPage  = lazy(() => import('./pages/projects/ProjectDetailPage'));
+const TeamsPage          = lazy(() => import('./pages/teams/TeamsPage'));
+const TeamDetailPage     = lazy(() => import('./pages/teams/TeamDetailPage'));
+const GanttPage          = lazy(() => import('./pages/gantt/GanttPage'));
+const TasksHubPage       = lazy(() => import('./pages/tasks/TasksHubPage'));
+const CalendarPage       = lazy(() => import('./pages/calendar/CalendarPage'));
+const AiPage             = lazy(() => import('./pages/ai/AiPage'));
+const NotificationsPage  = lazy(() => import('./pages/notifications/NotificationsPage'));
+const SettingsPage       = lazy(() => import('./pages/settings/SettingsPage'));
+const UsersAdminPage     = lazy(() => import('./pages/users/UsersAdminPage'));
+const AcceptInvitePage   = lazy(() => import('./pages/invites/AcceptInvitePage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +45,7 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <I18nProvider>
+          <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>}>
           <Routes>
             {/* Landing */}
             <Route path="/" element={<GuestRoute><LandingPage /></GuestRoute>} />
@@ -48,6 +53,7 @@ function App() {
             {/* Guest routes */}
             <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
             <Route path="/register" element={<GuestRoute><RegisterPage /></GuestRoute>} />
+            <Route path="/forgot-password" element={<GuestRoute><ForgotPasswordPage /></GuestRoute>} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
 
             {/* Invitation (connecté ou non) */}
@@ -72,6 +78,7 @@ function App() {
             {/* 404 */}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
+          </Suspense>
           </I18nProvider>
         </AuthProvider>
       </BrowserRouter>

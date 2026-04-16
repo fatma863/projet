@@ -39,18 +39,23 @@ const PRIORITY_LABEL_FR = {
   urgent: 'Urgente',
 };
 
+function renderInline(text) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={i} className="font-semibold text-gray-900 dark:text-white">{part.slice(2, -2)}</strong>
+      : part
+  );
+}
+
 function ChatMessage({ content }) {
-  // Parse simple markdown: **bold**, bullet lists (- or *), numbered lists, line breaks
   const lines = content.split('\n');
   const elements = [];
   let i = 0;
-
   while (i < lines.length) {
     const line = lines[i].trim();
-
     if (!line) { i++; continue; }
 
-    // Bullet list item
     if (/^[-*•]\s+/.test(line)) {
       const items = [];
       while (i < lines.length && /^[-*•]\s+/.test(lines[i].trim())) {
@@ -58,11 +63,11 @@ function ChatMessage({ content }) {
         i++;
       }
       elements.push(
-        <ul key={i} className="mt-1 space-y-0.5 pl-3">
+        <ul key={`ul-${i}`} className="mt-2 space-y-2">
           {items.map((item, j) => (
-            <li key={j} className="flex gap-1.5 text-sm">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
-              <span>{renderInline(item)}</span>
+            <li key={j} className="flex items-start gap-2.5">
+              <span className="mt-[5px] h-[6px] w-[6px] shrink-0 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500" />
+              <span className="text-[13px] leading-snug text-gray-700 dark:text-gray-200">{renderInline(item)}</span>
             </li>
           ))}
         </ul>
@@ -70,20 +75,18 @@ function ChatMessage({ content }) {
       continue;
     }
 
-    // Numbered list
     if (/^\d+\.\s+/.test(line)) {
       const items = [];
-      let num = 1;
       while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
         items.push(lines[i].trim().replace(/^\d+\.\s+/, ''));
-        i++; num++;
+        i++;
       }
       elements.push(
-        <ol key={i} className="mt-1 space-y-0.5 pl-3">
+        <ol key={`ol-${i}`} className="mt-2 space-y-2">
           {items.map((item, j) => (
-            <li key={j} className="flex gap-1.5 text-sm">
-              <span className="shrink-0 font-semibold text-violet-500">{j + 1}.</span>
-              <span>{renderInline(item)}</span>
+            <li key={j} className="flex items-start gap-2.5">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-600 dark:bg-violet-900/50 dark:text-violet-300">{j + 1}</span>
+              <span className="text-[13px] leading-snug text-gray-700 dark:text-gray-200">{renderInline(item)}</span>
             </li>
           ))}
         </ol>
@@ -91,25 +94,12 @@ function ChatMessage({ content }) {
       continue;
     }
 
-    // Regular paragraph
     elements.push(
-      <p key={i} className="text-sm leading-relaxed">{renderInline(line)}</p>
+      <p key={`p-${i}`} className="text-[13px] leading-relaxed text-gray-700 dark:text-gray-200">{renderInline(line)}</p>
     );
     i++;
   }
-
-  return <div className="flex flex-col gap-1">{elements}</div>;
-}
-
-function renderInline(text) {
-  // Split by **bold**
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>;
-    }
-    return part;
-  });
+  return <div className="flex flex-col gap-1.5">{elements}</div>;
 }
 
 function AiPoweredBadge({ powered }) {
@@ -643,51 +633,46 @@ function WorkloadBalancePanel() {
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  FLOATING ASSISTANT BUTTON — Members only                                   */
 /* ─────────────────────────────────────────────────────────────────────────── */
+function RobotSvg({ size = 9 }) {
+  return (
+    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={`h-${size} w-${size}`}>
+      <line x1="20" y1="3" x2="20" y2="9" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="20" cy="2.5" r="2.2" fill="#fbbf24"/>
+      <rect x="7" y="9" width="26" height="21" rx="6" fill="white" fillOpacity="0.96"/>
+      <rect x="11" y="14" width="7" height="6" rx="2.5" fill="#7c3aed"/>
+      <rect x="22" y="14" width="7" height="6" rx="2.5" fill="#7c3aed"/>
+      <circle cx="13.5" cy="16" r="1.2" fill="white"/>
+      <circle cx="24.5" cy="16" r="1.2" fill="white"/>
+      <path d="M13 24 Q20 28.5 27 24" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" fill="none"/>
+      <circle cx="10" cy="23" r="2.8" fill="#f9a8d4" fillOpacity="0.55"/>
+      <circle cx="30" cy="23" r="2.8" fill="#f9a8d4" fillOpacity="0.55"/>
+      <rect x="16" y="30" width="8" height="3.5" rx="1.5" fill="white" fillOpacity="0.65"/>
+      <rect x="11" y="33" width="18" height="5" rx="2.5" fill="white" fillOpacity="0.4"/>
+    </svg>
+  );
+}
+
 function FloatingAssistantButton({ onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      title="Ouvrir l'assistant IA"
       style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 50 }}
-      className="group flex h-16 w-16 items-center justify-center rounded-full shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+      className="group relative flex h-16 w-16 items-center justify-center outline-none"
     >
-      {/* Pulse ring */}
-      <span
-        className="absolute h-16 w-16 rounded-full bg-violet-400 opacity-30"
-        style={{ animation: 'ping 2s cubic-bezier(0,0,0.2,1) infinite' }}
-      />
-      {/* Glow ring */}
-      <span className="absolute h-16 w-16 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 opacity-80 blur-sm" />
-      {/* Button face */}
-      <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg transition-transform duration-200 group-hover:scale-110 group-active:scale-95">
-        {/* Cartoon robot face */}
-        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-9 w-9">
-          {/* Antenna */}
-          <line x1="20" y1="3" x2="20" y2="9" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-          <circle cx="20" cy="2.5" r="2" fill="#fbbf24"/>
-          {/* Head */}
-          <rect x="8" y="9" width="24" height="20" rx="5" fill="white" fillOpacity="0.95"/>
-          {/* Eyes */}
-          <rect x="12" y="14" width="6" height="5" rx="2" fill="#6d28d9"/>
-          <rect x="22" y="14" width="6" height="5" rx="2" fill="#6d28d9"/>
-          {/* Eye shine */}
-          <circle cx="14" cy="15.5" r="1" fill="white"/>
-          <circle cx="24" cy="15.5" r="1" fill="white"/>
-          {/* Smile */}
-          <path d="M14 23 Q20 27 26 23" stroke="#6d28d9" strokeWidth="2" strokeLinecap="round" fill="none"/>
-          {/* Cheeks */}
-          <circle cx="11" cy="22" r="2.5" fill="#f9a8d4" fillOpacity="0.6"/>
-          <circle cx="29" cy="22" r="2.5" fill="#f9a8d4" fillOpacity="0.6"/>
-          {/* Neck */}
-          <rect x="17" y="29" width="6" height="3" rx="1" fill="white" fillOpacity="0.7"/>
-          {/* Body */}
-          <rect x="11" y="32" width="18" height="6" rx="3" fill="white" fillOpacity="0.5"/>
-        </svg>
+      {/* Outer pulse */}
+      <span className="absolute inset-0 rounded-full bg-violet-500/25"
+        style={{ animation: 'ping 2.4s cubic-bezier(0,0,0.2,1) infinite' }} />
+      {/* Soft glow */}
+      <span className="absolute inset-0 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 opacity-60 blur-md" />
+      {/* Main circle */}
+      <span className="relative flex h-[58px] w-[58px] items-center justify-center rounded-full bg-gradient-to-br from-violet-500 via-purple-600 to-indigo-600 shadow-[0_8px_32px_rgba(124,58,237,0.55)] transition-all duration-200 group-hover:scale-110 group-hover:shadow-[0_12px_40px_rgba(124,58,237,0.7)] group-active:scale-95">
+        <RobotSvg size={9} />
       </span>
       {/* Tooltip */}
-      <span className="absolute right-[4.5rem] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+      <span className="pointer-events-none absolute right-[4.8rem] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-xl bg-gray-950/90 px-3 py-1.5 text-xs font-semibold text-white opacity-0 shadow-xl backdrop-blur-sm transition-all duration-200 group-hover:opacity-100">
         Assistant IA
+        <span className="absolute right-[-5px] top-1/2 -translate-y-1/2 border-4 border-transparent border-l-gray-950/90" />
       </span>
     </button>
   );
@@ -698,35 +683,41 @@ function FloatingAssistantButton({ onClick }) {
 /* ─────────────────────────────────────────────────────────────────────────── */
 function ChatModal({ onClose }) {
   return (
-    <div
-      style={{ position: 'fixed', bottom: '6.5rem', right: '2rem', zIndex: 50 }}
-      className="flex w-[370px] flex-col overflow-hidden rounded-2xl border border-violet-200/60 bg-white shadow-2xl dark:border-violet-900/40 dark:bg-slate-900"
-    >
+    <>
+      {/* Backdrop — click outside to close */}
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        style={{ position: 'fixed', bottom: '6.5rem', right: '2rem', zIndex: 50, animation: 'slideUp 0.22s cubic-bezier(0.34,1.56,0.64,1)' }}
+        className="flex w-[390px] flex-col overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_rgba(0,0,0,0.18)] ring-1 ring-violet-200/50 dark:bg-[#0f0f1a] dark:ring-violet-900/40"
+      >
+      <style>{`@keyframes slideUp{from{opacity:0;transform:translateY(18px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}`}</style>
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-violet-100 bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 dark:border-violet-900">
-        {/* Mini robot */}
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20">
-          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-6 w-6">
-            <circle cx="20" cy="2.5" r="2" fill="#fbbf24"/>
-            <line x1="20" y1="4" x2="20" y2="8" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
-            <rect x="8" y="8" width="24" height="18" rx="5" fill="white" fillOpacity="0.9"/>
-            <rect x="12" y="13" width="5" height="4" rx="1.5" fill="#6d28d9"/>
-            <rect x="23" y="13" width="5" height="4" rx="1.5" fill="#6d28d9"/>
-            <circle cx="13.5" cy="14" r="0.8" fill="white"/>
-            <circle cx="24.5" cy="14" r="0.8" fill="white"/>
-            <path d="M14 21 Q20 25 26 21" stroke="#6d28d9" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
-            <circle cx="11" cy="20" r="2" fill="#f9a8d4" fillOpacity="0.5"/>
-            <circle cx="29" cy="20" r="2" fill="#f9a8d4" fillOpacity="0.5"/>
-          </svg>
+      <div className="relative flex items-center gap-3 overflow-hidden px-5 py-4"
+        style={{ background: 'linear-gradient(135deg, #6d28d9 0%, #7c3aed 40%, #4f46e5 100%)' }}>
+        {/* Decorative circles — pointer-events-none so they don't block the X button */}
+        <span className="pointer-events-none absolute -right-4 -top-4 h-20 w-20 rounded-full bg-white/5" />
+        <span className="pointer-events-none absolute -bottom-6 right-12 h-16 w-16 rounded-full bg-white/5" />
+        {/* Avatar */}
+        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/15 shadow-inner backdrop-blur-sm">
+          <RobotSvg size={6} />
+          {/* Online dot */}
+          <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-violet-700 bg-emerald-400" />
         </div>
         <div className="flex-1">
-          <p className="text-sm font-bold text-white">Assistant IA</p>
-          <p className="text-[11px] text-violet-200">En ligne · Propulsé par LLM</p>
+          <p className="text-sm font-bold tracking-wide text-white">Assistant IA</p>
+          <div className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <p className="text-[11px] font-medium text-violet-200">En ligne · LLM</p>
+          </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-full p-1 text-white/70 transition-colors hover:bg-white/20 hover:text-white"
+          className="flex h-8 w-8 items-center justify-center rounded-xl text-white/60 transition-all hover:bg-white/15 hover:text-white"
           aria-label="Fermer"
         >
           <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
@@ -737,6 +728,7 @@ function ChatModal({ onClose }) {
       {/* Chat body */}
       <ChatPanel compact />
     </div>
+    </>
   );
 }
 
@@ -749,10 +741,12 @@ function ChatPanel({ compact = false }) {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: 'Bonjour ! Je suis votre assistant IA de gestion de projet. Posez-moi toutes vos questions : état du projet, risques, priorisation, organisation d\'équipe…',
+      content: 'Bonjour ! Je suis votre assistant IA. J\'ai accès à tous vos projets et tâches en temps réel. Posez-moi n\'importe quelle question : tâches en retard, projets à risque, charge d\'équipe, vos tâches assignées…',
     },
   ]);
   const bottomRef = useRef(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const elapsedRef = useRef(null);
 
   const { data: projects } = useQuery({
     queryKey: ['projects-for-ai'],
@@ -762,12 +756,16 @@ function ChatPanel({ compact = false }) {
   const { mutate: sendMessage, isPending } = useMutation({
     mutationFn: (payload) => api.post('/ai/chat', payload).then((r) => r.data),
     onSuccess: (data) => {
+      clearInterval(elapsedRef.current);
+      setElapsedSeconds(0);
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: data.response, ai_powered: data.ai_powered },
       ]);
     },
     onError: (err) => {
+      clearInterval(elapsedRef.current);
+      setElapsedSeconds(0);
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: `Erreur : ${err.response?.data?.message || err.message}`, error: true },
@@ -784,6 +782,8 @@ function ChatPanel({ compact = false }) {
     if (!trimmed || isPending) return;
     setMessages((prev) => [...prev, { role: 'user', content: trimmed }]);
     setInput('');
+    setElapsedSeconds(0);
+    elapsedRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
     sendMessage({ message: trimmed, project_id: projectId || null });
   };
 
@@ -795,147 +795,190 @@ function ChatPanel({ compact = false }) {
   };
 
   const SUGGESTIONS = [
-    'Quelles tâches sont les plus à risque ?',
-    'Comment équilibrer la charge de l\'équipe ?',
-    'Quelle est la priorité recommandée ?',
-    'Y a-t-il des blocages détectés ?',
+    'Quelles tâches sont en retard ?',
+    'Quelles sont mes tâches assignées ?',
+    'Quels projets ont des tâches à risque ?',
+    'Quel est l\'état général de tous mes projets ?',
   ];
 
   const inner = (
-    <div className={cn('flex flex-col gap-3', compact ? 'p-3' : 'p-0')}>
-      {/* Project selector */}
+    <div className="flex flex-col">
+
+      {/* ── Project selector (compact) ── */}
+      {compact && (
+        <div className="px-4 py-2.5" style={{ borderBottom: '1px solid rgba(139,92,246,0.12)' }}>
+          <div className="flex items-center gap-2 rounded-xl px-3 py-1.5" style={{ background: 'linear-gradient(135deg,#f5f3ff,#ede9fe55)' }}>
+            <svg className="h-3.5 w-3.5 shrink-0 text-violet-400" fill="none" viewBox="0 0 20 20"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5z" stroke="currentColor" strokeWidth="1.5"/></svg>
+            <select
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="flex-1 bg-transparent text-xs font-medium text-violet-700 focus:outline-none dark:text-violet-300"
+            >
+              <option value="">Sans contexte projet</option>
+              {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* ── Project selector (non-compact) ── */}
       {!compact && (
         <div className="flex flex-wrap items-center gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">
-              Contexte projet (optionnel)
-            </label>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Contexte projet</label>
             <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-64">
-              <option value="">Sans contexte de projet</option>
+              <option value="">Sans contexte</option>
               {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
           </div>
-          {projectId && (
-            <Badge variant="outline" className="mt-4 text-xs">
-              Contexte : {projects?.find((p) => String(p.id) === projectId)?.name}
-            </Badge>
-          )}
+          {projectId && <Badge variant="outline" className="mt-4 text-xs">{projects?.find((p) => String(p.id) === projectId)?.name}</Badge>}
         </div>
       )}
 
-      {compact && (
-        <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-full text-xs">
-          <option value="">Sans contexte projet</option>
-          {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
-      )}
+      {/* ── Messages area ── */}
+      <div
+        className={cn('flex flex-col gap-5 overflow-y-auto scroll-smooth', compact ? 'px-4 py-4' : 'rounded-2xl p-5')}
+        style={{
+          minHeight: compact ? 180 : 300,
+          maxHeight: compact ? 290 : 450,
+          background: compact
+            ? 'linear-gradient(160deg,#faf8ff 0%,#f3f0ff 50%,#eef2ff 100%)'
+            : 'linear-gradient(160deg,#f9f7ff 0%,#f3f0ff 60%,#eef2ff 100%)',
+        }}
+      >
+        {messages.map((msg, i) => (
+          <div key={i} className={cn('flex items-end gap-2', msg.role === 'user' ? 'flex-row-reverse' : 'flex-row')}>
 
-      {/* Messages */}
-      <div className={cn(
-        'flex flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-muted/10',
-        compact ? 'max-h-[260px] min-h-[160px] p-3' : 'max-h-[420px] min-h-[280px] p-4',
-      )}>
-          {messages.map((msg, i) => (
+            {/* AI avatar */}
+            {msg.role === 'assistant' && (
+              <div className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl shadow-md"
+                style={{ background: msg.error ? '#fee2e2' : 'linear-gradient(135deg,#7c3aed,#4f46e5)' }}>
+                <Bot className="h-4 w-4 text-white" />
+              </div>
+            )}
+
+            {/* Bubble */}
             <div
-              key={i}
-              className={cn(
-                'flex gap-3',
-                msg.role === 'user' ? 'flex-row-reverse' : 'flex-row',
-              )}
+              className={cn('max-w-[82%] rounded-3xl px-4 py-3', msg.role === 'user' ? 'rounded-br-md' : 'rounded-bl-md')}
+              style={
+                msg.role === 'user'
+                  ? { background: 'linear-gradient(135deg,#7c3aed,#4f46e5)', boxShadow: '0 6px 20px rgba(124,58,237,0.38)', color: 'white' }
+                  : msg.error
+                    ? { background: '#fff1f2', border: '1px solid #fecdd3', color: '#e11d48' }
+                    : { background: 'rgba(255,255,255,0.92)', boxShadow: '0 4px 24px rgba(109,40,217,0.10)', border: '1px solid rgba(139,92,246,0.14)', backdropFilter: 'blur(8px)' }
+              }
             >
-              {/* Avatar */}
-              <div
-                className={cn(
-                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-sm',
-                  msg.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : msg.error
-                      ? 'bg-destructive/10 text-destructive'
-                      : 'bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300',
-                )}
-              >
-                {msg.role === 'user' ? <UserIcon className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-              </div>
-              {/* Bubble */}
-              <div
-                className={cn(
-                  'max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm',
-                  msg.role === 'user'
-                    ? 'rounded-tr-sm bg-primary text-primary-foreground'
-                    : msg.error
-                      ? 'rounded-tl-sm bg-destructive/10 text-destructive'
-                      : 'rounded-tl-sm bg-card text-foreground ring-1 ring-border',
-                )}
-              >
-                {msg.role === 'assistant' && !msg.error
-                  ? <ChatMessage content={msg.content} />
-                  : <p className="text-sm leading-relaxed">{msg.content}</p>
-                }
-                {msg.ai_powered && (
-                  <div className="mt-1.5 flex items-center gap-1 text-[10px] text-violet-500 dark:text-violet-400">
-                    <Zap className="h-2.5 w-2.5" /> IA
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {isPending && (
-            <div className="flex gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
-                <Bot className="h-4 w-4" />
-              </div>
-              <div className="rounded-2xl rounded-tl-sm bg-card px-4 py-3 ring-1 ring-border">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:0ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:150ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:300ms]" />
+              {msg.role === 'assistant' && !msg.error
+                ? <ChatMessage content={msg.content} />
+                : <span className="text-[13px] leading-relaxed">{msg.content}</span>
+              }
+              {msg.ai_powered && (
+                <div className="mt-2 flex items-center gap-1" style={{ color: '#a78bfa', fontSize: 10 }}>
+                  <Zap className="h-2.5 w-2.5" /> IA
                 </div>
+              )}
+            </div>
+
+            {/* User avatar */}
+            {msg.role === 'user' && (
+              <div className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl shadow-md"
+                style={{ background: 'linear-gradient(135deg,#1e293b,#334155)' }}>
+                <UserIcon className="h-4 w-4 text-white" />
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Typing dots */}
+        {isPending && (
+          <div className="flex items-end gap-2">
+            <div className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl shadow-md"
+              style={{ background: 'linear-gradient(135deg,#7c3aed,#4f46e5)' }}>
+              <Bot className="h-4 w-4 text-white" />
+            </div>
+            <div className="rounded-3xl rounded-bl-md px-5 py-3.5"
+              style={{ background: 'rgba(255,255,255,0.92)', boxShadow: '0 4px 24px rgba(109,40,217,0.10)', border: '1px solid rgba(139,92,246,0.14)' }}>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-[5px]">
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:0ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:140ms]" />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:280ms]" />
+                  {elapsedSeconds > 0 && (
+                    <span className="ml-2 text-[11px] tabular-nums text-violet-400">{elapsedSeconds}s</span>
+                  )}
+                </div>
+                {elapsedSeconds >= 8 && (
+                  <span className="text-[11px] text-amber-500">Le modèle gratuit est lent, merci de patienter…</span>
+                )}
               </div>
             </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-
-        {/* Suggestions rapides */}
-        {messages.length <= 1 && (
-          <div className="flex flex-wrap gap-2">
-            {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => { setInput(s); }}
-                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-              >
-                {s}
-              </button>
-            ))}
           </div>
         )}
+        <div ref={bottomRef} />
+      </div>
 
-        {/* Input */}
-        <div className="flex items-end gap-2">
+      {/* ── Quick suggestions ── */}
+      {messages.length <= 1 && (
+        <div className={cn('flex flex-wrap gap-1.5', compact ? 'px-4 pb-3 pt-2' : 'pt-2')}>
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setInput(s)}
+              className="rounded-full px-3 py-1 text-[11px] font-medium transition-all hover:scale-105"
+              style={{ background: 'linear-gradient(135deg,#f5f3ff,#ede9fe)', color: '#6d28d9', border: '1px solid rgba(139,92,246,0.25)', boxShadow: '0 1px 4px rgba(124,58,237,0.10)' }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Input ── */}
+      <div
+        className={cn('flex items-end gap-2.5', compact ? 'px-3 pb-3 pt-2' : 'pt-1')}
+        style={compact ? { borderTop: '1px solid rgba(139,92,246,0.12)' } : {}}
+      >
+        <div className="relative flex-1">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Posez votre question… (Entrée pour envoyer)"
+            placeholder="Écrivez votre message…"
             rows={compact ? 1 : 2}
-            className="flex-1 resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            className="w-full resize-none rounded-2xl px-4 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none dark:text-gray-100 dark:placeholder:text-gray-500"
+            style={{
+              background: 'rgba(255,255,255,0.9)',
+              border: '1.5px solid rgba(139,92,246,0.2)',
+              boxShadow: '0 2px 10px rgba(109,40,217,0.07)',
+              transition: 'border-color 0.2s, box-shadow 0.2s',
+            }}
+            onFocus={(e) => { e.target.style.borderColor = 'rgba(139,92,246,0.55)'; e.target.style.boxShadow = '0 0 0 3px rgba(139,92,246,0.12)'; }}
+            onBlur={(e) => { e.target.style.borderColor = 'rgba(139,92,246,0.2)'; e.target.style.boxShadow = '0 2px 10px rgba(109,40,217,0.07)'; }}
           />
-          <Button
-            onClick={handleSend}
-            disabled={!input.trim() || isPending}
-            className={cn('shrink-0 rounded-xl', compact ? 'h-10 w-10' : 'h-[52px] w-12')}
-          >
-            {isPending ? <Spinner /> : <Send className="h-4 w-4" />}
-          </Button>
         </div>
-        {!compact && (
-          <p className="text-center text-[11px] text-muted-foreground">
-            Maj+Entrée pour un saut de ligne · L'IA peut faire des erreurs
-          </p>
-        )}
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={!input.trim() || isPending}
+          className="flex shrink-0 items-center justify-center rounded-2xl text-white transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+          style={{
+            width: compact ? 38 : 48,
+            height: compact ? 38 : 48,
+            background: 'linear-gradient(135deg,#7c3aed,#4f46e5)',
+            boxShadow: '0 4px 16px rgba(124,58,237,0.45)',
+          }}
+        >
+          {isPending ? <Spinner className="h-4 w-4" /> : <Send className="h-[15px] w-[15px]" />}
+        </button>
       </div>
+
+      {!compact && (
+        <p className="pt-1 text-center text-[11px] text-muted-foreground/50">
+          Maj+Entrée pour saut de ligne · L'IA peut faire des erreurs
+        </p>
+      )}
+    </div>
   );
 
   if (compact) return inner;

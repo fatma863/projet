@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Events\TaskCommentCreated;
 use App\Events\TaskCommentDeleted;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\ProjectController;
 use App\Http\Resources\AttachmentResource;
 use App\Http\Resources\CommentResource;
 use App\Http\Resources\TaskAssigneeResource;
@@ -61,7 +62,7 @@ class TaskController extends Controller
                 'status' => fn ($q) => $q->select('id', 'project_id', 'name', 'color', 'order', 'is_default'),
                 'creator' => fn ($q) => $q->select('id', 'name', 'email'),
                 'assignees' => fn ($q) => $q->select('users.id', 'users.name', 'users.email'),
-                'project' => fn ($q) => $q->select('id', 'name', 'code'),
+                'project' => fn ($q) => $q->select('id', 'name', 'code', 'owner_id'),
                 'sprint' => fn ($q) => $q->select(
                     'id', 'project_id', 'name', 'goal', 'status', 'start_date', 'end_date',
                     'started_at', 'ended_at', 'created_at', 'updated_at'
@@ -103,7 +104,8 @@ class TaskController extends Controller
         $perPage = ApiPagination::perPage($request);
         if ($request->boolean('all')) {
             $total = (clone $query)->count();
-            $tasks = $query->orderByDesc('updated_at')->limit(3000)->get();
+            // Limite à 500 pour éviter des payloads trop lourds (utiliser la pagination sinon)
+            $tasks = $query->orderByDesc('updated_at')->limit(500)->get();
 
             return response()->json([
                 'tasks' => TaskResource::collection($tasks),
@@ -133,6 +135,7 @@ class TaskController extends Controller
         $query = $project->tasks()
             ->select(Task::API_INDEX_COLUMNS)
             ->with([
+                'project' => fn ($q) => $q->select('id', 'name', 'code', 'owner_id'),
                 'status' => fn ($q) => $q->select('id', 'project_id', 'name', 'color', 'order', 'is_default'),
                 'creator' => fn ($q) => $q->select('id', 'name', 'email'),
                 'assignees' => fn ($q) => $q->select('users.id', 'users.name', 'users.email'),
@@ -487,6 +490,7 @@ class TaskController extends Controller
             'changed' => $changed,
         ]);
         $this->notifyDelayIfNeeded($task);
+        ProjectController::forgetDashboardCache($task->project_id);
 
         return response()->json([
             'message' => 'Tâche mise à jour.',
@@ -504,6 +508,7 @@ class TaskController extends Controller
         $this->activityLogService->log($project, Auth::user(), 'task.deleted', $task, [
             'task_title' => $title,
         ]);
+        ProjectController::forgetDashboardCache($project->id);
 
         return response()->json(['message' => 'Tâche supprimée.']);
     }

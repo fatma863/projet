@@ -34,8 +34,21 @@ import {
   UserPlus,
   Calendar,
 } from 'lucide-react';
+import ClientDashboard from './ClientDashboard';
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const isViewerEarly = isGuestViewer(user);
+
+  // ─── Client / Viewer : dashboard dédié ───
+  if (isViewerEarly) {
+    return <ClientDashboard />;
+  }
+
+  return <InternalDashboard />;
+}
+
+function InternalDashboard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isAdmin = user?.roles?.includes('admin');
@@ -244,11 +257,12 @@ export default function DashboardPage() {
   const workloadByTeam = (() => {
     // Regroupe les tâches par équipe (via project.team_id).
     const projectTeamById = new Map((projects || []).map((p) => [p.id, p.team_id]));
+    const teamNameById = new Map((projects || []).filter((p) => p.team).map((p) => [p.team_id, p.team.name || p.team_name]));
     const map = new Map();
     flatTasks.forEach((task) => {
       const teamId = projectTeamById.get(task.project_id);
       if (!teamId) return;
-      const current = map.get(teamId) || { id: teamId, name: `Équipe ${teamId}`, count: 0 };
+      const current = map.get(teamId) || { id: teamId, name: teamNameById.get(teamId) || `Équipe ${teamId}`, count: 0 };
       current.count += 1;
       map.set(teamId, current);
     });

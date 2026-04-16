@@ -10,6 +10,21 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-query': ['@tanstack/react-query'],
+          'vendor-motion': ['framer-motion'],
+          'vendor-forms': ['react-hook-form', 'zod', '@hookform/resolvers'],
+          'vendor-ui': ['sonner', 'date-fns'],
+        },
+      },
+    },
+    // Alerte au-dessus de 500 kB par chunk
+    chunkSizeWarningLimit: 500,
+  },
   server: {
     port: 5173,
     proxy: {
