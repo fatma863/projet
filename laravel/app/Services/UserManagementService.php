@@ -16,6 +16,7 @@ class UserManagementService
     public function paginateUsers(string $search = '', ?string $status = null, int $perPage = 25): LengthAwarePaginator
     {
         $query = User::query()
+            ->with('specialties')
             ->when($search !== '', fn ($q) => $q->where(function ($sub) use ($search): void {
                 $sub->where('name', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%");

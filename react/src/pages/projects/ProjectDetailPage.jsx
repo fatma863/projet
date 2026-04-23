@@ -496,7 +496,6 @@ export default function ProjectDetailPage() {
           { key: 'members', label: 'Membres' },
           { key: 'activity', label: 'Historique' },
           ...(isAdmin ? [{ key: 'gantt', label: 'Gantt' }] : []),
-          { key: 'files', label: 'Fichiers' },
           ...(isViewer ? [{ key: 'reports', label: 'Rapports IA' }] : []),
         ].map((t) => (
           <button
@@ -613,7 +612,7 @@ export default function ProjectDetailPage() {
       )}
 
       {tab === 'members' && (
-        <MembersTab projectId={id} canEditProject={canEditProject} canInvite={canInvite} onOpenInvite={() => setInviteOpen(true)} />
+        <MembersTab projectId={id} canEditProject={canEditProject} canInvite={canInvite} isAdmin={isAdmin} onOpenInvite={() => setInviteOpen(true)} />
       )}
       {tab === 'activity' && <ProjectActivityTab projectId={id} />}
       {tab === 'gantt' && (
@@ -626,7 +625,6 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {tab === 'files' && <ProjectFilesTab projectId={id} tasks={tasks} />}
       {tab === 'reports' && <ProjectReportsTab projectId={id} />}
 
       {/* Modale tâche */}
@@ -1108,7 +1106,7 @@ function KanbanCard({ task, onClick, canWriteTask, columns, currentColumn, onMov
   );
 }
 
-function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
+function MembersTab({ projectId, canEditProject, canInvite, isAdmin, onOpenInvite }) {
   const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [role, setRole] = useState('member');
@@ -1337,7 +1335,7 @@ function MembersTab({ projectId, canEditProject, canInvite, onOpenInvite }) {
               <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleBadgeClass}`}>
                 {formatProjectRole(memberRole)}
               </span>
-              {canEditProject && (
+              {isAdmin && (
                 <button
                 onClick={() => {
                   if (window.confirm('Retirer ce membre ?')) {

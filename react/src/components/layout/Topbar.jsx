@@ -70,7 +70,11 @@ export default function Topbar({ onMenuClick }) {
         )}
         <NotificationDropdown />
 
-        <div className="flex items-center gap-3">
+        <Link
+          to="/settings"
+          className="flex items-center gap-3 rounded-lg px-2 py-1 hover:bg-accent transition-colors"
+          title="Paramètres du compte"
+        >
           {user?.avatar_url ? (
             <img
               src={user.avatar_url}
@@ -86,7 +90,7 @@ export default function Topbar({ onMenuClick }) {
             <p className="text-sm font-medium text-foreground">{user?.name}</p>
             <p className="text-xs text-muted-foreground">{user?.email}</p>
           </div>
-        </div>
+        </Link>
 
         <button
           onClick={toggleDark}

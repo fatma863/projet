@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
@@ -13,7 +13,7 @@ import { Select } from '../../components/ui/Select';
 import { Textarea } from '../../components/ui/Textarea';
 import {
   Plus, Search, FolderKanban, Calendar, Users, MoreVertical,
-  Pencil, Trash2, Eye, X, RotateCcw,
+  Pencil, Trash2, Eye, X, RotateCcw, ChevronDown, Check,
 } from 'lucide-react';
 import { isGuestViewer } from '../../lib/roles';
 
@@ -271,6 +271,193 @@ export default function ProjectsPage() {
   );
 }
 
+/* ── User avatar + name + specialty picker ── */
+function UserAvatar({ user, size = 32 }) {
+  if (user.avatar_url) {
+    return (
+      <img
+        src={user.avatar_url}
+        alt={user.name}
+        className="rounded-full object-cover flex-shrink-0"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  const initials = user.name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  return (
+    <span
+      className="flex items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold flex-shrink-0"
+      style={{ width: size, height: size }}
+    >
+      {initials}
+    </span>
+  );
+}
+
+function UserSelectOption({ user, selected, onClick }) {
+  const specs = user.specialties?.map((s) => s.name).join(' · ');
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+        selected ? 'bg-primary/5 border-l-2 border-primary' : 'hover:bg-accent/60 border-l-2 border-transparent'
+      }`}
+    >
+      <UserAvatar user={user} size={36} />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate leading-snug">{user.name}</p>
+        {specs && (
+          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{specs}</p>
+        )}
+      </div>
+      {selected && <Check className="h-4 w-4 text-primary flex-shrink-0" />}
+    </button>
+  );
+}
+
+function UserSelect({ users, value, onChange, placeholder = 'Sélectionner…', disabled }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [rect, setRect] = useState(null);
+  const triggerRef = useRef(null);
+  const dropRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const selectedUser = useMemo(
+    () => users.find((u) => u.id === (typeof value === 'string' ? Number(value) : value)),
+    [users, value],
+  );
+
+  const filtered = useMemo(
+    () => {
+      if (!search) return users;
+      const q = search.toLowerCase();
+      return users.filter(
+        (u) =>
+          u.name.toLowerCase().includes(q) ||
+          (u.specialties || []).some((s) => s.name.toLowerCase().includes(q))
+      );
+    },
+    [users, search],
+  );
+
+  const open = useCallback(() => {
+    if (disabled) return;
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (r) setRect(r);
+    setIsOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 30);
+  }, [disabled]);
+
+  const close = useCallback(() => {
+    setIsOpen(false);
+    setSearch('');
+  }, []);
+
+  const selectUser = useCallback((uid) => {
+    onChange(uid ? String(uid) : '');
+    close();
+  }, [onChange, close]);
+
+  // Close on outside click, scroll, or resize
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (e) => {
+      if (triggerRef.current?.contains(e.target)) return;
+      if (dropRef.current?.contains(e.target)) return;
+      close();
+    };
+    const handleDismiss = () => close();
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('resize', handleDismiss);
+    const scrollParent = triggerRef.current?.closest('[data-modal-scroll]');
+    scrollParent?.addEventListener('scroll', handleDismiss, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('resize', handleDismiss);
+      scrollParent?.removeEventListener('scroll', handleDismiss);
+    };
+  }, [isOpen, close]);
+
+  // Compute portal position
+  const dropStyle = useMemo(() => {
+    if (!rect) return {};
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const maxH = 260;
+    const goUp = spaceBelow < maxH && rect.top > spaceBelow;
+    return goUp
+      ? { position: 'fixed', left: rect.left, width: rect.width, bottom: window.innerHeight - rect.top + 4, maxHeight: Math.min(maxH, rect.top - 16) }
+      : { position: 'fixed', left: rect.left, width: rect.width, top: rect.bottom + 4, maxHeight: Math.min(maxH, spaceBelow - 16) };
+  }, [rect]);
+
+  return (
+    <div ref={triggerRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => isOpen ? close() : open()}
+        className="flex w-full items-center gap-2.5 rounded-lg border border-input bg-background px-3 py-2 text-sm transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {selectedUser ? (
+          <>
+            <UserAvatar user={selectedUser} size={28} />
+            <div className="flex-1 text-left min-w-0">
+              <span className="block text-sm font-medium truncate">{selectedUser.name}</span>
+              {selectedUser.specialties?.length > 0 && (
+                <span className="block text-[11px] text-muted-foreground truncate leading-tight">
+                  {selectedUser.specialties.map((s) => s.name).join(' · ')}
+                </span>
+              )}
+            </div>
+          </>
+        ) : (
+          <span className="flex-1 text-left text-muted-foreground">{placeholder}</span>
+        )}
+        <ChevronDown className={`h-4 w-4 text-muted-foreground flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && createPortal(
+        <div ref={dropRef} style={dropStyle} className="z-[200] rounded-lg border border-border bg-popover shadow-2xl overflow-hidden flex flex-col">
+          <div className="p-2 border-b border-border flex-shrink-0">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher par nom ou spécialité…"
+                className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring/40 transition-shadow"
+              />
+            </div>
+          </div>
+          <div className="overflow-y-auto flex-1 overscroll-contain">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-6 text-sm text-muted-foreground text-center">Aucun résultat</p>
+            ) : (
+              filtered.map((u) => (
+                <UserSelectOption
+                  key={u.id}
+                  user={u}
+                  selected={u.id === selectedUser?.id}
+                  onClick={() => selectUser(u.id)}
+                />
+              ))
+            )}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
 function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
   const queryClient = useQueryClient();
   const { user: authUser } = useAuth();
@@ -410,14 +597,24 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
 
   const showLoading = loadingUsers || (isEdit && loadingDetail);
 
+  const formId = 'project-form-modal';
+  const footerButtons = !showLoading ? (
+    <>
+      <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+      <Button type="submit" form={formId} disabled={mutation.isPending}>
+        {mutation.isPending ? 'Enregistrement…' : isEdit ? 'Modifier' : 'Créer'}
+      </Button>
+    </>
+  ) : null;
+
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Modifier le projet' : 'Nouveau projet'} size="lg">
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Modifier le projet' : 'Nouveau projet'} size="lg" footer={footerButtons}>
       {showLoading ? (
         <div className="flex justify-center py-12">
           <Spinner />
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id={formId} onSubmit={handleSubmit} className="space-y-5">
           {errors.general && (
             <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {errors.general[0]}
@@ -425,129 +622,115 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">Nom *</label>
-              <Input value={form.name} onChange={(e) => set('name', e.target.value)} />
+              <label className="mb-1.5 block text-sm font-medium">Nom *</label>
+              <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nom du projet" />
               {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name[0]}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Code *</label>
-              <Input value={form.code} onChange={(e) => set('code', e.target.value.toUpperCase())} maxLength={10} />
+              <label className="mb-1.5 block text-sm font-medium">Code *</label>
+              <Input value={form.code} onChange={(e) => set('code', e.target.value.toUpperCase())} maxLength={10} placeholder="PROJ" />
               {errors.code && <p className="mt-1 text-xs text-destructive">{errors.code[0]}</p>}
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Description</label>
-            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3} />
+            <label className="mb-1.5 block text-sm font-medium">Description</label>
+            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3} placeholder="Décrivez le projet…" />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-sm font-medium">Équipe</label>
+              <label className="mb-1.5 block text-sm font-medium">Équipe</label>
               <Select value={form.team_id} onChange={(e) => set('team_id', e.target.value)}>
                 <option value="">Aucune</option>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Statut</label>
+              <label className="mb-1.5 block text-sm font-medium">Statut</label>
               <Select value={form.status} onChange={(e) => set('status', e.target.value)}>
                 {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </Select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Priorité</label>
+              <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
+                {PRIORITY_OPTIONS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
               </Select>
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">Date de début</label>
+              <label className="mb-1.5 block text-sm font-medium">Date de début</label>
               <Input type="date" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} />
               {errors.start_date && <p className="mt-1 text-xs text-destructive">{errors.start_date[0]}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Date de fin</label>
+              <label className="mb-1.5 block text-sm font-medium">Date de fin</label>
               <Input type="date" value={form.end_date} onChange={(e) => set('end_date', e.target.value)} />
               {errors.end_date && <p className="mt-1 text-xs text-destructive">{errors.end_date[0]}</p>}
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Chef de projet {pmRequired ? '*' : ''}</label>
-            <Select
+            <label className="mb-1.5 block text-sm font-medium">Chef de projet {pmRequired ? '*' : ''}</label>
+            <UserSelect
+              users={users}
               value={form.project_manager_id}
-              onChange={(e) => {
-                const v = e.target.value;
+              onChange={(v) => {
                 setForm((f) => ({
                   ...f,
                   project_manager_id: v,
                   memberIds: f.memberIds.filter((id) => Number(id) !== Number(v)),
                 }));
               }}
-            >
-              <option value="">Sélectionner un utilisateur</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.email})
-                </option>
-              ))}
-            </Select>
+              placeholder="Sélectionner le chef de projet"
+            />
             {errors.project_manager_id && (
               <p className="mt-1 text-xs text-destructive">{errors.project_manager_id[0]}</p>
             )}
             {!pmRequired && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Optionnel en modification. Laissez vide si le projet n’a pas de chef de projet dédié.
+                Optionnel en modification.
               </p>
             )}
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Membres du projet</label>
+            <label className="mb-1.5 block text-sm font-medium">Membres du projet</label>
             <p className="mb-2 text-xs text-muted-foreground">
-              Le propriétaire du projet et le chef de projet sont ajoutés automatiquement ; ajoutez d&apos;autres membres ici.
+              Le propriétaire et le chef de projet sont ajoutés automatiquement.
             </p>
             {selectedMemberUsers.length > 0 && (
-              <ul className="mb-3 flex flex-wrap gap-2">
+              <div className="mb-3 rounded-lg border border-border divide-y divide-border">
                 {selectedMemberUsers.map((u) => (
-                  <li key={u.id}>
-                    <Badge variant="secondary" className="flex items-center gap-1 pr-1 font-normal">
-                      <span className="max-w-[200px] truncate">{u.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeMember(u.id)}
-                        className="rounded p-0.5 hover:bg-black/10"
-                        aria-label={`Retirer ${u.name}`}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </Badge>
-                  </li>
+                  <div key={u.id} className="flex items-center gap-3 px-3 py-2">
+                    <UserAvatar user={u} size={32} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{u.name}</p>
+                      {u.specialties?.length > 0 && (
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {u.specialties.map((s) => s.name).join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeMember(u.id)}
+                      className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      aria-label={`Retirer ${u.name}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
-            <Select
-              key={form.memberIds.join('-')}
+            <UserSelect
+              users={availableMembers}
               value=""
-              onChange={(e) => addMember(e.target.value)}
+              onChange={(v) => { addMember(v); }}
+              placeholder={availableMembers.length === 0 ? 'Aucun membre disponible' : 'Ajouter un membre…'}
               disabled={availableMembers.length === 0}
-            >
-              <option value="">
-                {availableMembers.length === 0 ? 'Aucun membre disponible' : 'Ajouter un membre...'}
-              </option>
-              {availableMembers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.email})
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="max-w-md">
-            <label className="mb-1 block text-sm font-medium">Priorité</label>
-            <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
-              {PRIORITY_OPTIONS.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? 'Enregistrement…' : isEdit ? 'Modifier' : 'Créer'}
-            </Button>
+            />
           </div>
         </form>
       )}

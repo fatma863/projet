@@ -405,40 +405,6 @@ function InternalDashboard() {
         </div>
       </div>
 
-      {/* Quick actions */}
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25 }}
-        className="flex flex-wrap gap-2"
-      >
-        {!isViewerUser && (
-          <Link
-            to="/projects"
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow-md"
-          >
-            <Plus className="h-4 w-4" />
-            Nouvelle tâche
-          </Link>
-        )}
-        <Link
-          to="/tasks"
-          className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-card px-4 py-2.5 text-sm font-medium text-foreground shadow-sm transition-all hover:border-primary/30 hover:bg-accent hover:shadow-md"
-        >
-          <ListTodo className="h-4 w-4 text-primary" />
-          Voir mes tâches
-        </Link>
-        {!isViewerUser && (
-          <Link
-            to="/projects"
-            className="inline-flex items-center gap-2 rounded-xl border border-border/80 bg-card px-4 py-2.5 text-sm font-medium text-foreground shadow-sm transition-all hover:border-primary/30 hover:bg-accent hover:shadow-md"
-          >
-            <UserPlus className="h-4 w-4 text-primary" />
-            Inviter un membre
-          </Link>
-        )}
-      </motion.div>
-
       {/* ─── Viewer: compact KPIs ─────────────────────────────────── */}
       {isViewerUser && memberDash && (
         <div className="grid gap-3 sm:grid-cols-3">
