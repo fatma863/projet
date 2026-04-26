@@ -110,6 +110,10 @@ class AccessControl
             return true;
         }
 
+        if ($project->chef_id && (int) $project->chef_id === (int) $user->id) {
+            return true;
+        }
+
         return self::projectRole($user, $project) === 'admin';
     }
 
@@ -160,6 +164,10 @@ class AccessControl
             return true;
         }
 
+        if ($project->chef_id && (int) $project->chef_id === (int) $user->id) {
+            return true;
+        }
+
         return self::projectRole($user, $project) === 'admin';
     }
 
@@ -176,12 +184,17 @@ class AccessControl
             return false;
         }
 
-        $role = self::projectRole($user, $project);
-        if ($role === 'client') {
-            return false;
+        // Chef can always create tasks
+        if ($project->chef_id && (int) $project->chef_id === (int) $user->id) {
+            return true;
         }
 
-        if (in_array($role, ['admin', 'member'], true)) {
+        if ((int) $project->owner_id === (int) $user->id) {
+            return true;
+        }
+
+        // Any project member (role = membre) can create tasks — no more client restriction
+        if (Schema::hasTable('project_user') && $project->users()->where('users.id', $user->id)->exists()) {
             return true;
         }
 
@@ -218,17 +231,22 @@ class AccessControl
         }
 
         $project = $task->project;
-        $projectRole = self::projectRole($user, $project);
 
         if ($user->hasRole('viewer')) {
             return false;
         }
 
-        if ($projectRole === 'client') {
-            return false;
+        if ((int) $project->owner_id === (int) $user->id) {
+            return true;
         }
 
-        if ((int) $project->owner_id === (int) $user->id || $projectRole === 'admin') {
+        if ($project->chef_id && (int) $project->chef_id === (int) $user->id) {
+            return true;
+        }
+
+        // Legacy role check
+        $projectRole = self::projectRole($user, $project);
+        if ($projectRole === 'admin') {
             return true;
         }
 

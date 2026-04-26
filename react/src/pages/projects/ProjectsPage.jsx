@@ -44,7 +44,7 @@ const EMPTY_FORM = {
   status: 'planning',
   start_date: '',
   end_date: '',
-  project_manager_id: '',
+  chef_id: '',
   memberIds: [],
   priority: 'medium',
 };
@@ -306,17 +306,17 @@ function UserSelectOption({ user, selected, onClick }) {
       type="button"
       onClick={onClick}
       className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors ${
-        selected ? 'bg-primary/5 border-l-2 border-primary' : 'hover:bg-accent/60 border-l-2 border-transparent'
+        selected ? 'bg-blue-50 dark:bg-blue-900/30 border-l-2 border-blue-500' : 'hover:bg-gray-100 dark:hover:bg-gray-800 border-l-2 border-transparent'
       }`}
     >
       <UserAvatar user={user} size={36} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate leading-snug">{user.name}</p>
+        <p className="text-sm font-medium truncate leading-snug text-black dark:text-white">{user.name}</p>
         {specs && (
-          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{specs}</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{specs}</p>
         )}
       </div>
-      {selected && <Check className="h-4 w-4 text-primary flex-shrink-0" />}
+      {selected && <Check className="h-4 w-4 text-blue-500 flex-shrink-0" />}
     </button>
   );
 }
@@ -324,7 +324,7 @@ function UserSelectOption({ user, selected, onClick }) {
 function UserSelect({ users, value, onChange, placeholder = 'Sélectionner…', disabled }) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [rect, setRect] = useState(null);
+  const [dropStyle, setDropStyle] = useState({});
   const triggerRef = useRef(null);
   const dropRef = useRef(null);
   const inputRef = useRef(null);
@@ -347,10 +347,22 @@ function UserSelect({ users, value, onChange, placeholder = 'Sélectionner…', 
     [users, search],
   );
 
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - r.bottom;
+    const maxH = 260;
+    const goUp = spaceBelow < maxH && r.top > spaceBelow;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8));
+    setDropStyle(
+      goUp
+        ? { position: 'fixed', left, width: r.width, bottom: window.innerHeight - r.top + 4, maxHeight: Math.min(maxH, r.top - 16) }
+        : { position: 'fixed', left, width: r.width, top: r.bottom + 4, maxHeight: Math.min(maxH, spaceBelow - 16) },
+    );
+  }, []);
+
   const open = useCallback(() => {
     if (disabled) return;
-    const r = triggerRef.current?.getBoundingClientRect();
-    if (r) setRect(r);
     setIsOpen(true);
     setTimeout(() => inputRef.current?.focus(), 30);
   }, [disabled]);
@@ -365,7 +377,34 @@ function UserSelect({ users, value, onChange, placeholder = 'Sélectionner…', 
     close();
   }, [onChange, close]);
 
-  // Close on outside click, scroll, or resize
+  // Dynamically update position while open: covers modal animation, scroll, and resize
+  useEffect(() => {
+    if (!isOpen) return;
+
+    updatePosition();
+
+    // Recompute every frame for the modal's open animation duration (~200ms)
+    let frameId;
+    const start = performance.now();
+    const animationLoop = (now) => {
+      updatePosition();
+      if (now - start < 250) {
+        frameId = requestAnimationFrame(animationLoop);
+      }
+    };
+    frameId = requestAnimationFrame(animationLoop);
+
+    window.addEventListener('scroll', updatePosition, { capture: true, passive: true });
+    window.addEventListener('resize', updatePosition, { passive: true });
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener('scroll', updatePosition, { capture: true });
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [isOpen, updatePosition]);
+
+  // Close on outside click only
   useEffect(() => {
     if (!isOpen) return;
     const handleClickOutside = (e) => {
@@ -373,28 +412,11 @@ function UserSelect({ users, value, onChange, placeholder = 'Sélectionner…', 
       if (dropRef.current?.contains(e.target)) return;
       close();
     };
-    const handleDismiss = () => close();
     document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('resize', handleDismiss);
-    const scrollParent = triggerRef.current?.closest('[data-modal-scroll]');
-    scrollParent?.addEventListener('scroll', handleDismiss, { passive: true });
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('resize', handleDismiss);
-      scrollParent?.removeEventListener('scroll', handleDismiss);
     };
   }, [isOpen, close]);
-
-  // Compute portal position
-  const dropStyle = useMemo(() => {
-    if (!rect) return {};
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const maxH = 260;
-    const goUp = spaceBelow < maxH && rect.top > spaceBelow;
-    return goUp
-      ? { position: 'fixed', left: rect.left, width: rect.width, bottom: window.innerHeight - rect.top + 4, maxHeight: Math.min(maxH, rect.top - 16) }
-      : { position: 'fixed', left: rect.left, width: rect.width, top: rect.bottom + 4, maxHeight: Math.min(maxH, spaceBelow - 16) };
-  }, [rect]);
 
   return (
     <div ref={triggerRef}>
@@ -423,23 +445,23 @@ function UserSelect({ users, value, onChange, placeholder = 'Sélectionner…', 
       </button>
 
       {isOpen && createPortal(
-        <div ref={dropRef} style={dropStyle} className="z-[200] rounded-lg border border-border bg-popover shadow-2xl overflow-hidden flex flex-col">
-          <div className="p-2 border-b border-border flex-shrink-0">
+        <div ref={dropRef} style={dropStyle} className="z-[9999] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl overflow-hidden flex flex-col backdrop-blur-none">
+          <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 bg-white dark:bg-gray-900">
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 dark:text-gray-500 pointer-events-none" />
               <input
                 ref={inputRef}
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Rechercher par nom ou spécialité…"
-                className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring/40 transition-shadow"
+                className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-black dark:text-white pl-8 pr-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 transition-shadow"
               />
             </div>
           </div>
-          <div className="overflow-y-auto flex-1 overscroll-contain">
+          <div className="overflow-y-auto flex-1 overscroll-contain bg-white dark:bg-gray-900">
             {filtered.length === 0 ? (
-              <p className="px-3 py-6 text-sm text-muted-foreground text-center">Aucun résultat</p>
+              <p className="px-3 py-6 text-sm text-gray-500 dark:text-gray-400 text-center">Aucun résultat</p>
             ) : (
               filtered.map((u) => (
                 <UserSelectOption
@@ -486,10 +508,10 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
     }
     if (!projectDetail) return;
     const ownerId = projectDetail.owner?.id;
-    const pmId = projectDetail.project_manager_id;
+    const chefId = projectDetail.chef_id ?? projectDetail.project_manager_id;
     const memberIds = (projectDetail.members || [])
       .map((m) => m.id)
-      .filter((id) => id !== ownerId && id !== (pmId ?? null));
+      .filter((id) => id !== ownerId && id !== (chefId ?? null));
     setForm({
       name: projectDetail.name || '',
       code: projectDetail.code || '',
@@ -498,26 +520,26 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
       status: projectDetail.status || 'planning',
       start_date: projectDetail.start_date || '',
       end_date: projectDetail.end_date || '',
-      project_manager_id: pmId ? String(pmId) : '',
+      chef_id: chefId ? String(chefId) : '',
       memberIds,
       priority: projectDetail.priority || 'medium',
     });
     setErrors({});
   }, [open, isEdit, projectDetail]);
 
-  const pmNum = form.project_manager_id ? Number(form.project_manager_id) : null;
-  const pmRequired = !isEdit;
+  const chefNum = form.chef_id ? Number(form.chef_id) : null;
+  const chefRequired = !isEdit;
   const ownerId = isEdit ? projectDetail?.owner?.id : authUser?.id;
   const availableMembers = users.filter(
     (u) =>
-      u.id !== pmNum
+      u.id !== chefNum
       && u.id !== ownerId
       && !form.memberIds.includes(u.id)
   );
 
   const addMember = (userId) => {
     const id = Number(userId);
-    if (!id || id === pmNum || id === ownerId || form.memberIds.includes(id)) return;
+    if (!id || id === chefNum || id === ownerId || form.memberIds.includes(id)) return;
     setForm((f) => ({ ...f, memberIds: [...f.memberIds, id] }));
   };
 
@@ -551,8 +573,8 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
     const next = {};
     if (!form.name.trim()) next.name = ['Le nom est obligatoire.'];
     if (!form.code.trim()) next.code = ['Le code est obligatoire.'];
-    if (pmRequired && !form.project_manager_id) {
-      next.project_manager_id = ['Le chef de projet est obligatoire.'];
+    if (chefRequired && !form.chef_id) {
+      next.chef_id = ['Le chef de projet est obligatoire.'];
     }
     if (form.start_date && form.end_date) {
       const a = new Date(form.start_date);
@@ -577,10 +599,10 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
       priority: form.priority,
       members: form.memberIds,
     };
-    if (form.project_manager_id) {
-      payload.project_manager_id = Number(form.project_manager_id);
+    if (form.chef_id) {
+      payload.chef_id = Number(form.chef_id);
     } else if (isEdit) {
-      payload.project_manager_id = null;
+      payload.chef_id = null;
     }
     if (form.team_id) payload.team_id = Number(form.team_id);
     if (form.start_date) payload.start_date = form.start_date;
@@ -672,26 +694,24 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
             </div>
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Chef de projet {pmRequired ? '*' : ''}</label>
+            <label className="mb-1.5 block text-sm font-medium">Chef de projet {chefRequired ? '*' : ''}</label>
             <UserSelect
               users={users}
-              value={form.project_manager_id}
+              value={form.chef_id}
               onChange={(v) => {
                 setForm((f) => ({
                   ...f,
-                  project_manager_id: v,
+                  chef_id: v,
                   memberIds: f.memberIds.filter((id) => Number(id) !== Number(v)),
                 }));
               }}
               placeholder="Sélectionner le chef de projet"
             />
-            {errors.project_manager_id && (
-              <p className="mt-1 text-xs text-destructive">{errors.project_manager_id[0]}</p>
+            {errors.chef_id && (
+              <p className="mt-1 text-xs text-destructive">{errors.chef_id[0]}</p>
             )}
-            {!pmRequired && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Optionnel en modification.
-              </p>
+            {!chefRequired && (
+              <p className="mt-1 text-xs text-muted-foreground">Optionnel en modification.</p>
             )}
           </div>
           <div>

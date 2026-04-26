@@ -1,5 +1,30 @@
 # Claude / Project Handbook — Gestion Projets PFE
 
+## Project Requirements
+
+- **Laravel 12 API backend (PHP 8.2+)**
+- **React 19 SPA frontend (Vite 7)**
+- **MySQL database**
+- **User authentication**: register, login, logout, password reset, profile, avatar
+- **Role management**: admin, member, viewer (Spatie)
+- **Teams and team membership management**
+- **Clients and client-project linking**
+- **Projects**: CRUD, statuses, members, invitations, dashboards, export, critical path
+- **Tasks**: Kanban workflow, assignees, dependencies, comments, attachments, time entries, status changes
+- **Agile features**: sprints, backlog, task assignment to sprints, sprint management
+- **Dashboards**: admin, member, and viewer roles
+- **Project invitations**: email flow
+- **In-app notifications**: scheduled smart notifications
+- **Global search endpoint**
+- **Gantt chart**: global and per-project, with dependency propagation
+- **Calendar aggregation**: for members/admins
+- **Activity feed**: admin/member only
+- **AI/analytics endpoints**: heuristics (not external LLM), admin/member only
+- **Real-time features**: optional, via Laravel Reverb/Pusher
+- **Environment variable configuration**: backend/frontend, mail, queues, broadcasting
+- **Tests for backend**: php artisan test
+- **Monorepo structure**: laravel/ (API), react/ (SPA)
+
 This document summarizes the **Laravel 12 API + React (Vite) SPA** codebase: goals, architecture, data model, routes, auth, UI, and operations.
 
 ---

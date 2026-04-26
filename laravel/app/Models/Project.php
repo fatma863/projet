@@ -18,6 +18,7 @@ class Project extends Model
         'team_id',
         'client_id',
         'project_manager_id',
+        'chef_id',
         'name',
         'code',
         'description',
@@ -60,6 +61,11 @@ class Project extends Model
     public function manager(): BelongsTo
     {
         return $this->belongsTo(User::class, 'project_manager_id');
+    }
+
+    public function chef(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'chef_id');
     }
 
     public function members(): BelongsToMany

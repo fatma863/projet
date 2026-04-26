@@ -16,7 +16,7 @@ import { PROJECT_ROLE_LABELS, formatProjectRole, isGuestViewer } from '../../lib
 import {
   ArrowLeft, Plus, GripVertical, Clock, User, AlertTriangle,
   BarChart3, Users, Calendar, Mail, Download, History, Layers, ChevronDown,
-  Pencil, Trash2, LayoutGrid, MessageSquare, Link2, FolderKanban,
+  Pencil, Trash2, LayoutGrid, MessageSquare, Link2, FolderKanban, Crown,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -612,7 +612,7 @@ export default function ProjectDetailPage() {
       )}
 
       {tab === 'members' && (
-        <MembersTab projectId={id} canEditProject={canEditProject} canInvite={canInvite} isAdmin={isAdmin} onOpenInvite={() => setInviteOpen(true)} />
+        <MembersTab project={project} projectId={id} canEditProject={canEditProject} canInvite={canInvite} isAdmin={isAdmin} onOpenInvite={() => setInviteOpen(true)} />
       )}
       {tab === 'activity' && <ProjectActivityTab projectId={id} />}
       {tab === 'gantt' && (
@@ -1106,10 +1106,10 @@ function KanbanCard({ task, onClick, canWriteTask, columns, currentColumn, onMov
   );
 }
 
-function MembersTab({ projectId, canEditProject, canInvite, isAdmin, onOpenInvite }) {
+function MembersTab({ project, projectId, canEditProject, canInvite, isAdmin, onOpenInvite }) {
   const queryClient = useQueryClient();
+
   const [showAdd, setShowAdd] = useState(false);
-  const [role, setRole] = useState('member');
   const [userSearch, setUserSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -1135,12 +1135,10 @@ function MembersTab({ projectId, canEditProject, canInvite, isAdmin, onOpenInvit
   const { data: allUsers = [], isFetching: usersLoading } = useQuery({
     queryKey: ['project-user-search', projectId],
     queryFn: () =>
-      api
-        .get(`/projects/${projectId}/user-search`)
-        .then((r) => {
-          const raw = r.data?.users ?? r.data?.data ?? [];
-          return Array.isArray(raw) ? raw : [];
-        }),
+      api.get(`/projects/${projectId}/user-search`).then((r) => {
+        const raw = r.data?.users ?? r.data?.data ?? [];
+        return Array.isArray(raw) ? raw : [];
+      }),
     enabled: showAdd && canEditProject,
     staleTime: 30_000,
   });
@@ -1154,7 +1152,7 @@ function MembersTab({ projectId, canEditProject, canInvite, isAdmin, onOpenInvit
     : allUsers;
 
   const addMutation = useMutation({
-    mutationFn: (data) => api.post(`/projects/${projectId}/members`, data),
+    mutationFn: (userId) => api.post(`/projects/${projectId}/members`, { user_id: userId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
       queryClient.invalidateQueries({ queryKey: ['project-user-search', projectId] });
@@ -1162,29 +1160,38 @@ function MembersTab({ projectId, canEditProject, canInvite, isAdmin, onOpenInvit
       setUserSearch('');
       setSelectedUser(null);
       setDropdownOpen(false);
+      toast.success('Membre ajouté.');
     },
+    onError: (err) => toast.error(err?.response?.data?.message || 'Erreur lors de l\'ajout.'),
   });
 
   const removeMutation = useMutation({
     mutationFn: (uid) => api.delete(`/projects/${projectId}/members/${uid}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['project-members', projectId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
+      toast.success('Membre retiré.');
+    },
+    onError: (err) => toast.error(err?.response?.data?.message || 'Erreur lors du retrait.'),
   });
+
+  const chef    = (members ?? []).find((m) => m.is_chef);
+  const membres = (members ?? []).filter((m) => !m.is_chef);
 
   if (isLoading) return <div className="flex justify-center py-10"><Spinner /></div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold text-foreground">Membres du projet</h3>
-        <div className="flex flex-wrap gap-2">
-          {canEditProject && (
-            <Button size="sm" onClick={() => setShowAdd(!showAdd)}>
-              <Plus className="mr-1 h-4 w-4" /> Ajouter un membre
-            </Button>
-          )}
-        </div>
+        {canEditProject && (
+          <Button size="sm" onClick={() => setShowAdd((v) => !v)}>
+            <Plus className="mr-1 h-4 w-4" /> Ajouter un membre
+          </Button>
+        )}
       </div>
 
+      {/* Add member panel — no role selector */}
       {showAdd && canEditProject && (
         <Card className="overflow-visible">
           <CardContent className="flex flex-col gap-4 overflow-visible p-4 sm:flex-row sm:items-end">
@@ -1192,20 +1199,11 @@ function MembersTab({ projectId, canEditProject, canInvite, isAdmin, onOpenInvit
               <label className="mb-1 block text-sm font-medium">Utilisateur</label>
               {selectedUser ? (
                 <div className="flex h-10 items-center justify-between gap-2 rounded-lg border border-input bg-muted/30 px-3 text-sm">
-                  <span className="truncate">
-                    <span className="font-medium text-foreground">{selectedUser.name}</span>
-                    {selectedUser.specialties?.length > 0 && (
-                      <span className="text-muted-foreground"> · {selectedUser.specialties.map((s) => s.name || s).join(', ')}</span>
-                    )}
-                  </span>
+                  <span className="truncate font-medium text-foreground">{selectedUser.name}</span>
                   <button
                     type="button"
                     className="shrink-0 text-xs text-primary hover:underline"
-                    onClick={() => {
-                      setSelectedUser(null);
-                      setUserSearch('');
-                      setDropdownOpen(false);
-                    }}
+                    onClick={() => { setSelectedUser(null); setUserSearch(''); setDropdownOpen(false); }}
                   >
                     Changer
                   </button>
@@ -1216,143 +1214,133 @@ function MembersTab({ projectId, canEditProject, canInvite, isAdmin, onOpenInvit
                     type="text"
                     autoComplete="off"
                     value={userSearch}
-                    onChange={(e) => {
-                      setUserSearch(e.target.value);
-                      setDropdownOpen(true);
-                    }}
+                    onChange={(e) => { setUserSearch(e.target.value); setDropdownOpen(true); }}
                     onFocus={() => setDropdownOpen(true)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') setDropdownOpen(false);
-                    }}
+                    onKeyDown={(e) => { if (e.key === 'Escape') setDropdownOpen(false); }}
                     className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground shadow-sm"
                     placeholder="Filtrer par nom ou e-mail…"
-                    aria-autocomplete="list"
-                    aria-expanded={dropdownOpen}
-                    aria-controls="project-member-user-suggestions"
                   />
                   {dropdownOpen && (
                     <div
-                      id="project-member-user-suggestions"
                       role="listbox"
-                      className="absolute left-0 right-0 z-[200] mt-1 max-h-60 overflow-y-auto rounded-md border border-border bg-card text-card-foreground shadow-lg ring-1 ring-black/5 dark:ring-white/10"
+                      className="absolute left-0 right-0 z-[200] mt-1 max-h-60 overflow-y-auto rounded-md border border-border bg-card shadow-lg"
                     >
-                      {usersLoading && (
-                        <p className="px-3 py-2.5 text-xs text-muted-foreground">Chargement…</p>
-                      )}
+                      {usersLoading && <p className="px-3 py-2.5 text-xs text-muted-foreground">Chargement…</p>}
                       {!usersLoading && filteredUsers.length === 0 && (
-                        <p className="px-3 py-2.5 text-xs text-muted-foreground">
-                          Aucun utilisateur disponible (déjà membre ou aucune correspondance).
-                        </p>
+                        <p className="px-3 py-2.5 text-xs text-muted-foreground">Aucun utilisateur disponible.</p>
                       )}
-                      {!usersLoading &&
-                        filteredUsers.map((u) => (
-                          <button
-                            key={u.id}
-                            type="button"
-                            role="option"
-                            className="block w-full border-b border-border/60 px-3 py-2.5 text-left text-sm last:border-0 hover:bg-accent"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              setSelectedUser(u);
-                              setUserSearch('');
-                              setDropdownOpen(false);
-                            }}
-                          >
-                            <span className="font-medium text-foreground">{u.name}</span>
-                            <span className="block text-xs text-muted-foreground">{u.email}</span>
-                            {u.specialties?.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {u.specialties.map((s) => (
-                                  <span key={s.id || s.name} className="inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
-                                    {s.name || s}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </button>
-                        ))}
+                      {!usersLoading && filteredUsers.map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          role="option"
+                          className="block w-full border-b border-border/60 px-3 py-2.5 text-left text-sm last:border-0 hover:bg-accent"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => { setSelectedUser(u); setUserSearch(''); setDropdownOpen(false); }}
+                        >
+                          <span className="font-medium text-foreground">{u.name}</span>
+                          <span className="block text-xs text-muted-foreground">{u.email}</span>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </>
               )}
             </div>
-            <div className="sm:w-44">
-              <label className="mb-1 block text-sm font-medium">Rôle</label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground"
-              >
-                <option value="admin">{PROJECT_ROLE_LABELS.admin}</option>
-                <option value="member">{PROJECT_ROLE_LABELS.member}</option>
-                <option value="client">{PROJECT_ROLE_LABELS.client}</option>
-              </select>
-            </div>
             <Button
               size="sm"
               className="shrink-0"
-              onClick={() => selectedUser && addMutation.mutate({ user_id: selectedUser.id, project_role: role })}
+              onClick={() => selectedUser && addMutation.mutate(selectedUser.id)}
               disabled={!selectedUser || addMutation.isPending}
             >
-              Ajouter
+              {addMutation.isPending ? 'Ajout…' : 'Ajouter'}
             </Button>
           </CardContent>
         </Card>
       )}
 
-      <div className="space-y-2">
-        {members?.map((m) => {
-          const memberRole = m.role || m.project_role || m.pivot?.project_role || 'member';
-          const roleBadgeClass =
-            memberRole === 'admin'
-              ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
-              : memberRole === 'client'
-                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
-          const specs = m.specialties || [];
-          return (
-          <div key={m.id} className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
-                {m.name?.[0] || m.user?.name?.[0] || '?'}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">{m.name || m.user?.name}</p>
-                {specs.length > 0 ? (
-                  <div className="flex flex-wrap gap-1 mt-0.5">
-                    {specs.map((s) => (
-                      <span key={s.id || s.name} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
-                        {s.name}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">{m.email || m.user?.email}</p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${roleBadgeClass}`}>
-                {formatProjectRole(memberRole)}
-              </span>
-              {isAdmin && (
-                <button
-                onClick={() => {
-                  if (window.confirm('Retirer ce membre ?')) {
-                    removeMutation.mutate(m.id);
-                  }
+      {/* Chef de projet */}
+      {chef && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            👑 Chef de projet
+          </p>
+          <MemberRow member={chef} isChef removable={false} />
+        </div>
+      )}
+
+      {/* Membres */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          👤 Membres ({membres.length})
+        </p>
+        {membres.length === 0 ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">Aucun membre ajouté</p>
+        ) : (
+          <div className="space-y-2">
+            {membres.map((m) => (
+              <MemberRow
+                key={m.id}
+                member={m}
+                isChef={false}
+                removable={isAdmin}
+                onRemove={() => {
+                  if (window.confirm('Retirer ce membre ?')) removeMutation.mutate(m.id);
                 }}
-                className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-destructive"
-              >
-                ×
-              </button>
-              )}
-            </div>
+              />
+            ))}
           </div>
-          );
-        })}
-        {members?.length === 0 && (
-          <p className="py-6 text-center text-sm text-muted-foreground">Aucun membre ajouté</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MemberRow({ member: m, isChef, removable, onRemove }) {
+  const specs    = m.specialties || [];
+  const canRemove = removable && !isChef;
+  return (
+    <div className={`flex items-center justify-between rounded-lg border bg-card p-3 ${isChef ? 'border-amber-300 dark:border-amber-700' : 'border-border'}`}>
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
+          {m.name?.[0] || '?'}
+        </div>
+        <div>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium text-foreground">{m.name}</p>
+            {isChef && <Crown className="h-3.5 w-3.5 text-amber-500" />}
+          </div>
+          {specs.length > 0 ? (
+            <div className="flex flex-wrap gap-1 mt-0.5">
+              {specs.map((s) => (
+                <span key={s.id || s.name} className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                  {s.name}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">{m.email}</p>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {isChef ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            <Crown className="h-3 w-3" /> Chef de projet
+          </span>
+        ) : (
+          <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+            Membre
+          </span>
+        )}
+        {canRemove && (
+          <button
+            onClick={onRemove}
+            className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-destructive"
+            title="Retirer ce membre"
+          >
+            ×
+          </button>
         )}
       </div>
     </div>

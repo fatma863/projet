@@ -39,29 +39,21 @@ export function formatAppRole(role, locale = 'fr') {
   return labels[key] ?? role;
 }
 
-/** Rôle dans un projet (pivot project_user) */
+/** Rôles projet simplifiés : chef (1 par projet) et membre */
 export const PROJECT_ROLE_LABELS = {
-  admin: 'Admin projet',
+  chef:   'Chef de projet',
+  membre: 'Membre',
+  // legacy — kept for backward compat display only
+  admin:  'Chef de projet',
   member: 'Membre',
-  client: 'Client',
-  guest: 'Client', // legacy pivot
-  viewer: 'Client', // legacy pivot
+  client: 'Membre',
+  guest:  'Membre',
+  viewer: 'Membre',
+  owner:  'Chef de projet',
 };
 
-const LEGACY_PROJECT_ROLES = {
-  owner: 'admin',
-  manager: 'admin',
-  guest: 'client',
-  viewer: 'client',
-  developer: 'member',
-  designer: 'member',
-  tester: 'member',
-};
-
-/** Affichage d’un rôle projet (y compris anciennes valeurs) */
+/** Retourne le label affiché pour un rôle projet */
 export function formatProjectRole(role) {
-  if (!role) return PROJECT_ROLE_LABELS.member;
-  const key = LEGACY_PROJECT_ROLES[role] ?? role;
-  const normalized = key === 'viewer' || key === 'guest' ? 'client' : key;
-  return PROJECT_ROLE_LABELS[normalized] ?? PROJECT_ROLE_LABELS[key] ?? role;
+  if (!role) return PROJECT_ROLE_LABELS.membre;
+  return PROJECT_ROLE_LABELS[role] ?? PROJECT_ROLE_LABELS.membre;
 }

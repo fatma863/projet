@@ -16,6 +16,7 @@ use App\Support\AccessControl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -34,7 +35,7 @@ class ProjectController extends Controller
     {
         $user = $request->user();
 
-        $query = Project::with(['owner', 'team', 'manager'])
+        $query = Project::with(['owner', 'team', 'chef'])
             ->withCount('members', 'tasks')
             ->when($request->status, fn ($q, $s) => $q->where('status', $s))
             ->when($request->team_id, fn ($q, $t) => $q->where('team_id', $t))
@@ -67,7 +68,8 @@ class ProjectController extends Controller
             'description' => 'nullable|string',
             'team_id' => 'nullable|exists:teams,id',
             'client_id' => 'nullable|exists:clients,id',
-            'project_manager_id' => 'required|exists:users,id',
+            'chef_id' => 'required_without:project_manager_id|nullable|exists:users,id',
+            'project_manager_id' => 'required_without:chef_id|nullable|exists:users,id',
             'members' => 'nullable|array',
             'members.*' => 'integer|exists:users,id',
             'status' => 'sometimes|in:planning,active,on_hold,completed,cancelled',
@@ -76,10 +78,15 @@ class ProjectController extends Controller
             'end_date' => 'nullable|date|after_or_equal:start_date',
         ]);
 
+        // Normalize: chef_id is canonical, project_manager_id kept in sync
+        $chefId = $data['chef_id'] ?? $data['project_manager_id'] ?? null;
+        $data['chef_id'] = $chefId;
+        $data['project_manager_id'] = $chefId;
+
         $membersPayload = $data['members'] ?? [];
         unset($data['members']);
 
-        $this->assertNoApplicationAdmins([$data['project_manager_id'] ?? null], 'project_manager_id');
+        $this->assertNoApplicationAdmins([$chefId], 'chef_id');
         $this->assertNoApplicationAdmins($membersPayload, 'members');
 
         $data['owner_id'] = $request->user()->id;
@@ -87,10 +94,7 @@ class ProjectController extends Controller
 
         $project = Project::create($data);
 
-        $this->syncProjectMemberships($project, [
-            'project_manager_id' => $project->project_manager_id,
-            'members' => $membersPayload,
-        ]);
+        $this->syncProjectMemberships($project, $membersPayload);
 
         // Create default Kanban statuses
         $defaultStatuses = [
@@ -120,7 +124,7 @@ class ProjectController extends Controller
     {
         Gate::authorize('view', $project);
 
-        $project->load('owner', 'team', 'members', 'statuses', 'client', 'manager')
+        $project->load('owner', 'team', 'members', 'statuses', 'client', 'chef')
             ->loadCount('members', 'tasks');
 
         return response()->json(['project' => new ProjectResource($project)]);
@@ -136,7 +140,8 @@ class ProjectController extends Controller
             'description' => 'nullable|string',
             'team_id' => 'nullable|exists:teams,id',
             'client_id' => 'nullable|exists:clients,id',
-            'project_manager_id' => 'nullable|exists:users,id',
+            'chef_id' => 'sometimes|nullable|exists:users,id',
+            'project_manager_id' => 'sometimes|nullable|exists:users,id',
             'members' => 'nullable|array',
             'members.*' => 'integer|exists:users,id',
             'status' => 'sometimes|in:planning,active,on_hold,completed,cancelled',
@@ -146,13 +151,20 @@ class ProjectController extends Controller
             'owner_id' => 'sometimes|exists:users,id',
         ]);
 
-        $shouldSyncMembers = $request->has('project_manager_id') || $request->has('members');
+        $shouldSyncMembers = $request->hasAny(['chef_id', 'project_manager_id', 'members']);
         $membersPayload = $data['members'] ?? null;
         unset($data['members']);
 
-        if (array_key_exists('project_manager_id', $data) && ! empty($data['project_manager_id'])) {
-            $this->assertNoApplicationAdmins([(int) $data['project_manager_id']], 'project_manager_id');
+        // Normalize chef_id ↔ project_manager_id
+        if (isset($data['chef_id']) || isset($data['project_manager_id'])) {
+            $newChefId = $data['chef_id'] ?? $data['project_manager_id'];
+            if ($newChefId) {
+                $this->assertNoApplicationAdmins([(int) $newChefId], 'chef_id');
+                $data['chef_id'] = $newChefId;
+                $data['project_manager_id'] = $newChefId;
+            }
         }
+
         if ($membersPayload !== null) {
             $this->assertNoApplicationAdmins($membersPayload, 'members');
         }
@@ -164,10 +176,7 @@ class ProjectController extends Controller
             $extraMembers = $membersPayload !== null
                 ? $membersPayload
                 : $this->extraMemberIdsFromProject($project);
-            $this->syncProjectMemberships($project, [
-                'project_manager_id' => $project->project_manager_id,
-                'members' => $extraMembers,
-            ]);
+            $this->syncProjectMemberships($project, $extraMembers);
         }
 
         $project->load('owner', 'team', 'members', 'statuses', 'client', 'manager');
@@ -179,6 +188,46 @@ class ProjectController extends Controller
         return response()->json([
             'message' => 'Projet mis à jour.',
             'project' => new ProjectResource($project),
+        ]);
+    }
+
+    public function changeChef(Request $request, Project $project): JsonResponse
+    {
+        Gate::authorize('update', $project);
+
+        $data = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $newChefId = (int) $data['user_id'];
+
+        if ($newChefId === (int) $project->chef_id) {
+            return response()->json(['message' => 'Cet utilisateur est déjà chef de projet.'], 422);
+        }
+
+        $this->assertNoApplicationAdmins([$newChefId], 'user_id');
+
+        DB::transaction(function () use ($project, $newChefId, $request) {
+            $project->update([
+                'chef_id'            => $newChefId,
+                'project_manager_id' => $newChefId,
+            ]);
+            $project->refresh();
+
+            // Ensure new chef is a member, then re-sync all memberships
+            $this->syncProjectMemberships($project, $this->extraMemberIdsFromProject($project));
+
+            $this->activityLogService->log($project, $request->user(), 'project.chef_changed', $project, [
+                'new_chef_id' => $newChefId,
+            ]);
+        });
+
+        $project->refresh()->load('owner', 'team', 'members', 'statuses', 'client', 'chef');
+
+        return response()->json([
+            'message' => 'Chef de projet mis à jour.',
+            'project' => new ProjectResource($project),
+            'members' => $this->mergedProjectMembers($project),
         ]);
     }
 
@@ -380,28 +429,24 @@ class ProjectController extends Controller
 
         $data = $request->validate([
             'user_id' => 'required|exists:users,id',
-            'project_role' => 'sometimes|string|in:admin,member,client',
         ]);
 
-        $this->assertNoApplicationAdmins([(int) $data['user_id']], 'user_id');
+        $userId = (int) $data['user_id'];
+        $this->assertNoApplicationAdmins([$userId], 'user_id');
 
-        $normalizedRole = AccessControl::normalizePivotRole($data['project_role'] ?? 'member');
-
-        $project->members()->syncWithoutDetaching([
-            $data['user_id'] => ['project_role' => $normalizedRole],
-        ]);
-        if (\Illuminate\Support\Facades\Schema::hasTable('project_user')) {
-            $project->users()->syncWithoutDetaching([
-                $data['user_id'] => ['role' => $normalizedRole],
-            ]);
+        // All added members get role = 'member'; chef identity is in projects.chef_id
+        if (Schema::hasTable('project_user')) {
+            $project->users()->syncWithoutDetaching([$userId => ['role' => 'member']]);
+        }
+        if (Schema::hasTable('project_members')) {
+            $project->members()->syncWithoutDetaching([$userId => ['project_role' => 'member']]);
         }
 
-        $member = User::query()->find($data['user_id']);
+        $member = User::query()->find($userId);
         if ($member) {
-            $this->activityLogService->log($project, $request->user(), 'project.member_role_changed', $project, [
-                'member_id' => $member->id,
+            $this->activityLogService->log($project, $request->user(), 'project.member_added', $project, [
+                'member_id'   => $member->id,
                 'member_name' => $member->name,
-                'role' => $normalizedRole,
             ]);
         }
 
@@ -414,10 +459,6 @@ class ProjectController extends Controller
     public function removeMember(Request $request, Project $project, int $userId): JsonResponse
     {
         Gate::authorize('update', $project);
-
-        if ($project->owner_id === $userId) {
-            return response()->json(['message' => 'Impossible de retirer le propriétaire du projet.'], 422);
-        }
 
         $project->members()->detach($userId);
         if (\Illuminate\Support\Facades\Schema::hasTable('project_user')) {
@@ -483,44 +524,42 @@ class ProjectController extends Controller
     }
 
     /**
-     * @param  array{project_manager_id?: int|null, members?: array<int>}  $meta
+     * Sync project membership: chef + owner + extra members.
+     * All pivot entries use role = 'member' — chef identity lives in projects.chef_id only.
+     *
+     * @param  array<int>  $extraMemberIds
      */
-    private function syncProjectMemberships(Project $project, array $meta): void
+    private function syncProjectMemberships(Project $project, array $extraMemberIds): void
     {
-        $creatorId = (int) $project->owner_id;
-        $pmRaw = $meta['project_manager_id'] ?? $project->project_manager_id;
-        $pmId = $pmRaw !== null && $pmRaw !== '' ? (int) $pmRaw : null;
+        $chefId  = $project->chef_id  ? (int) $project->chef_id  : null;
+        $ownerId = $project->owner_id ? (int) $project->owner_id : null;
 
-        $extraIds = collect($meta['members'] ?? [])
+        $allIds = collect($extraMemberIds)
             ->map(fn ($id) => (int) $id)
+            ->when($chefId, fn ($c) => $c->push($chefId))
             ->unique()
-            ->reject(fn (int $id) => $id === $creatorId || ($pmId !== null && $id === $pmId))
+            ->filter(fn ($id) => $id > 0)
             ->values();
 
-        $memberPivot = [];
-        $memberPivot[$creatorId] = ['project_role' => 'owner'];
-        if ($pmId !== null && $pmId !== $creatorId) {
-            $memberPivot[$pmId] = ['project_role' => 'admin'];
-        }
-        foreach ($extraIds as $uid) {
-            if (! isset($memberPivot[$uid])) {
-                $memberPivot[$uid] = ['project_role' => 'member'];
-            }
-        }
-        $project->members()->sync($memberPivot);
-
+        // project_user: simple membership, role always = 'member'
         if (Schema::hasTable('project_user')) {
-            $pu = [];
-            $pu[$creatorId] = ['role' => 'admin'];
-            if ($pmId !== null && $pmId !== $creatorId) {
-                $pu[$pmId] = ['role' => 'admin'];
-            }
-            foreach ($extraIds as $uid) {
-                if (! isset($pu[$uid])) {
-                    $pu[$uid] = ['role' => 'member'];
+            $pu = $allIds->mapWithKeys(fn ($id) => [$id => ['role' => 'member']])->all();
+            $project->users()->sync($pu);
+        }
+
+        // project_members: legacy table — owner gets 'owner', chef gets 'admin', others 'member'
+        if (Schema::hasTable('project_members')) {
+            $pm = [];
+            foreach ($allIds as $id) {
+                if ($id === $ownerId) {
+                    $pm[$id] = ['project_role' => 'owner'];
+                } elseif ($id === $chefId) {
+                    $pm[$id] = ['project_role' => 'admin'];
+                } else {
+                    $pm[$id] = ['project_role' => 'member'];
                 }
             }
-            $project->users()->sync($pu);
+            $project->members()->sync($pm);
         }
     }
 
@@ -529,14 +568,16 @@ class ProjectController extends Controller
      */
     private function extraMemberIdsFromProject(Project $project): array
     {
-        $project->loadMissing('members');
+        $project->loadMissing('users', 'members');
         $ownerId = (int) $project->owner_id;
-        $pmId = $project->project_manager_id ? (int) $project->project_manager_id : null;
+        $chefId  = $project->chef_id ? (int) $project->chef_id : null;
 
-        return $project->members
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->reject(fn (int $id) => $id === $ownerId || ($pmId !== null && $id === $pmId))
+        $fromUsers = $project->users->pluck('id')->map(fn ($id) => (int) $id);
+        $fromLegacy = $project->members->pluck('id')->map(fn ($id) => (int) $id);
+
+        return $fromUsers->merge($fromLegacy)
+            ->unique()
+            ->reject(fn (int $id) => $id === $ownerId || ($chefId !== null && $id === $chefId))
             ->values()
             ->all();
     }
@@ -576,41 +617,42 @@ class ProjectController extends Controller
     {
         $project->load(['members.specialties', 'users.specialties']);
 
-        $merged = [];
+        // Fall back to project_manager_id so the member list stays in sync with the form
+        // even before the chef_id migration has been run.
+        $chefId  = $project->chef_id
+            ? (int) $project->chef_id
+            : ($project->project_manager_id ? (int) $project->project_manager_id : null);
+        $ownerId = $project->owner_id ? (int) $project->owner_id : null;
+        $merged  = [];
 
-        foreach ($project->users as $u) {
-            $merged[$u->id] = [
+        $buildEntry = function ($u) use ($chefId, $ownerId): array {
+            $uid    = (int) $u->id;
+            $isChef = $chefId !== null && $uid === $chefId;
+            return [
                 'id'          => $u->id,
                 'name'        => $u->name,
                 'email'       => $u->email,
                 'avatar'      => $u->avatar,
-                'is_app_admin' => $u->hasRole('admin'),
-                'role'        => AccessControl::normalizePivotRole($u->pivot->role ?? 'member'),
+                'is_chef'     => $isChef,
+                'is_owner'    => $ownerId !== null && $uid === $ownerId,
+                'role'        => $isChef ? 'chef' : 'membre',
                 'specialties' => $u->specialties->map(fn ($s) => [
                     'id'    => $s->id,
                     'name'  => $s->name,
                     'color' => $s->color,
                 ])->values()->all(),
             ];
+        };
+
+        foreach ($project->users as $u) {
+            $merged[$u->id] = $buildEntry($u);
         }
 
         foreach ($project->members as $u) {
             if (isset($merged[$u->id])) {
                 continue;
             }
-            $merged[$u->id] = [
-                'id'          => $u->id,
-                'name'        => $u->name,
-                'email'       => $u->email,
-                'avatar'      => $u->avatar,
-                'is_app_admin' => $u->hasRole('admin'),
-                'role'        => AccessControl::normalizePivotRole($u->pivot->project_role ?? 'member'),
-                'specialties' => $u->specialties->map(fn ($s) => [
-                    'id'    => $s->id,
-                    'name'  => $s->name,
-                    'color' => $s->color,
-                ])->values()->all(),
-            ];
+            $merged[$u->id] = $buildEntry($u);
         }
 
         return array_values($merged);

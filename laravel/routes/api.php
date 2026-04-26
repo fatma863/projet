@@ -107,6 +107,7 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
         Route::get('projects/{project}/user-search', [ProjectController::class, 'searchUsers']);
         Route::post('projects/{project}/members', [ProjectController::class, 'addMember']);
         Route::delete('projects/{project}/members/{user}', [ProjectController::class, 'removeMember']);
+        Route::put('projects/{project}/change-chef', [ProjectController::class, 'changeChef']);
     });
 
     // Sprints / Backlog
