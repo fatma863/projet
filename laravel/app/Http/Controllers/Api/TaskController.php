@@ -464,7 +464,11 @@ class TaskController extends Controller
             $task->specialties()->sync($specialtyIdsUpdate);
         }
 
-        $this->aiService->refreshRiskAfterUpdate($task);
+        try {
+            $this->aiService->refreshRiskAfterUpdate($task);
+        } catch (\Throwable) {
+            // Risk refresh is non-critical; don't fail the move
+        }
         $task->refresh();
         if (! $hasWorkflow) {
             $task->refreshWorkflowStatus();
@@ -545,7 +549,11 @@ class TaskController extends Controller
         ]);
         $this->invalidateMemberDashboardCaches($task);
         $this->notifyDelayIfNeeded($task);
-        $this->aiService->refreshRiskAfterUpdate($task);
+        try {
+            $this->aiService->refreshRiskAfterUpdate($task);
+        } catch (\Throwable) {
+            // Risk refresh is non-critical; don't fail the move
+        }
         $moved = $task->fresh();
         if ($moved) {
             $moved->refreshWorkflowStatus();
@@ -601,7 +609,11 @@ class TaskController extends Controller
             $this->notificationService->notifyOverloadIfNeeded($assignee);
         }
 
-        $this->aiService->refreshRiskAfterUpdate($task);
+        try {
+            $this->aiService->refreshRiskAfterUpdate($task);
+        } catch (\Throwable) {
+            // Risk refresh is non-critical
+        }
 
         return response()->json([
             'message' => 'Assignation effectuée.',
@@ -621,7 +633,11 @@ class TaskController extends Controller
         ]);
         $this->invalidateMemberDashboardCaches($task, [$userId]);
 
-        $this->aiService->refreshRiskAfterUpdate($task);
+        try {
+            $this->aiService->refreshRiskAfterUpdate($task);
+        } catch (\Throwable) {
+            // Risk refresh is non-critical
+        }
 
         return response()->json(['message' => 'Désassignation effectuée.']);
     }

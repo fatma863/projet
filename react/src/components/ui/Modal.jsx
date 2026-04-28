@@ -1,20 +1,8 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-/**
- * Modal with fixed header, scrollable body, and optional sticky footer.
- *
- * Usage:
- *   <Modal open onClose={fn} title="…" footer={<buttons/>}>
- *     <form>…</form>
- *   </Modal>
- *
- * Or with render-prop children for scroll ref access:
- *   <Modal open onClose={fn} title="…">
- *     {({ scrollRef }) => <form>…</form>}
- *   </Modal>
- */
 export function Modal({ open, onClose, title, children, footer, className, size = 'md' }) {
   const overlayRef = useRef(null);
   const scrollRef = useRef(null);
@@ -48,22 +36,22 @@ export function Modal({ open, onClose, title, children, footer, className, size 
 
   const body = typeof children === 'function' ? children({ scrollRef }) : children;
 
-  return (
+  return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4 sm:p-6 animate-in fade-in-0 duration-150"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-black/50 backdrop-blur-[2px] animate-in fade-in-0 duration-150"
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
         className={cn(
           'relative flex w-full flex-col rounded-xl border border-border bg-card text-card-foreground shadow-2xl',
-          'max-h-[90vh]',
+          'max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)]',
           'animate-in fade-in-0 zoom-in-[0.98] slide-in-from-bottom-2 duration-200',
           sizes[size],
           className,
         )}
       >
-        {/* ── Fixed header ── */}
+        {/* ── Fixed header — always visible, never scrolls ── */}
         {title && (
           <div className="flex flex-shrink-0 items-center justify-between border-b border-border px-5 py-3.5 sm:px-6 sm:py-4">
             <h2 className="text-base font-semibold text-foreground sm:text-lg">{title}</h2>
@@ -77,7 +65,7 @@ export function Modal({ open, onClose, title, children, footer, className, size 
           </div>
         )}
 
-        {/* ── Scrollable body ── */}
+        {/* ── Scrollable body — only this region scrolls ── */}
         <div
           ref={scrollRef}
           data-modal-scroll
@@ -86,13 +74,14 @@ export function Modal({ open, onClose, title, children, footer, className, size 
           {body}
         </div>
 
-        {/* ── Sticky footer ── */}
+        {/* ── Fixed footer — always visible, never scrolls ── */}
         {footer && (
           <div className="flex flex-shrink-0 items-center justify-end gap-3 border-t border-border px-5 py-3 sm:px-6 sm:py-3.5">
             {footer}
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

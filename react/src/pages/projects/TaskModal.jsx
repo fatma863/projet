@@ -355,7 +355,6 @@ export default function TaskModal({
           ...(isEdit ? [
             { key: 'comments', label: 'Commentaires', icon: MessageSquare },
             { key: 'assignees', label: 'Assignés', icon: Users },
-            { key: 'assignees', label: 'Assignés', icon: Users },
           ] : []),
         ].map((t) => (
           <button

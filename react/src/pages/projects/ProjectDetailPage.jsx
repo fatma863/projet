@@ -252,9 +252,10 @@ export default function ProjectDetailPage() {
       api.put(`/tasks/${taskId}`, { workflow_status }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks', id] }),
     onError: (err) => {
-      const msg = err?.response?.data?.errors?.task
-        || err?.response?.data?.message
-        || 'Impossible de déplacer la tâche.';
+      const errs = err?.response?.data?.errors;
+      const msg = errs
+        ? Object.values(errs).flat().join(' ')
+        : (err?.response?.data?.message || err?.message || 'Impossible de déplacer la tâche.');
       toast.error(msg);
     },
   });
@@ -290,11 +291,7 @@ export default function ProjectDetailPage() {
       list = list.filter((t) => (t.issue_type || t.type || 'task') === kanbanFilters.type);
     }
     if (kanbanFilters.workflow) {
-      const w = kanbanFilters.workflow;
-      list = list.filter((t) => {
-        const tw = normalizeWorkflowStatus(getTaskStatus(t));
-        return tw === w;
-      });
+      list = list.filter((t) => t.workflow_status === kanbanFilters.workflow);
     }
     if (hasDueFrom) {
       list = list.filter((t) => {
@@ -343,10 +340,7 @@ export default function ProjectDetailPage() {
 
   const tasksByWorkflow = (columnId) =>
     filteredTasks
-      .filter((t) => {
-        const w = normalizeWorkflowStatus(getTaskStatus(t));
-        return w === columnId;
-      })
+      .filter((t) => t.workflow_status === columnId)
       .sort((a, b) => (a.kanban_order || 0) - (b.kanban_order || 0));
 
   const handleDrop = (e, workflow) => {
@@ -981,7 +975,7 @@ function KanbanCard({ task, onClick, canWriteTask, columns, currentColumn, onMov
     e.dataTransfer.setData('taskId', task.id.toString());
   };
 
-  const wf = normalizeWorkflowStatus(getTaskStatus(task));
+  const wf = task.workflow_status || 'todo';
   const borderAccent =
     wf === 'done'
       ? 'border-l-emerald-500'

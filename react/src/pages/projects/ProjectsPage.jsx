@@ -636,44 +636,50 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
           <Spinner />
         </div>
       ) : (
-        <form id={formId} onSubmit={handleSubmit} className="space-y-5">
+        <form id={formId} onSubmit={handleSubmit} className="space-y-3">
           {errors.general && (
-            <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <div className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive border border-destructive/20">
               {errors.general[0]}
             </div>
           )}
-          <div className="grid gap-4 sm:grid-cols-2">
+
+          {/* Nom + Code */}
+          <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Nom *</label>
+              <label className="mb-1 block text-sm font-medium">Nom <span className="text-destructive">*</span></label>
               <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nom du projet" />
-              {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name[0]}</p>}
+              {errors.name && <p className="mt-0.5 text-xs text-destructive">{errors.name[0]}</p>}
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Code *</label>
+              <label className="mb-1 block text-sm font-medium">Code <span className="text-destructive">*</span></label>
               <Input value={form.code} onChange={(e) => set('code', e.target.value.toUpperCase())} maxLength={10} placeholder="PROJ" />
-              {errors.code && <p className="mt-1 text-xs text-destructive">{errors.code[0]}</p>}
+              {errors.code && <p className="mt-0.5 text-xs text-destructive">{errors.code[0]}</p>}
             </div>
           </div>
+
+          {/* Description */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Description</label>
-            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3} placeholder="Décrivez le projet…" />
+            <label className="mb-1 block text-sm font-medium">Description</label>
+            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={2} placeholder="Décrivez le projet…" />
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
+
+          {/* Équipe / Statut / Priorité */}
+          <div className="grid gap-3 sm:grid-cols-3">
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Équipe</label>
+              <label className="mb-1 block text-sm font-medium">Équipe</label>
               <Select value={form.team_id} onChange={(e) => set('team_id', e.target.value)}>
                 <option value="">Aucune</option>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Statut</label>
+              <label className="mb-1 block text-sm font-medium">Statut</label>
               <Select value={form.status} onChange={(e) => set('status', e.target.value)}>
                 {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </Select>
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Priorité</label>
+              <label className="mb-1 block text-sm font-medium">Priorité</label>
               <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
                 {PRIORITY_OPTIONS.map((p) => (
                   <option key={p.value} value={p.value}>{p.label}</option>
@@ -681,20 +687,28 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
               </Select>
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+
+          {/* Dates */}
+          <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Date de début</label>
+              <label className="mb-1 block text-sm font-medium">Date de début</label>
               <Input type="date" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} />
-              {errors.start_date && <p className="mt-1 text-xs text-destructive">{errors.start_date[0]}</p>}
+              {errors.start_date && <p className="mt-0.5 text-xs text-destructive">{errors.start_date[0]}</p>}
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Date de fin</label>
+              <label className="mb-1 block text-sm font-medium">Date de fin</label>
               <Input type="date" value={form.end_date} onChange={(e) => set('end_date', e.target.value)} />
-              {errors.end_date && <p className="mt-1 text-xs text-destructive">{errors.end_date[0]}</p>}
+              {errors.end_date && <p className="mt-0.5 text-xs text-destructive">{errors.end_date[0]}</p>}
             </div>
           </div>
+
+          <div className="border-t border-border pt-1" />
+
+          {/* Chef de projet */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Chef de projet {chefRequired ? '*' : ''}</label>
+            <label className="mb-1 block text-sm font-medium">
+              Chef de projet {chefRequired && <span className="text-destructive">*</span>}
+            </label>
             <UserSelect
               users={users}
               value={form.chef_id}
@@ -708,29 +722,23 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
               placeholder="Sélectionner le chef de projet"
             />
             {errors.chef_id && (
-              <p className="mt-1 text-xs text-destructive">{errors.chef_id[0]}</p>
+              <p className="mt-0.5 text-xs text-destructive">{errors.chef_id[0]}</p>
             )}
             {!chefRequired && (
-              <p className="mt-1 text-xs text-muted-foreground">Optionnel en modification.</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Optionnel en modification.</p>
             )}
           </div>
+
+          {/* Membres */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Membres du projet</label>
-            <p className="mb-2 text-xs text-muted-foreground">
-              Le propriétaire et le chef de projet sont ajoutés automatiquement.
-            </p>
+            <label className="mb-1 block text-sm font-medium">Membres du projet</label>
             {selectedMemberUsers.length > 0 && (
-              <div className="mb-3 rounded-lg border border-border divide-y divide-border">
+              <div className="mb-2 rounded-lg border border-border divide-y divide-border bg-accent/20">
                 {selectedMemberUsers.map((u) => (
-                  <div key={u.id} className="flex items-center gap-3 px-3 py-2">
-                    <UserAvatar user={u} size={32} />
+                  <div key={u.id} className="flex items-center gap-2 px-3 py-1.5">
+                    <UserAvatar user={u} size={28} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{u.name}</p>
-                      {u.specialties?.length > 0 && (
-                        <p className="text-[11px] text-muted-foreground truncate">
-                          {u.specialties.map((s) => s.name).join(' · ')}
-                        </p>
-                      )}
                     </div>
                     <button
                       type="button"
@@ -738,7 +746,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
                       className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                       aria-label={`Retirer ${u.name}`}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 ))}
