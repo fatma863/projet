@@ -23,11 +23,14 @@ function parseTasks(res) {
 export default function TasksHubPage() {
   const { user } = useAuth();
   const isViewer = isGuestViewer(user);
+  const isAdmin = user?.roles?.includes('admin');
+  const isMember = !isViewer && !isAdmin;
   const [tab, setTab] = useState('list');
   const [projectId, setProjectId] = useState('');
   const [workflowStatus, setWorkflowStatus] = useState('');
   const [priority, setPriority] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
+  // Members see only their own tasks by default; '' means "all" for admin/viewer
+  const [assigneeId, setAssigneeId] = useState(() => (isMember && user?.id ? String(user.id) : ''));
   const [search, setSearch] = useState('');
   const [dueRange, setDueRange] = useState({ due_from: '', due_to: '' });
 
@@ -69,7 +72,8 @@ export default function TasksHubPage() {
     setProjectId('');
     setWorkflowStatus('');
     setPriority('');
-    setAssigneeId('');
+    // Members reset to their own tasks; admins reset to all
+    setAssigneeId(isMember && user?.id ? String(user.id) : '');
     setSearch('');
     setDueRange({ due_from: '', due_to: '' });
   };
@@ -88,7 +92,9 @@ export default function TasksHubPage() {
           <p className="text-muted-foreground">
             {isViewer
               ? 'Consultation des tâches accessibles (lecture seule).'
-              : 'Liste globale et flux (workflow)'}
+              : isMember
+                ? 'Vos tâches assignées — modifiez les filtres pour explorer davantage.'
+                : 'Liste globale et flux (workflow)'}
           </p>
         </div>
         <div className="flex rounded-lg border border-border bg-card p-1">
@@ -195,14 +201,21 @@ export default function TasksHubPage() {
                 </Select>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Assigné</label>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  Assigné{isMember && <span className="ml-1 text-primary">(mes tâches par défaut)</span>}
+                </label>
                 <Select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
                   <option value="">Tous</option>
-                  {userOptions.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
+                  {isMember && user?.id && (
+                    <option value={String(user.id)}>Moi ({user.name})</option>
+                  )}
+                  {userOptions
+                    .filter((u) => !isMember || String(u.id) !== String(user?.id))
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
                 </Select>
               </div>
               <div>

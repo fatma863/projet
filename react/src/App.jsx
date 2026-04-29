@@ -27,6 +27,7 @@ const NotificationsPage  = lazy(() => import('./pages/notifications/Notification
 const SettingsPage       = lazy(() => import('./pages/settings/SettingsPage'));
 const UsersAdminPage     = lazy(() => import('./pages/users/UsersAdminPage'));
 const AcceptInvitePage   = lazy(() => import('./pages/invites/AcceptInvitePage'));
+const AuditLogPage       = lazy(() => import('./pages/audit/AuditLogPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -73,6 +74,7 @@ function App() {
               <Route path="/ai" element={<RoleRoute allow={['admin', 'member']}><AiPage /></RoleRoute>} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/audit-log" element={<RoleRoute allow={['admin', 'member']}><AuditLogPage /></RoleRoute>} />
             </Route>
 
             {/* 404 */}

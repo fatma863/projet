@@ -42,14 +42,15 @@ function getBarBackground(task) {
  * @param {object} props
  * @param {Array} props.tasks
  * @param {boolean} [props.showProject]
- * @param {'default' | 'compact'} [props.variant] — compact = colonne labels plus étroite (onglet projet)
+ * @param {'default' | 'compact'} [props.variant]
+ * @param {string} [props.rowLabel] — header label for the name column (default "Tâche")
  */
 function safeNum(n, fallback = 0) {
   const x = Number(n);
   return Number.isFinite(x) ? x : fallback;
 }
 
-export function GanttChart({ tasks = [], showProject = false, variant = 'default' }) {
+export function GanttChart({ tasks = [], showProject = false, variant = 'default', rowLabel = 'Tâche' }) {
   let list = [];
   try {
     list = Array.isArray(tasks) ? tasks : [];
@@ -214,7 +215,7 @@ export function GanttChart({ tasks = [], showProject = false, variant = 'default
             labelWidthClass,
           )}
         >
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Tâche</span>
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{rowLabel}</span>
         </div>
         <div className="relative min-h-[52px] min-w-[400px] flex-1">
           <div

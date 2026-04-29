@@ -98,14 +98,17 @@ export default function ProjectDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const queryClient = useQueryClient();
-  const [taskModal, setTaskModal] = useState({ open: false, task: null, defaultWorkflow: 'todo' });
-  const [kanbanFilters, setKanbanFilters] = useState({
-    user: '', priority: '', type: '', workflow: '', due_from: '', due_to: '',
-  });
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [tab, setTab] = useState('kanban');
   const isAdmin = user?.roles?.includes('admin');
   const isViewer = isGuestViewer(user);
+  const isMember = !isAdmin && !isViewer;
+
+  const [taskModal, setTaskModal] = useState({ open: false, task: null, defaultWorkflow: 'todo' });
+  const [kanbanFilters, setKanbanFilters] = useState(() => ({
+    user: isMember && user?.id ? String(user.id) : '',
+    priority: '', type: '', workflow: '', due_from: '', due_to: '',
+  }));
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [tab, setTab] = useState('kanban');
 
   const { data: project, isLoading, error } = useQuery({
     queryKey: ['project', id],
@@ -220,7 +223,7 @@ export default function ProjectDetailPage() {
   });
   const { data: ganttData, isLoading: loadingGantt } = useQuery({
     queryKey: ['project-gantt', id],
-    enabled: isAdmin && tab === 'gantt',
+    enabled: !isViewer && tab === 'gantt',
     queryFn: () => api.get(`/projects/${id}/gantt`).then((r) => (
       r.data?.gantt ?? r.data?.data?.gantt ?? r.data?.data ?? []
     )),
@@ -489,7 +492,8 @@ export default function ProjectDetailPage() {
           { key: 'kanban', label: 'Kanban' },
           { key: 'members', label: 'Membres' },
           { key: 'activity', label: 'Historique' },
-          ...(isAdmin ? [{ key: 'gantt', label: 'Gantt' }] : []),
+          ...(!isViewer ? [{ key: 'gantt', label: 'Gantt' }] : []),
+          { key: 'progress', label: "Rapport d'avancement" },
           ...(isViewer ? [{ key: 'reports', label: 'Rapports IA' }] : []),
         ].map((t) => (
           <button
@@ -519,19 +523,7 @@ export default function ProjectDetailPage() {
             </div>
           )}
           <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:flex-wrap sm:items-end">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Assigné</label>
-              <Select
-                value={kanbanFilters.user}
-                onChange={(e) => setKanbanFilters((f) => ({ ...f, user: e.target.value }))}
-                className="min-w-[140px]"
-              >
-                <option value="">Tous</option>
-                {assigneeFilterOptions.map((u) => (
-                  <option key={u.id} value={String(u.id)}>{u.name}</option>
-                ))}
-              </Select>
-            </div>
+            
             <div>
               <label className="mb-1 block text-xs font-medium text-muted-foreground">Workflow</label>
               <Select
@@ -585,7 +577,8 @@ export default function ProjectDetailPage() {
               variant="outline"
               size="sm"
               onClick={() => setKanbanFilters({
-                user: '', priority: '', type: '', workflow: '', due_from: '', due_to: '',
+                user: isMember && user?.id ? String(user.id) : '',
+                priority: '', type: '', workflow: '', due_from: '', due_to: '',
               })}
             >
               Réinitialiser les filtres
@@ -619,6 +612,14 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
+      {tab === 'progress' && (
+        <ProjectProgressReport
+          dashboard={dashboard}
+          tasks={tasks || []}
+          project={project}
+          criticalPath={criticalPath}
+        />
+      )}
       {tab === 'reports' && <ProjectReportsTab projectId={id} />}
 
       {/* Modale tâche */}
@@ -1413,7 +1414,573 @@ function ProjectFilesTab({ projectId, tasks }) {
   );
 }
 
-/* ── Onglet Rapports IA : risques, recommandations, analyse du projet ── */
+/* ─────────────────────────────────────────────────────────────
+   Rapport d'avancement — Premium SVG Charts
+   ───────────────────────────────────────────────────────────── */
+
+/* Multi-segment donut with animated arcs */
+function MultiSegmentDonut({ segments, size = 180, stroke = 22, label, sublabel, labelColor = '#6366f1' }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setMounted(true), 60); return () => clearTimeout(t); }, []);
+  const r = (size - stroke) / 2;
+  const cx = size / 2;
+  const C = 2 * Math.PI * r;
+  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+  let cumAngle = 0;
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <defs>
+          <filter id="donut-glow">
+            <feGaussianBlur stdDeviation="2.5" result="coloredBlur" />
+            <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke="currentColor" strokeWidth={stroke} className="text-border/15" />
+        {segments.map((seg, si) => {
+          if (!seg.value) { cumAngle += (seg.value / total) * 360; return null; }
+          const angDeg = (seg.value / total) * 360;
+          const dashLen = mounted ? Math.max(0, (seg.value / total) * C - 2.5) : 0;
+          const startAngle = cumAngle - 90;
+          cumAngle += angDeg;
+          return (
+            <circle
+              key={seg.key}
+              cx={cx} cy={cx} r={r} fill="none"
+              stroke={seg.color}
+              strokeWidth={stroke - 3}
+              strokeDasharray={`${dashLen} ${C}`}
+              strokeLinecap="butt"
+              transform={`rotate(${startAngle}, ${cx}, ${cx})`}
+              style={{
+                transition: 'stroke-dasharray 0.85s cubic-bezier(0.4,0,0.2,1)',
+                transitionDelay: `${0.08 + si * 0.07}s`,
+                filter: seg.value > 0 ? 'url(#donut-glow)' : undefined,
+              }}
+            />
+          );
+        })}
+        {/* Inner track decoration */}
+        <circle cx={cx} cy={cx} r={r - stroke / 2 - 4} fill="none" stroke="currentColor" strokeWidth={0.5} className="text-border/20" strokeDasharray="3 6" />
+      </svg>
+      {label != null && (
+        <div className="pointer-events-none absolute flex flex-col items-center gap-0.5 select-none">
+          <span className="text-[32px] font-black tabular-nums leading-none" style={{ color: labelColor }}>{label}</span>
+          {sublabel && <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">{sublabel}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Pentagon radar chart — project health on 5 axes */
+function HealthRadar({ metrics, size = 186 }) {
+  const n = metrics.length;
+  const cx = size / 2, cy = size / 2;
+  const maxR = size / 2 - 28;
+  const angles = metrics.map((_, i) => (i * 2 * Math.PI / n) - Math.PI / 2);
+  const rings = [0.25, 0.5, 0.75, 1.0];
+  const toStr = (pts) => pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const axisEnds = angles.map(a => [cx + maxR * Math.cos(a), cy + maxR * Math.sin(a)]);
+  const dataPoints = metrics.map((m, i) => {
+    const r = (m.value / 100) * maxR;
+    return [cx + r * Math.cos(angles[i]), cy + r * Math.sin(angles[i])];
+  });
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="overflow-visible">
+      <defs>
+        <radialGradient id="radar-fill" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="#6366f1" stopOpacity="0.06" />
+        </radialGradient>
+      </defs>
+      {rings.map((pct, ri) => {
+        const pts = angles.map(a => [cx + pct * maxR * Math.cos(a), cy + pct * maxR * Math.sin(a)]);
+        return (
+          <polygon key={ri} points={toStr(pts)} fill="none"
+            stroke="currentColor" strokeWidth={ri === rings.length - 1 ? 0.8 : 0.5}
+            className={ri === rings.length - 1 ? 'text-border/50' : 'text-border/25'} />
+        );
+      })}
+      {axisEnds.map(([x, y], i) => (
+        <line key={i} x1={cx} y1={cy} x2={x} y2={y}
+          stroke="currentColor" strokeWidth={0.6} className="text-border/35" />
+      ))}
+      <motion.polygon
+        points={toStr(dataPoints)}
+        fill="url(#radar-fill)"
+        stroke="#6366f1"
+        strokeWidth={2}
+        strokeLinejoin="round"
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.75, ease: [0.4, 0, 0.2, 1], delay: 0.1 }}
+        style={{ transformOrigin: `${cx}px ${cy}px` }}
+      />
+      {dataPoints.map(([x, y], i) => (
+        <motion.circle key={i} cx={x} cy={y} r={4}
+          fill="#6366f1" stroke="white" strokeWidth={2}
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.2 + i * 0.06, duration: 0.35, type: 'spring', stiffness: 300 }}
+          style={{ transformOrigin: `${x}px ${y}px` }}
+        />
+      ))}
+      {metrics.map((m, i) => {
+        const lx = cx + (maxR + 20) * Math.cos(angles[i]);
+        const ly = cy + (maxR + 20) * Math.sin(angles[i]);
+        return (
+          <text key={i} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle"
+            fill="currentColor" className="text-muted-foreground"
+            style={{ fontSize: '9px', fontFamily: 'inherit', fontWeight: 600 }}>
+            {m.label}
+          </text>
+        );
+      })}
+      {metrics.map((m, i) => {
+        const vr = (m.value / 100) * maxR;
+        const vx = cx + (vr + 10) * Math.cos(angles[i]);
+        const vy = cy + (vr + 10) * Math.sin(angles[i]);
+        return (
+          <text key={`v${i}`} x={vx} y={vy} textAnchor="middle" dominantBaseline="middle"
+            fill="#6366f1" style={{ fontSize: '8px', fontFamily: 'inherit', fontWeight: 700 }}>
+            {m.value}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* Proportional stacked bar */
+function StackedBar({ segments, height = 12 }) {
+  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+  return (
+    <div className="flex w-full overflow-hidden rounded-full bg-border/20" style={{ height }}>
+      {segments.map((seg, i) =>
+        seg.value > 0 ? (
+          <div key={seg.key} title={`${seg.label}: ${seg.value}`}
+            style={{
+              width: `${(seg.value / total) * 100}%`,
+              background: seg.color,
+              transition: `width 0.85s cubic-bezier(0.4,0,0.2,1) ${i * 0.07}s`,
+            }}
+          />
+        ) : null,
+      )}
+    </div>
+  );
+}
+
+/* Horizontal bar rows with dual fill (done + active) */
+function AssigneeRows({ assignees }) {
+  const max = Math.max(1, ...assignees.map(a => a.total));
+  if (!assignees.length) return (
+    <div className="flex flex-col items-center justify-center py-8 gap-2">
+      <Users className="h-8 w-8 text-muted-foreground/30" />
+      <p className="text-sm text-muted-foreground">Aucune assignation</p>
+    </div>
+  );
+  return (
+    <div className="space-y-3.5">
+      {assignees.map((a, ai) => (
+        <motion.div key={a.id}
+          initial={{ opacity: 0, x: -8 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: ai * 0.05 + 0.1, duration: 0.3 }}
+          className="flex items-center gap-3"
+        >
+          <div className="h-7 w-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center shrink-0 text-[11px] font-bold text-white shadow-sm">
+            {(a.name || '?')[0].toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex justify-between items-baseline mb-1.5">
+              <span className="text-xs font-semibold text-foreground truncate max-w-[90px]">{a.name}</span>
+              <span className="text-xs tabular-nums text-muted-foreground shrink-0 ml-1">{a.done}/{a.total}</span>
+            </div>
+            <div className="relative h-2.5 rounded-full bg-border/25 overflow-hidden">
+              <div className="absolute inset-y-0 left-0 rounded-full bg-indigo-500/80"
+                style={{ width: `${(a.done / max) * 100}%`, transition: `width 0.8s cubic-bezier(0.4,0,0.2,1) ${ai * 0.05 + 0.15}s` }} />
+              <div className="absolute inset-y-0 rounded-full bg-amber-400/70"
+                style={{
+                  left: `${(a.done / max) * 100}%`,
+                  width: `${(a.active / max) * 100}%`,
+                  transition: `left 0.8s cubic-bezier(0.4,0,0.2,1) ${ai * 0.05 + 0.15}s, width 0.8s cubic-bezier(0.4,0,0.2,1) ${ai * 0.05 + 0.15}s`,
+                }} />
+            </div>
+          </div>
+        </motion.div>
+      ))}
+      <div className="flex gap-5 pt-1.5 border-t border-border/50">
+        <span className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+          <span className="h-2 w-2 rounded-full bg-indigo-500" /> Terminées
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+          <span className="h-2 w-2 rounded-full bg-amber-400" /> En cours
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* Horizontal bar rows for priority/type breakdown */
+function MetricBars({ items }) {
+  const max = Math.max(1, ...items.map(i => i.value));
+  return (
+    <div className="space-y-3">
+      {items.map((item, idx) => (
+        <div key={item.label} className="flex items-center gap-3">
+          <div className="flex items-center gap-2 w-28 shrink-0">
+            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: item.color }} />
+            <span className="text-xs font-medium text-muted-foreground truncate">{item.label}</span>
+          </div>
+          <div className="relative flex-1 h-5 rounded-lg overflow-hidden bg-border/20">
+            <motion.div
+              className="absolute inset-y-0 left-0 rounded-lg"
+              style={{ background: item.color }}
+              initial={{ width: 0 }}
+              animate={{ width: `${(item.value / max) * 100}%` }}
+              transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1], delay: idx * 0.07 + 0.1 }}
+            />
+          </div>
+          <span className="w-6 shrink-0 text-right text-sm font-bold tabular-nums text-foreground">{item.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProjectProgressReport({ dashboard, tasks, project, criticalPath }) {
+  const total = dashboard?.total_tasks ?? tasks.length ?? 0;
+  const completed = dashboard?.completed_tasks ?? tasks.filter((t) => normalizeWorkflowStatus(t.workflow_status) === 'done').length;
+  const overdue = dashboard?.overdue_tasks ?? tasks.filter((t) => t.is_overdue).length;
+  const progress = dashboard?.avg_progress ?? (total > 0 ? Math.round((completed / total) * 100) : 0);
+
+  const byWorkflow = {
+    todo: tasks.filter((t) => normalizeWorkflowStatus(t.workflow_status) === 'todo').length,
+    in_progress: tasks.filter((t) => normalizeWorkflowStatus(t.workflow_status) === 'in_progress').length,
+    done: tasks.filter((t) => normalizeWorkflowStatus(t.workflow_status) === 'done').length,
+    at_risk: tasks.filter((t) => t.workflow_status === 'at_risk').length,
+  };
+  const byPriority = {
+    urgent: tasks.filter((t) => t.priority === 'urgent').length,
+    high: tasks.filter((t) => t.priority === 'high').length,
+    medium: tasks.filter((t) => t.priority === 'medium').length,
+    low: tasks.filter((t) => t.priority === 'low').length,
+  };
+
+  const assigneeWorkload = useMemo(() => {
+    const map = new Map();
+    tasks.forEach((task) => {
+      (task.assignees || []).forEach((a) => {
+        const u = a.user || a;
+        if (!u?.id) return;
+        const cur = map.get(u.id) || { id: u.id, name: u.name || 'Membre', done: 0, active: 0, total: 0 };
+        cur.total++;
+        if (normalizeWorkflowStatus(task.workflow_status) === 'done') cur.done++;
+        else cur.active++;
+        map.set(u.id, cur);
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 7);
+  }, [tasks]);
+
+  const startDate = project?.start_date ? new Date(project.start_date) : null;
+  const endDate = project?.end_date ? new Date(project.end_date) : null;
+  const now = new Date();
+  let timeProgress = null;
+  let daysLeft = null;
+  if (startDate && endDate && endDate > startDate) {
+    const total_ms = endDate - startDate;
+    const elapsed_ms = Math.min(now - startDate, total_ms);
+    timeProgress = Math.max(0, Math.round((elapsed_ms / total_ms) * 100));
+    daysLeft = Math.ceil((endDate - now) / 86400000);
+  }
+
+  const radarMetrics = [
+    { label: 'Complétion', value: progress },
+    {
+      label: 'Ponctualité',
+      value: timeProgress != null ? Math.max(0, Math.min(100, 100 - Math.max(0, timeProgress - progress))) : Math.round(progress * 0.9),
+    },
+    { label: 'Stabilité', value: total > 0 ? Math.max(0, Math.round(100 - (byWorkflow.at_risk / total) * 200)) : 100 },
+    { label: 'Priorités', value: total > 0 ? Math.max(0, Math.round(100 - (byPriority.urgent / total) * 100)) : 100 },
+    {
+      label: 'Couverture',
+      value: total > 0 ? Math.round((tasks.filter((t) => (t.assignees || []).length > 0).length / total) * 100) : 0,
+    },
+  ];
+  const healthScore = Math.round(radarMetrics.reduce((s, m) => s + m.value, 0) / radarMetrics.length);
+  const healthColor = healthScore >= 75 ? '#22c55e' : healthScore >= 50 ? '#f59e0b' : '#ef4444';
+  const progressColor = progress >= 75 ? '#22c55e' : progress >= 40 ? '#f59e0b' : '#ef4444';
+
+  const donutSegments = [
+    { key: 'done', label: 'Terminé', value: byWorkflow.done, color: '#22c55e' },
+    { key: 'in_progress', label: 'En cours', value: byWorkflow.in_progress, color: '#f59e0b' },
+    { key: 'todo', label: 'À faire', value: byWorkflow.todo, color: '#94a3b8' },
+    { key: 'at_risk', label: 'À risque', value: byWorkflow.at_risk, color: '#ef4444' },
+  ];
+
+  const kpis = [
+    {
+      label: 'Avancement', value: `${progress}%`, sub: `${completed}/${total} tâches`,
+      accent: progressColor, bg: progress >= 75 ? 'from-emerald-50/60 to-card dark:from-emerald-950/20' : progress >= 40 ? 'from-amber-50/60 to-card dark:from-amber-950/20' : 'from-red-50/60 to-card dark:from-red-950/20',
+    },
+    {
+      label: 'Terminées', value: completed, sub: `sur ${total} tâches`,
+      accent: '#6366f1', bg: 'from-indigo-50/50 to-card dark:from-indigo-950/20',
+    },
+    {
+      label: 'En retard', value: overdue, sub: overdue > 0 ? 'Attention requise' : 'Aucun retard',
+      accent: overdue > 0 ? '#ef4444' : '#22c55e', bg: overdue > 0 ? 'from-red-50/60 to-card dark:from-red-950/20' : 'from-emerald-50/40 to-card dark:from-emerald-950/20',
+    },
+    {
+      label: 'Santé du projet', value: `${healthScore}/100`, sub: healthScore >= 75 ? 'Excellent' : healthScore >= 50 ? 'Correct' : 'À surveiller',
+      accent: healthColor, bg: healthScore >= 75 ? 'from-emerald-50/60 to-card dark:from-emerald-950/20' : healthScore >= 50 ? 'from-amber-50/60 to-card dark:from-amber-950/20' : 'from-red-50/60 to-card dark:from-red-950/20',
+    },
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+      className="space-y-5 pt-2"
+    >
+      {/* ── KPI row ── */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {kpis.map((kpi, i) => (
+          <motion.div
+            key={kpi.label}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.06, duration: 0.3 }}
+            className={cn('relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br p-5 shadow-sm', kpi.bg)}
+          >
+            <div
+              className="pointer-events-none absolute -right-4 -top-4 h-16 w-16 rounded-full opacity-10 blur-2xl"
+              style={{ background: kpi.accent }}
+            />
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{kpi.label}</p>
+            <p className="mt-2 text-3xl font-black tabular-nums leading-none" style={{ color: kpi.accent }}>{kpi.value}</p>
+            <p className="mt-1.5 text-xs text-muted-foreground">{kpi.sub}</p>
+            <div className="absolute bottom-0 left-0 h-0.5 w-full opacity-60" style={{ background: kpi.accent }} />
+          </motion.div>
+        ))}
+      </div>
+
+      {/* ── Main charts: 3-column bento ── */}
+      <div className="grid gap-4 lg:grid-cols-3">
+
+        {/* Donut — répartition des tâches */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.1, duration: 0.4 }}
+          className="rounded-2xl border border-border bg-card p-6 shadow-sm flex flex-col"
+        >
+          <h3 className="text-sm font-semibold text-foreground mb-1">Répartition des tâches</h3>
+          <p className="text-[11px] text-muted-foreground mb-5">Distribution par statut workflow</p>
+          <div className="flex flex-col items-center gap-5 flex-1">
+            <MultiSegmentDonut
+              segments={donutSegments}
+              size={180} stroke={24}
+              label={`${progress}%`} sublabel="Terminé"
+              labelColor={progressColor}
+            />
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 w-full">
+              {donutSegments.map((seg) => (
+                <div key={seg.key} className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: seg.color }} />
+                  <span className="text-xs text-muted-foreground truncate">{seg.label}</span>
+                  <span className="ml-auto text-xs font-bold tabular-nums text-foreground">{seg.value}</span>
+                </div>
+              ))}
+            </div>
+            <StackedBar segments={donutSegments} height={8} />
+          </div>
+        </motion.div>
+
+        {/* Radar — santé du projet */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.18, duration: 0.4 }}
+          className="rounded-2xl border border-indigo-200/60 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-50/40 via-card to-card dark:from-indigo-950/20 p-6 shadow-sm flex flex-col"
+        >
+          <div className="flex items-start justify-between mb-1">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Santé du projet</h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Score multidimensionnel</p>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-black tabular-nums leading-none" style={{ color: healthColor }}>
+                {healthScore}
+              </div>
+              <div className="text-[10px] font-bold text-muted-foreground">/100</div>
+            </div>
+          </div>
+          <div className="flex flex-1 items-center justify-center mt-2">
+            <HealthRadar metrics={radarMetrics} size={186} />
+          </div>
+        </motion.div>
+
+        {/* Assignee workload */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.26, duration: 0.4 }}
+          className="rounded-2xl border border-border bg-card p-6 shadow-sm flex flex-col"
+        >
+          <h3 className="text-sm font-semibold text-foreground mb-1">Charge par membre</h3>
+          <p className="text-[11px] text-muted-foreground mb-5">Tâches terminées vs en cours</p>
+          <AssigneeRows assignees={assigneeWorkload} />
+        </motion.div>
+      </div>
+
+      {/* ── Secondary row ── */}
+      <div className="grid gap-4 md:grid-cols-2">
+
+        {/* Priority distribution */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.35 }}
+          className="rounded-2xl border border-border bg-card p-6 shadow-sm"
+        >
+          <h3 className="mb-1 text-sm font-semibold text-foreground">Répartition par priorité</h3>
+          <p className="text-[11px] text-muted-foreground mb-5">Nombre de tâches par niveau d'urgence</p>
+          <MetricBars items={[
+            { label: 'Urgente', value: byPriority.urgent, color: '#ef4444' },
+            { label: 'Haute', value: byPriority.high, color: '#f97316' },
+            { label: 'Moyenne', value: byPriority.medium, color: '#f59e0b' },
+            { label: 'Basse', value: byPriority.low, color: '#3b82f6' },
+          ]} />
+          {/* Mini stacked bar for priority */}
+          <div className="mt-5 pt-4 border-t border-border/50">
+            <p className="text-[11px] text-muted-foreground mb-2">Vue proportionnelle</p>
+            <StackedBar height={10} segments={[
+              { key: 'urgent', label: 'Urgente', value: byPriority.urgent, color: '#ef4444' },
+              { key: 'high', label: 'Haute', value: byPriority.high, color: '#f97316' },
+              { key: 'medium', label: 'Moyenne', value: byPriority.medium, color: '#f59e0b' },
+              { key: 'low', label: 'Basse', value: byPriority.low, color: '#3b82f6' },
+            ]} />
+          </div>
+        </motion.div>
+
+        {/* Timeline progress */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.28, duration: 0.35 }}
+          className="rounded-2xl border border-border bg-card p-6 shadow-sm"
+        >
+          <h3 className="mb-1 text-sm font-semibold text-foreground">Avancement calendaire</h3>
+          <p className="text-[11px] text-muted-foreground mb-5">Temps écoulé vs progression des tâches</p>
+          {timeProgress != null ? (
+            <div className="space-y-5">
+              {/* Task progress track */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Avancement tâches</span>
+                  <span className="text-xs font-bold tabular-nums" style={{ color: progressColor }}>{progress}%</span>
+                </div>
+                <div className="relative h-3 overflow-hidden rounded-full bg-border/25">
+                  <motion.div
+                    className="absolute inset-y-0 left-0 rounded-full"
+                    style={{ background: progressColor }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progress}%` }}
+                    transition={{ duration: 0.9, ease: [0.4, 0, 0.2, 1], delay: 0.3 }}
+                  />
+                </div>
+              </div>
+              {/* Time progress track */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Temps écoulé</span>
+                  <span className={cn('text-xs font-bold tabular-nums', daysLeft < 0 ? 'text-red-600' : daysLeft <= 7 ? 'text-amber-600' : 'text-blue-600')}>{timeProgress}%</span>
+                </div>
+                <div className="relative h-3 overflow-hidden rounded-full bg-border/25">
+                  <motion.div
+                    className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${timeProgress}%` }}
+                    transition={{ duration: 0.9, ease: [0.4, 0, 0.2, 1], delay: 0.4 }}
+                  />
+                </div>
+              </div>
+              {/* Date range */}
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{project.start_date ? new Date(project.start_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' }) : '—'}</span>
+                <span className={cn('font-semibold px-2 py-0.5 rounded-full text-[11px]',
+                  daysLeft < 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    : daysLeft <= 7 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400')}>
+                  {daysLeft < 0 ? `${Math.abs(daysLeft)}j de retard` : daysLeft === 0 ? "Aujourd'hui" : `${daysLeft}j restants`}
+                </span>
+                <span>{project.end_date ? new Date(project.end_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: '2-digit' }) : '—'}</span>
+              </div>
+              {/* Gap analysis badge */}
+              <div className={cn('rounded-xl px-4 py-3 text-xs font-medium',
+                progress >= timeProgress
+                  ? 'bg-emerald-50 border border-emerald-200/80 text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-800/50 dark:text-emerald-300'
+                  : 'bg-amber-50 border border-amber-200/80 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-300')}>
+                {progress >= timeProgress
+                  ? `✅ En avance — tâches à ${progress}% vs ${timeProgress}% du temps écoulé.`
+                  : `⚠️ En retard — tâches à ${progress}% vs ${timeProgress}% du temps écoulé.`}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <Calendar className="h-10 w-10 text-muted-foreground/20" />
+              <p className="text-sm text-muted-foreground text-center">
+                Définissez les dates de début et fin du projet pour activer cette vue.
+              </p>
+            </div>
+          )}
+        </motion.div>
+      </div>
+
+      {/* ── Critical path ── */}
+      {criticalPath?.graph_valid && criticalPath?.critical_tasks?.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.35 }}
+          className="rounded-2xl border border-red-200/80 bg-gradient-to-r from-red-50/60 to-orange-50/30 p-6 shadow-sm dark:border-red-900/30 dark:from-red-950/20 dark:to-orange-950/10"
+        >
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+            Chemin critique
+            <span className="ml-1 inline-flex items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
+              {criticalPath.critical_tasks.length}
+            </span>
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {criticalPath.critical_tasks.slice(0, 8).map((ct) => (
+              <span key={ct.id} className={cn(
+                'rounded-full border px-3 py-1.5 text-xs font-medium flex items-center gap-1.5',
+                ct.is_delayed
+                  ? 'border-red-300 bg-red-100 text-red-800 dark:border-red-700 dark:bg-red-900/40 dark:text-red-300'
+                  : 'border-orange-200 bg-orange-50 text-orange-800 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-300',
+              )}>
+                {ct.is_delayed && <AlertTriangle className="h-3 w-3 shrink-0" />}
+                {ct.title}
+              </span>
+            ))}
+            {criticalPath.critical_tasks.length > 8 && (
+              <span className="rounded-full border border-border bg-muted/60 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                +{criticalPath.critical_tasks.length - 8} autres
+              </span>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+}
+
 function ProjectReportsTab({ projectId }) {
   const { data: report, isLoading, isError } = useQuery({
     queryKey: ['client-report', projectId],

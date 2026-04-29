@@ -1,9 +1,10 @@
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Card, CardContent } from '../../components/ui/Card';
-import { Bell, Check, CheckCheck } from 'lucide-react';
+import { Bell, Check, CheckCheck, ListTodo, FolderKanban, Mail, AlertTriangle, MessageSquare } from 'lucide-react';
 import { POLL_INTERVAL_MS } from '../../lib/unwrapApi';
 import {
   fetchNotifications,
@@ -26,13 +27,55 @@ function actorLabelForNotification(n) {
   return 'Équipe';
 }
 
+const TYPE_CATEGORIES = {
+  task: {
+    label: 'Tâches',
+    icon: ListTodo,
+    color: 'text-blue-600',
+    match: (t) => /task|tache/.test(t) && !/delay|overdue|retard/.test(t),
+  },
+  project: {
+    label: 'Projets',
+    icon: FolderKanban,
+    color: 'text-indigo-600',
+    match: (t) => /project|projet/.test(t) && !/(invitation|invite)/.test(t),
+  },
+  invitation: {
+    label: 'Invitations',
+    icon: Mail,
+    color: 'text-violet-600',
+    match: (t) => /invitation|invite/.test(t),
+  },
+  delay: {
+    label: 'Retards',
+    icon: AlertTriangle,
+    color: 'text-amber-600',
+    match: (t) => /delay|overdue|retard/.test(t),
+  },
+  comment: {
+    label: 'Commentaires',
+    icon: MessageSquare,
+    color: 'text-teal-600',
+    match: (t) => /comment/.test(t),
+  },
+};
+
+function getNotifCategory(type) {
+  const t = String(type || '').toLowerCase();
+  for (const [key, cfg] of Object.entries(TYPE_CATEGORIES)) {
+    if (cfg.match(t)) return key;
+  }
+  return 'other';
+}
+
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [activeType, setActiveType] = useState('all');
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['notifications'],
-    queryFn: () => fetchNotifications({ per_page: 50 }),
+    queryFn: () => fetchNotifications({ per_page: 100 }),
     staleTime: 10000,
     refetchInterval: POLL_INTERVAL_MS,
   });
@@ -47,11 +90,27 @@ export default function NotificationsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
-  const notifications = data?.notifications ?? [];
+  const allNotifications = data?.notifications ?? [];
   const unreadCount =
-    data?.unread_count ?? notifications.filter((n) => !(n.read ?? n.read_at)).length;
+    data?.unread_count ?? allNotifications.filter((n) => !(n.read ?? n.read_at)).length;
+
+  // Which categories are actually present
+  const presentCategories = useMemo(() => {
+    const cats = new Set();
+    allNotifications.forEach((n) => cats.add(getNotifCategory(n.type)));
+    return cats;
+  }, [allNotifications]);
+
+  // Filter by active type
+  const notifications = useMemo(() => {
+    if (activeType === 'all') return allNotifications;
+    return allNotifications.filter((n) => getNotifCategory(n.type) === activeType);
+  }, [allNotifications, activeType]);
+
   const grouped = groupNotificationsByDate(notifications);
-  const showSkeleton = (isLoading || isFetching) && notifications.length === 0;
+  const showSkeleton = (isLoading || isFetching) && allNotifications.length === 0;
+
+  const filteredUnread = notifications.filter((n) => !(n.read ?? n.read_at)).length;
 
   const handleOpen = (n) => {
     const link = getNotificationLink(n);
@@ -63,8 +122,22 @@ export default function NotificationsPage() {
     }
   };
 
+  const typeTabs = [
+    { key: 'all', label: 'Tout', icon: Bell, count: allNotifications.length },
+    ...Object.entries(TYPE_CATEGORIES)
+      .filter(([key]) => presentCategories.has(key))
+      .map(([key, cfg]) => ({
+        key,
+        label: cfg.label,
+        icon: cfg.icon,
+        count: allNotifications.filter((n) => getNotifCategory(n.type) === key).length,
+        color: cfg.color,
+      })),
+  ];
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
@@ -87,6 +160,39 @@ export default function NotificationsPage() {
         )}
       </div>
 
+      {/* Type filter tabs */}
+      {allNotifications.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {typeTabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeType === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveType(tab.key)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                  isActive
+                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                    : 'border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" aria-hidden />
+                {tab.label}
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                    isActive ? 'bg-white/25 text-inherit' : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Content */}
       {showSkeleton ? (
         <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm">
           <CardContent className="p-2">
@@ -98,15 +204,24 @@ export default function NotificationsPage() {
       ) : notifications.length === 0 ? (
         <EmptyState
           icon={Bell}
-          title="Aucune notification"
-          description="Vous serez informé des assignations, invitations et alertes ici."
+          title={activeType === 'all' ? 'Aucune notification' : `Aucune notification de type « ${TYPE_CATEGORIES[activeType]?.label ?? activeType} »`}
+          description={activeType === 'all' ? 'Vous serez informé des assignations, invitations et alertes ici.' : 'Essayez un autre filtre ou revenez plus tard.'}
         >
-          <Button variant="default" type="button" onClick={() => navigate('/projects')}>
-            Ouvrir les projets
-          </Button>
+          {activeType !== 'all' ? (
+            <Button variant="outline" type="button" onClick={() => setActiveType('all')}>
+              Voir toutes les notifications
+            </Button>
+          ) : (
+            <Button variant="default" type="button" onClick={() => navigate('/projects')}>
+              Ouvrir les projets
+            </Button>
+          )}
         </EmptyState>
       ) : (
         <div className="space-y-6">
+          {filteredUnread > 0 && activeType !== 'all' && (
+            <p className="text-xs text-muted-foreground">{filteredUnread} non lue(s) dans ce filtre</p>
+          )}
           {grouped.map((section) => (
             <div key={section.key}>
               <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -119,6 +234,8 @@ export default function NotificationsPage() {
                       const read = notif.read_at || notif.read;
                       const link = getNotificationLink(notif);
                       const actorName = actorLabelForNotification(notif);
+                      const category = getNotifCategory(notif.type);
+                      const catCfg = TYPE_CATEGORIES[category];
                       return (
                         <motion.li
                           key={notif.id}
@@ -127,6 +244,21 @@ export default function NotificationsPage() {
                           transition={{ delay: idx * 0.02, duration: 0.2 }}
                           className={`flex items-stretch gap-0 ${read ? 'bg-card' : 'bg-primary/[0.03]'}`}
                         >
+                          {/* Category accent bar */}
+                          {catCfg && (
+                            <div
+                              className="w-1 shrink-0 rounded-l-[inherit]"
+                              style={{
+                                background: category === 'task' ? '#3b82f6'
+                                  : category === 'project' ? '#6366f1'
+                                  : category === 'invitation' ? '#8b5cf6'
+                                  : category === 'delay' ? '#f59e0b'
+                                  : category === 'comment' ? '#14b8a6'
+                                  : '#94a3b8',
+                                opacity: read ? 0.25 : 0.7,
+                              }}
+                            />
+                          )}
                           <button
                             type="button"
                             onClick={() => handleOpen(notif)}
@@ -142,9 +274,16 @@ export default function NotificationsPage() {
                               {notif.data?.body && (
                                 <p className="mt-0.5 text-sm text-muted-foreground">{notif.data.body}</p>
                               )}
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {formatRelativeTimeFr(notif.created_at)}
-                              </p>
+                              <div className="mt-1 flex items-center gap-2">
+                                <p className="text-xs text-muted-foreground">
+                                  {formatRelativeTimeFr(notif.created_at)}
+                                </p>
+                                {catCfg && (
+                                  <span className={`text-[10px] font-medium ${catCfg.color}`}>
+                                    · {catCfg.label}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </button>
                           {!read && (

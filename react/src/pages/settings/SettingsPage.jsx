@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
@@ -27,6 +28,8 @@ import {
   Loader2,
   Settings2,
   BellRing,
+  History,
+  ChevronRight,
 } from 'lucide-react';
 
 const MotionSection = motion.section;
@@ -228,8 +231,10 @@ export default function SettingsPage() {
   const { user, loading, fetchUser } = useAuth();
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const fileRef = useRef(null);
   const isAdmin = Boolean(user?.roles?.includes('admin'));
+  const isViewer = Boolean(user?.roles?.includes('viewer'));
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -647,6 +652,46 @@ export default function SettingsPage() {
           </div>
         </div>
       </Section>
+
+      {/* Audit Journal — admin and member only */}
+      {!isViewer && (
+        <MotionSection
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.28, delay: 0.18, ease: [0.25, 0.46, 0.45, 0.94] }}
+        >
+          <Card className="overflow-hidden transition-shadow duration-200 hover:shadow-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <History className="h-5 w-5 shrink-0 text-muted-foreground" />
+                Journal d'audit
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">
+                    Consultez l'historique complet de toutes les actions effectuées sur les projets, tâches et membres — créations, modifications, déplacements et commentaires.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Recherche, filtre par type d'action et export disponibles.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="default"
+                  className="shrink-0 gap-2"
+                  onClick={() => navigate('/audit-log')}
+                >
+                  <History className="h-4 w-4" />
+                  Ouvrir le journal
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </MotionSection>
+      )}
 
     </div>
   );
