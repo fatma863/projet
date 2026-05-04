@@ -18,9 +18,15 @@ from sqlalchemy.engine import Engine
 # ---------------------------------------------------------------------------
 
 def _load_env() -> dict[str, str]:
+    # 1. local .env next to this file (python/ml/.env)
+    local_env = Path(__file__).parent / ".env"
+    if local_env.exists():
+        return {**dotenv_values(local_env), **os.environ}
+    # 2. laravel/.env (monorepo local dev fallback)
     laravel_env = Path(__file__).parent.parent.parent / "laravel" / ".env"
     if laravel_env.exists():
         return {**dotenv_values(laravel_env), **os.environ}
+    # 3. Render / production: pure environment variables
     return dict(os.environ)
 
 _ENV: dict[str, str] = _load_env()

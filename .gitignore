@@ -18,6 +18,7 @@ react/.env.production
 laravel/vendor/
 laravel/node_modules/
 laravel/.env
+python/ml/.env
 laravel/storage/*.key
 laravel/storage/logs/
 laravel/bootstrap/cache/
