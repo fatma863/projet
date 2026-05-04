@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ActivityFeedController;
 use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AiController;
+use App\Http\Controllers\Api\MLController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SpecialtyController;
 use App\Http\Controllers\Api\CalendarController;
@@ -194,7 +195,8 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     // ── Spécialités ───────────────────────────────────────────────────────────
     Route::get('specialties', [SpecialtyController::class, 'index']);
     Route::middleware('check.project:view')->group(function () {
-        Route::get('projects/{project}/auto-assign', [SpecialtyController::class, 'autoAssign']);
+        Route::get('projects/{project}/auto-assign',          [SpecialtyController::class, 'autoAssign']);
+        Route::get('projects/{project}/members-performance',  [SpecialtyController::class, 'membersPerformance']);
     });
     Route::get('me/specialties', [SpecialtyController::class, 'mySpecialties']);
     Route::put('me/specialties', [SpecialtyController::class, 'syncMySpecialties']);
@@ -211,6 +213,19 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::post('notifications/read', [NotificationController::class, 'markReadFromBody']);
     Route::patch('notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::post('notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+
+    // ML Recommendation Engine (members & admins)
+    Route::middleware('check.role:admin,member')->group(function () {
+        Route::prefix('ml')->group(function () {
+            Route::post('recommend',             [MLController::class, 'recommendForNewTask']);
+            Route::get('recommend/{task}',       [MLController::class, 'recommend']);
+            Route::get('model-info',             [MLController::class, 'modelInfo']);
+            Route::post('feedback/{task}',       [MLController::class, 'recordOutcome']);
+        });
+        Route::middleware('check.role:admin')->group(function () {
+            Route::post('ml/retrain', [MLController::class, 'retrain']);
+        });
+    });
 
     // IA Services (membres & admins — pas les invités applicatifs `viewer`)
     Route::middleware('check.role:admin,member')->group(function () {

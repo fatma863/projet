@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../lib/api';
@@ -9,7 +9,6 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Spinner } from '../../components/ui/Spinner';
 import { Card, CardContent } from '../../components/ui/Card';
-import TaskModal from './TaskModal';
 import { DueDateRangeFilter } from '../../components/tasks/DueDateRangeFilter';
 import { WORKFLOW_COLUMNS, ISSUE_TYPE_LABELS } from '../../lib/taskConstants';
 import { PROJECT_ROLE_LABELS, formatProjectRole, isGuestViewer } from '../../lib/roles';
@@ -95,6 +94,7 @@ function getTaskStatus(task) {
 export default function ProjectDetailPage() {
   const { user } = useAuth();
   const { id } = useParams();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const queryClient = useQueryClient();
@@ -102,7 +102,8 @@ export default function ProjectDetailPage() {
   const isViewer = isGuestViewer(user);
   const isMember = !isAdmin && !isViewer;
 
-  const [taskModal, setTaskModal] = useState({ open: false, task: null, defaultWorkflow: 'todo' });
+  const openNewTask  = (workflow = 'todo') => navigate(`/projects/${id}/tasks/new?workflow=${workflow}`);
+  const openEditTask = (task) => navigate(`/projects/${id}/tasks/${task.id}/edit`);
   const [kanbanFilters, setKanbanFilters] = useState(() => ({
     user: isMember && user?.id ? String(user.id) : '',
     priority: '', type: '', workflow: '', due_from: '', due_to: '',
@@ -194,14 +195,10 @@ export default function ProjectDetailPage() {
     if (Number.isNaN(tid)) return;
     const found = tasks.find((t) => t.id === tid);
     if (found) {
-      setTaskModal({
-        open: true,
-        task: found,
-        defaultWorkflow: found.workflow_status || 'todo',
-      });
       const next = new URLSearchParams(searchParams);
       next.delete('highlightTask');
       setSearchParams(next, { replace: true });
+      navigate(`/projects/${id}/tasks/${found.id}/edit`);
     }
   }, [tasks, searchParams, setSearchParams]);
 
@@ -214,12 +211,15 @@ export default function ProjectDetailPage() {
   const { data: dashboard } = useQuery({
     queryKey: ['project-dashboard', id],
     queryFn: () => api.get(`/projects/${id}/dashboard`).then((r) => r.data),
+    enabled: Boolean(id) && tab === 'progress',
+    staleTime: 60_000,
   });
 
   const { data: criticalPath } = useQuery({
     queryKey: ['project-critical-path', id],
     queryFn: () => api.get(`/projects/${id}/critical-path`).then((r) => r.data),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && tab === 'progress',
+    staleTime: 60_000,
   });
   const { data: ganttData, isLoading: loadingGantt } = useQuery({
     queryKey: ['project-gantt', id],
@@ -227,6 +227,7 @@ export default function ProjectDetailPage() {
     queryFn: () => api.get(`/projects/${id}/gantt`).then((r) => (
       r.data?.gantt ?? r.data?.data?.gantt ?? r.data?.data ?? []
     )),
+    staleTime: 60_000,
   });
 
   const access = project?.access ?? {};
@@ -261,6 +262,16 @@ export default function ProjectDetailPage() {
         : (err?.response?.data?.message || err?.message || 'Impossible de déplacer la tâche.');
       toast.error(msg);
     },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: (taskId) => api.delete(`/tasks/${taskId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+      queryClient.invalidateQueries({ queryKey: ['project-dashboard', id] });
+      toast.success('Tâche supprimée');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Erreur lors de la suppression'),
   });
 
   const filteredTasks = useMemo(() => {
@@ -408,8 +419,16 @@ export default function ProjectDetailPage() {
               <Mail className="mr-2 h-4 w-4" /> Inviter
             </Button>
           )}
+          {(isAdmin || !isViewer) && (
+            <Link
+              to={`/projects/${id}/members-performance`}
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              <BarChart3 className="h-4 w-4 text-primary" /> Performance
+            </Link>
+          )}
           {canWriteProject && (
-            <Button onClick={() => setTaskModal({ open: true, task: null, defaultWorkflow: 'todo' })}>
+            <Button onClick={() => openNewTask('todo')}>
               <Plus className="mr-2 h-4 w-4" /> Nouvelle tâche
             </Button>
           )}
@@ -589,8 +608,13 @@ export default function ProjectDetailPage() {
             tasksByWorkflow={tasksByWorkflow}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
-            onAddTask={(wf) => setTaskModal({ open: true, task: null, defaultWorkflow: wf })}
-            onEditTask={(task) => setTaskModal({ open: true, task, defaultWorkflow: normalizeWorkflowStatus(getTaskStatus(task)) })}
+            onAddTask={(wf) => openNewTask(wf)}
+            onEditTask={(task) => openEditTask(task)}
+            onDeleteTask={(task) => {
+              if (window.confirm(`Supprimer "${task.title}" ? Cette action est irréversible.`)) {
+                deleteTaskMutation.mutate(task.id);
+              }
+            }}
             canWriteProject={canWriteProject}
             isAdmin={isAdmin}
             movePending={workflowMoveMutation.isPending}
@@ -622,17 +646,6 @@ export default function ProjectDetailPage() {
       )}
       {tab === 'reports' && <ProjectReportsTab projectId={id} />}
 
-      {/* Modale tâche */}
-      <TaskModal
-        open={taskModal.open}
-        onClose={() => setTaskModal({ open: false, task: null, defaultWorkflow: 'todo' })}
-        projectId={parseInt(id)}
-        task={taskModal.task}
-        defaultWorkflow={taskModal.defaultWorkflow}
-        statuses={statuses || []}
-        canWriteProject={canWriteProject}
-        isAdmin={isAdmin}
-      />
 
       <InviteUserModal
         open={inviteOpen}
@@ -724,13 +737,36 @@ function InviteUserModal({ open, onClose, projectId, onInvited }) {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Rôle sur le projet</label>
-              <Select value={role} onChange={(e) => setRole(e.target.value)}>
-                <option value="member">{PROJECT_ROLE_LABELS.member}</option>
-                <option value="client">{PROJECT_ROLE_LABELS.client}</option>
-              </Select>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Membre : tâches et commentaires. Client : lecture seule sur le projet (Kanban, Gantt en consultation).
-              </p>
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                {[
+                  {
+                    value: 'member',
+                    label: 'Membre',
+                    desc: 'Crée et modifie des tâches, ajoute des commentaires et suit l\'avancement.',
+                  },
+                  {
+                    value: 'client',
+                    label: 'Client',
+                    desc: 'Accès lecture seule : consulte le Kanban, le Gantt et les tableaux de bord.',
+                  },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setRole(opt.value)}
+                    className={`rounded-lg border-2 p-3 text-left transition-colors ${
+                      role === opt.value
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border bg-card hover:bg-accent/40'
+                    }`}
+                  >
+                    <p className={`text-sm font-semibold ${role === opt.value ? 'text-primary' : 'text-foreground'}`}>
+                      {opt.label}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground leading-snug">{opt.desc}</p>
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={handleClose}>Annuler</Button>
@@ -910,6 +946,7 @@ function KanbanBoard({
   onDragOver,
   onAddTask,
   onEditTask,
+  onDeleteTask,
   canWriteProject,
   isAdmin,
   movePending,
@@ -919,14 +956,15 @@ function KanbanBoard({
       {columns.map((col) => (
         <div
           key={col.id}
-          className="flex w-72 flex-shrink-0 flex-col rounded-lg bg-accent/30"
+          className="flex h-[min(72vh,680px)] w-72 flex-shrink-0 flex-col rounded-lg bg-accent/30"
           onDrop={(e) => canWriteProject && onDrop(e, col.id)}
           onDragOver={onDragOver}
         >
-          <div className="flex items-center justify-between px-3 py-2">
+          {/* Sticky header */}
+          <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between rounded-t-lg bg-accent/60 px-3 py-2 backdrop-blur-sm border-b border-border/30">
             <div className="flex items-center gap-2">
               <span
-                className={`h-3 w-3 rounded-full ${
+                className={`h-2.5 w-2.5 rounded-full ${
                   col.id === 'done'
                     ? 'bg-emerald-500'
                     : col.id === 'in_progress'
@@ -935,7 +973,7 @@ function KanbanBoard({
                 }`}
               />
               <span className="text-sm font-semibold text-foreground">{col.label}</span>
-              <span className="rounded-full bg-accent px-2 py-0.5 text-xs text-muted-foreground">
+              <span className="rounded-full bg-background/50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
                 {tasksByWorkflow(col.id).length}
               </span>
             </div>
@@ -950,12 +988,16 @@ function KanbanBoard({
             )}
           </div>
 
-          <div className="flex flex-1 flex-col gap-2 px-2 pb-2">
+          {/* Scrollable cards */}
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-2 pr-1">
             {tasksByWorkflow(col.id).map((task) => (
               <KanbanCard
                 key={task.id}
                 task={task}
                 onClick={() => onEditTask(task)}
+                onDelete={canWriteProject && (isAdmin || task?.access?.can_edit !== false)
+                  ? () => onDeleteTask(task)
+                  : null}
                 canWriteTask={canWriteProject && (isAdmin || task?.access?.can_edit !== false)}
                 columns={columns}
                 currentColumn={col.id}
@@ -971,7 +1013,7 @@ function KanbanBoard({
   );
 }
 
-function KanbanCard({ task, onClick, canWriteTask, columns, currentColumn, onMoveToColumn }) {
+function KanbanCard({ task, onClick, onDelete, canWriteTask, columns, currentColumn, onMoveToColumn }) {
   const handleDragStart = (e) => {
     e.dataTransfer.setData('taskId', task.id.toString());
   };
@@ -996,11 +1038,23 @@ function KanbanCard({ task, onClick, canWriteTask, columns, currentColumn, onMov
       draggable={canWriteTask}
       onDragStart={canWriteTask ? handleDragStart : undefined}
       onClick={onClick}
-      className={`cursor-pointer rounded-lg border border-border border-l-4 ${borderAccent} bg-card p-3 shadow-sm transition-shadow hover:shadow-md`}
+      className={`group cursor-pointer rounded-lg border border-border border-l-4 ${borderAccent} bg-card p-3 shadow-sm transition-shadow hover:shadow-md`}
     >
       <div className="mb-2 flex items-start justify-between gap-2">
-        <h4 className="text-sm font-medium text-foreground">{task.title}</h4>
-        {canWriteTask && <GripVertical className="h-4 w-4 flex-shrink-0 text-muted-foreground" />}
+        <h4 className="text-sm font-medium text-foreground leading-snug">{task.title}</h4>
+        <div className="flex flex-shrink-0 items-center gap-1">
+          {onDelete && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
+              title="Supprimer"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {canWriteTask && <GripVertical className="h-4 w-4 text-muted-foreground" />}
+        </div>
       </div>
 
       {task.description && (

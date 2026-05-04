@@ -1,0 +1,431 @@
+import { useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import api from '../../lib/api';
+import { Spinner } from '../../components/ui/Spinner';
+import {
+  ArrowLeft, ChevronDown, ChevronRight, TrendingUp, Clock,
+  CheckCircle2, AlertTriangle, Zap, Star, Award, BarChart3,
+} from 'lucide-react';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const PRIORITY_COLORS = {
+  urgent: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  high:   'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  low:    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+};
+const PRIORITY_LABELS = { urgent: 'Urgente', high: 'Haute', medium: 'Moyenne', low: 'Basse' };
+
+function scoreColor(s) {
+  if (s >= 75) return 'text-emerald-600 dark:text-emerald-400';
+  if (s >= 50) return 'text-amber-600 dark:text-amber-400';
+  return 'text-rose-500 dark:text-rose-400';
+}
+function scoreBg(s) {
+  if (s >= 75) return 'bg-emerald-500';
+  if (s >= 50) return 'bg-amber-500';
+  return 'bg-rose-400';
+}
+
+function fmtDate(v) {
+  if (!v) return '—';
+  const d = new Date(String(v).slice(0, 10));
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR');
+}
+
+function Stat({ label, value, color = 'default', icon: Icon }) {
+  const cls = {
+    default: 'bg-muted/60 text-foreground',
+    green:   'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300',
+    amber:   'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
+    blue:    'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300',
+    rose:    'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-400',
+    violet:  'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300',
+  };
+  return (
+    <div className={`flex flex-col items-center rounded-xl px-3 py-2 ${cls[color]}`}>
+      {Icon && <Icon className="mb-0.5 h-3.5 w-3.5 opacity-70" />}
+      <span className="text-sm font-bold tabular-nums">{value ?? '—'}</span>
+      <span className="text-[9px] font-medium opacity-75 text-center leading-tight">{label}</span>
+    </div>
+  );
+}
+
+function ScoreBar({ score }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-2 w-24 overflow-hidden rounded-full bg-muted">
+        <div className={`h-full rounded-full ${scoreBg(score)}`} style={{ width: `${score}%` }} />
+      </div>
+      <span className={`w-9 text-right text-sm font-bold tabular-nums ${scoreColor(score)}`}>{score}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Member row
+// ---------------------------------------------------------------------------
+
+function MemberRow({ member, rank }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      {/* Main row */}
+      <tr
+        className="cursor-pointer border-b border-border/50 hover:bg-muted/30 transition-colors"
+        onClick={() => setOpen(v => !v)}
+      >
+        {/* Rank */}
+        <td className="px-3 py-3 text-center">
+          {rank === 1 ? (
+            <Award className="h-5 w-5 text-amber-500 mx-auto" />
+          ) : (
+            <span className="text-sm font-semibold text-muted-foreground">{rank}</span>
+          )}
+        </td>
+
+        {/* Member info */}
+        <td className="px-3 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-bold text-primary">
+              {(member.name || '?')[0].toUpperCase()}
+            </div>
+            <div>
+              <p className="font-medium text-foreground text-sm">{member.name}</p>
+              <p className="text-[10px] text-muted-foreground">{member.email}</p>
+              {member.specialties?.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {member.specialties.map(s => (
+                    <span
+                      key={s.id}
+                      className="rounded-full px-1.5 py-0.5 text-[9px] font-medium text-white"
+                      style={{ backgroundColor: s.color || '#6366f1' }}
+                    >
+                      {s.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </td>
+
+        {/* Score */}
+        <td className="px-3 py-3">
+          <ScoreBar score={member.performance_score} />
+        </td>
+
+        {/* Tasks done / total */}
+        <td className="px-3 py-3 text-center">
+          <span className="text-sm font-semibold text-foreground">{member.tasks_done}</span>
+          <span className="text-muted-foreground text-xs">/{member.tasks_total}</span>
+        </td>
+
+        {/* Active tasks */}
+        <td className="px-3 py-3 text-center">
+          <span className={`text-sm font-semibold ${member.tasks_active > 3 ? 'text-rose-500' : 'text-foreground'}`}>
+            {member.tasks_active}
+          </span>
+        </td>
+
+        {/* On-time rate */}
+        <td className="px-3 py-3 text-center">
+          {member.on_time_rate != null ? (
+            <span className={`text-sm font-bold ${
+              member.on_time_rate >= 70 ? 'text-emerald-600 dark:text-emerald-400' :
+              member.on_time_rate >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-500'
+            }`}>
+              {member.on_time_rate}%
+            </span>
+          ) : <span className="text-muted-foreground text-xs">—</span>}
+        </td>
+
+        {/* Avg hours */}
+        <td className="px-3 py-3 text-center">
+          <span className="text-sm text-foreground">
+            {member.avg_actual_hours != null ? `${member.avg_actual_hours}h` : '—'}
+          </span>
+        </td>
+
+        {/* Avg days */}
+        <td className="px-3 py-3 text-center">
+          <span className="text-sm text-foreground">
+            {member.avg_days_to_complete != null ? `${member.avg_days_to_complete}j` : '—'}
+          </span>
+        </td>
+
+        {/* Hours accuracy */}
+        <td className="px-3 py-3 text-center">
+          {member.hours_accuracy != null ? (
+            <span className={`text-sm font-medium ${
+              member.hours_accuracy >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
+              member.hours_accuracy >= 60 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-500'
+            }`}>
+              {member.hours_accuracy}%
+            </span>
+          ) : <span className="text-muted-foreground text-xs">—</span>}
+        </td>
+
+        {/* 30d velocity */}
+        <td className="px-3 py-3 text-center">
+          <span className="text-sm font-semibold text-foreground">{member.velocity_30d}</span>
+        </td>
+
+        {/* Expand toggle */}
+        <td className="px-3 py-3 text-center">
+          {open
+            ? <ChevronDown className="h-4 w-4 text-muted-foreground mx-auto" />
+            : <ChevronRight className="h-4 w-4 text-muted-foreground mx-auto" />}
+        </td>
+      </tr>
+
+      {/* Expanded: detail rows */}
+      {open && (
+        <tr className="bg-muted/10">
+          <td colSpan={11} className="px-4 py-4">
+            <div className="space-y-4">
+              {/* Stat pills */}
+              <div className="flex flex-wrap gap-2">
+                <Stat icon={CheckCircle2} label="Tâches terminées"   value={member.tasks_done}           color="green"  />
+                <Stat icon={Zap}          label="En cours / À risque" value={`${member.tasks_active}`}    color={member.tasks_active > 3 ? 'rose' : 'default'} />
+                <Stat icon={Clock}        label="À faire"             value={member.tasks_todo}           color="default" />
+                {member.avg_actual_hours != null && <Stat label="Moy. heures réelles" value={`${member.avg_actual_hours}h`} color="blue" />}
+                {member.avg_days_to_complete != null && <Stat icon={TrendingUp} label="Délai moy. assign→done" value={`${member.avg_days_to_complete}j`} color="blue" />}
+                {member.on_time_rate != null && <Stat label="Livraison à temps" value={`${member.on_time_rate}%`} color={member.on_time_rate >= 70 ? 'green' : member.on_time_rate >= 40 ? 'amber' : 'rose'} />}
+                {member.hours_accuracy != null && <Stat label="Précision heures" value={`${member.hours_accuracy}%`} color={member.hours_accuracy >= 80 ? 'green' : 'amber'} />}
+                <Stat icon={Zap} label="Vélocité 30j" value={member.velocity_30d} color="violet" />
+              </div>
+
+              {/* Priority breakdown */}
+              {member.done_by_priority && Object.values(member.done_by_priority).some(v => v > 0) && (
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Tâches terminées par priorité</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['urgent', 'high', 'medium', 'low'].map(p => (
+                      member.done_by_priority[p] > 0 && (
+                        <span key={p} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${PRIORITY_COLORS[p]}`}>
+                          {PRIORITY_LABELS[p]} : {member.done_by_priority[p]}
+                        </span>
+                      )
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Task history table */}
+              {member.tasks_list?.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Historique des {member.tasks_list.length} dernières tâches terminées
+                  </p>
+                  <div className="overflow-x-auto rounded-lg border border-border/60">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border/60 bg-muted/40">
+                          <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Tâche</th>
+                          <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Type</th>
+                          <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Priorité</th>
+                          <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Début prévu</th>
+                          <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Fin prévue</th>
+                          <th className="px-3 py-2 text-right font-semibold text-muted-foreground">H. est.</th>
+                          <th className="px-3 py-2 text-right font-semibold text-muted-foreground">H. réelles</th>
+                          <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Terminée le</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {member.tasks_list.map(t => {
+                          const hoursOk = t.estimated_hours && t.actual_hours
+                            ? t.actual_hours <= t.estimated_hours * 1.2
+                            : null;
+                          return (
+                            <tr key={t.id} className="border-b border-border/30 hover:bg-muted/20">
+                              <td className="px-3 py-2 font-medium text-foreground max-w-[200px] truncate">{t.title}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{t.issue_type}</td>
+                              <td className="px-3 py-2">
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${PRIORITY_COLORS[t.priority] ?? ''}`}>
+                                  {PRIORITY_LABELS[t.priority] ?? t.priority}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground">{fmtDate(t.planned_start)}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{fmtDate(t.planned_end)}</td>
+                              <td className="px-3 py-2 text-right text-muted-foreground">
+                                {t.estimated_hours != null ? `${t.estimated_hours}h` : '—'}
+                              </td>
+                              <td className={`px-3 py-2 text-right font-medium ${
+                                hoursOk === true ? 'text-emerald-600 dark:text-emerald-400' :
+                                hoursOk === false ? 'text-rose-500' : 'text-muted-foreground'
+                              }`}>
+                                {t.actual_hours != null ? `${t.actual_hours}h` : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground">{fmtDate(t.completed_at)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+export default function MembersPerformancePage() {
+  const { id } = useParams();
+
+  const { data: project } = useQuery({
+    queryKey: ['project', id],
+    queryFn: () => api.get(`/projects/${id}`).then(r => r.data?.data ?? r.data?.project ?? r.data),
+    staleTime: 60_000,
+  });
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['members-performance', id],
+    queryFn: () => api.get(`/projects/${id}/members-performance`).then(r => r.data),
+  });
+
+  const members = data?.members ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="rounded-lg bg-destructive/10 px-4 py-3 text-destructive text-sm">
+          Erreur de chargement : {error.message}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      {/* Header */}
+      <div className="mb-6 flex items-center gap-3">
+        <Link
+          to={`/projects/${id}`}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
+        <div>
+          <p className="text-xs text-muted-foreground">{project?.name ?? `Projet #${id}`}</p>
+          <h1 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+            <BarChart3 className="h-5 w-5 text-primary" />
+            Tableau de performance des membres
+          </h1>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryCard label="Membres" value={members.length} icon={Star} color="violet" />
+        <SummaryCard
+          label="Tâches terminées"
+          value={members.reduce((s, m) => s + m.tasks_done, 0)}
+          icon={CheckCircle2}
+          color="green"
+        />
+        <SummaryCard
+          label="Score moyen"
+          value={members.length
+            ? Math.round(members.reduce((s, m) => s + m.performance_score, 0) / members.length) + '%'
+            : '—'}
+          icon={TrendingUp}
+          color="blue"
+        />
+        <SummaryCard
+          label="Tâches actives"
+          value={members.reduce((s, m) => s + m.tasks_active, 0)}
+          icon={Zap}
+          color="amber"
+        />
+      </div>
+
+      {members.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center">
+          <AlertTriangle className="mx-auto mb-3 h-10 w-10 text-amber-500" />
+          <p className="font-medium text-foreground">Aucun membre non-admin dans ce projet</p>
+          <p className="mt-1 text-sm text-muted-foreground">Ajoutez des membres pour voir leurs performances.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground w-10">#</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground min-w-[180px]">Membre</th>
+                <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground min-w-[140px]">Score global</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Terminées/Total</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Actives</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">% À temps</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">H. moy.</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Délai moy.</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Précision H.</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Vélo. 30j</th>
+                <th className="px-3 py-3 w-8" />
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((m, idx) => (
+                <MemberRow key={m.id} member={m} rank={idx + 1} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="mt-4 flex flex-wrap gap-4 text-[10px] text-muted-foreground">
+        <span><span className="font-semibold text-emerald-600">Score ≥ 75</span> — excellent</span>
+        <span><span className="font-semibold text-amber-600">50–74</span> — correct</span>
+        <span><span className="font-semibold text-rose-500">{'< 50'}</span> — à améliorer</span>
+        <span>Délai moy. = temps entre assignation et passage en &quot;terminé&quot; (max 90j)</span>
+        <span>Précision H. = 1 – erreur relative heures réelles/estimées</span>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, icon: Icon, color }) {
+  const colors = {
+    green:  'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800/40',
+    blue:   'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/40',
+    violet: 'bg-violet-50 border-violet-200 dark:bg-violet-900/20 dark:border-violet-800/40',
+    amber:  'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800/40',
+  };
+  const iconColors = {
+    green: 'text-emerald-600 dark:text-emerald-400',
+    blue: 'text-blue-600 dark:text-blue-400',
+    violet: 'text-violet-600 dark:text-violet-400',
+    amber: 'text-amber-600 dark:text-amber-400',
+  };
+  return (
+    <div className={`rounded-xl border p-4 ${colors[color]}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-muted-foreground">{label}</span>
+        <Icon className={`h-4 w-4 ${iconColors[color]}`} />
+      </div>
+      <p className="text-2xl font-bold text-foreground">{value}</p>
+    </div>
+  );
+}

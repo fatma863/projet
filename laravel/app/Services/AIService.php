@@ -6,15 +6,18 @@ use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\AI\OpenRouterService;
+use App\Services\ML\PythonMLClient;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Moteur d'IA hybride : règles métier (heuristiques) enrichies par un LLM via OpenRouter.
  */
 class AIService
 {
-    public function __construct(private readonly OpenRouterService $llm) {}
+    public function __construct(
+        private readonly OpenRouterService $llm,
+        private readonly PythonMLClient $mlClient,
+    ) {}
     private const BASE_MINUTES = 120;
 
     /**
@@ -107,7 +110,7 @@ class AIService
     }
 
     /**
-     * Proximité d’échéance (due_date ou planned_end) : retard ou jours restants.
+     * Proximité d'échéance (due_date ou planned_end) : retard ou jours restants.
      */
     private function deadlineProximityPoints(Carbon $now, ?Carbon $due): int
     {
@@ -282,8 +285,9 @@ class AIService
     }
 
     /**
-     * Meilleur membre du projet pour l’auto-assignation : score de charge minimal
-     * (open_estimated_hours × 0,6) + (tâches actives × 0,3) + (tâches en retard × 0,1).
+     * Best project member for auto-assignment.
+     * Delegates to the ML recommendation engine (Python or PHP fallback).
+     * Falls back to workload-based heuristic if ML returns nothing.
      */
     public function suggestBestUser(Task $task): ?int
     {
@@ -292,49 +296,58 @@ class AIService
             return null;
         }
 
-        $ids = collect();
-
-        if (Schema::hasTable('project_user')) {
-            $ids = $ids->merge($project->users()->pluck('users.id'));
+        try {
+            $result = $this->mlClient->recommend($task, $project->id, 1);
+            $bestId = $result['best_user_id'] ?? null;
+            if ($bestId) {
+                return (int) $bestId;
+            }
+        } catch (\Throwable) {
+            // Fall through to workload heuristic
         }
-        $ids = $ids->merge($project->members()->pluck('users.id'));
+
+        return $this->suggestBestUserByWorkload($task);
+    }
+
+    /**
+     * Original workload-based heuristic kept as fallback.
+     */
+    private function suggestBestUserByWorkload(Task $task): ?int
+    {
+        $project = $task->project;
+
+        $ids = collect();
+        try {
+            $ids = $ids->merge($project->users()->pluck('users.id'));
+        } catch (\Throwable) {}
+        try {
+            $ids = $ids->merge($project->members()->pluck('users.id'));
+        } catch (\Throwable) {}
         if ($project->owner_id) {
             $ids->push($project->owner_id);
         }
 
         $unique = $ids->filter()->unique()->values();
-        if ($unique->isEmpty()) {
-            return null;
-        }
+        if ($unique->isEmpty()) return null;
 
         $adminIds = User::query()
             ->whereIn('id', $unique->all())
             ->whereHas('roles', fn ($q) => $q->where('name', 'admin'))
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
+            ->pluck('id')->map(fn ($id) => (int) $id)->all();
 
-        $eligibleIds = $unique
-            ->reject(fn ($id) => in_array((int) $id, $adminIds, true))
-            ->values();
-
-        if ($eligibleIds->isEmpty()) {
-            return null;
-        }
+        $eligibleIds = $unique->reject(fn ($id) => in_array((int) $id, $adminIds, true))->values();
+        if ($eligibleIds->isEmpty()) return null;
 
         $bestId = null;
         $bestScore = null;
-
         foreach ($eligibleIds as $uid) {
-            $uid = (int) $uid;
+            $uid   = (int) $uid;
             $score = $this->workloadCompositeScore($uid, (int) $project->id);
-
-            if ($bestScore === null || $score < $bestScore || ($score === $bestScore && ($bestId === null || $uid < $bestId))) {
+            if ($bestScore === null || $score < $bestScore) {
                 $bestScore = $score;
-                $bestId = $uid;
+                $bestId    = $uid;
             }
         }
-
         return $bestId;
     }
 
@@ -351,7 +364,7 @@ class AIService
     }
 
     /**
-     * Somme des heures estimées des tâches non terminées du projet assignées à l’utilisateur.
+     * Somme des heures estimées des tâches non terminées du projet assignées à l'utilisateur.
      */
     public function openEstimatedHoursForUserInProject(int $userId, int $projectId): float
     {
@@ -382,7 +395,7 @@ class AIService
     }
 
     /**
-     * Tâches non terminées du projet assignées à l’utilisateur dont la date d’échéance / fin planifiée est dépassée (jour calendaire).
+     * Tâches non terminées du projet assignées à l'utilisateur dont la date d'échéance / fin planifiée est dépassée (jour calendaire).
      */
     protected function overdueTaskCountForUserInProject(int $userId, int $projectId): int
     {
@@ -408,7 +421,7 @@ class AIService
     }
 
     /**
-     * Payload pour l’API d’estimation (règles métier).
+     * Payload pour l'API d'estimation (règles métier).
      *
      * @return array<string, mixed>
      */
@@ -502,7 +515,7 @@ class AIService
     }
 
     /**
-     * Analyse des risques pour toutes les tâches actives d’un projet.
+     * Analyse des risques pour toutes les tâches actives d'un projet.
      *
      * @return array{summary: array<string, int>, tasks: array<int, array<string, mixed>>}
      */
@@ -553,7 +566,7 @@ class AIService
     }
 
     /**
-     * Suggestions d’assignation pour les tâches non assignées.
+     * Suggestions d'assignation pour les tâches non assignées.
      *
      * @return array{unassigned_count: int, assignments: array<int, array<string, mixed>>}
      */
@@ -616,7 +629,7 @@ class AIService
     }
 
     /**
-     * Charge ouverte par membre dans un projet (pour expliquer l’auto-assignation).
+     * Charge ouverte par membre dans un projet (pour expliquer l'auto-assignation).
      * suggestBestUser() minimise workload_score : (heures ouvertes × 0,6) + (tâches actives × 0,3) + (en retard × 0,1).
      *
      * @return array{user_id: int, project_id: int, active_tasks: int, open_estimated_hours: float}
@@ -698,7 +711,7 @@ class AIService
     }
 
     /**
-     * Réponse API « risque retard » pour une tâche (facteurs structurés pour l’UI).
+     * Réponse API « risque retard » pour une tâche (facteurs structurés pour l'UI).
      *
      * @return array<string, mixed>
      */
@@ -761,7 +774,7 @@ class AIService
         if ($analysis['risk_score'] >= 60) {
             $lines[] = 'Retard probable sans action : prioriser ou découper la tâche.';
         } elseif ($analysis['risk_score'] >= 30) {
-            $lines[] = 'Surveiller les dépendances et la charge de l’assigné.';
+            $lines[] = "Surveiller les dépendances et la charge de l'assigné.";
         }
 
         return array_slice($lines, 0, 4);
@@ -775,10 +788,12 @@ class AIService
     public function buildWorkloadBalancePayload(Project $project): array
     {
         $ids = collect();
-        if (Schema::hasTable('project_user')) {
+        try {
             $ids = $ids->merge($project->users()->pluck('users.id'));
-        }
-        $ids = $ids->merge($project->members()->pluck('users.id'));
+        } catch (\Throwable) {}
+        try {
+            $ids = $ids->merge($project->members()->pluck('users.id'));
+        } catch (\Throwable) {}
         if ($project->owner_id) {
             $ids->push($project->owner_id);
         }
@@ -856,18 +871,18 @@ class AIService
         $hints = [];
         foreach ($members as $m) {
             if (($m['workload_score'] ?? 0) > $avg + 1.2) {
-                $hints[] = 'Charge élevée pour '.$m['name'].' : envisager de réassigner des tâches non démarrées ou d’étaler les livrables.';
+                $hints[] = "Charge élevée pour ".($m['name'])." : envisager de réassigner des tâches non démarrées ou d'étaler les livrables.";
             }
         }
         if ($hints === [] && count($members) > 1) {
-            $hints[] = 'Répartition globalement cohérente. Les suggestions d’assignation privilégient les membres avec le score de charge le plus bas.';
+            $hints[] = "Répartition globalement cohérente. Les suggestions d'assignation privilégient les membres avec le score de charge le plus bas.";
         }
 
         return array_slice($hints, 0, 6);
     }
 
     /**
-     * Score d’assignation (0–100) : pénalise la charge (tâches actives globales) et l’historique de retard.
+     * Score d'assignation (0–100) : pénalise la charge (tâches actives globales) et l'historique de retard.
      */
     private function computeUserAssignmentScore(int $userId): float
     {
@@ -904,7 +919,7 @@ class AIService
                 'Vérifier les blocages et la charge des assignés.',
             ],
             'medium' => [
-                'Surveiller l’avancement et anticiper les dépendances.',
+                "Surveiller l'avancement et anticiper les dépendances.",
             ],
             default => ['Maintenir le rythme actuel.'],
         };

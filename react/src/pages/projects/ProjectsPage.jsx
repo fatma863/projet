@@ -82,6 +82,7 @@ export default function ProjectsPage() {
     queryKey: ['teams-list'],
     enabled: isAdmin,
     queryFn: () => api.get('/teams?per_page=100').then((r) => r.data.data),
+    staleTime: 300_000,
   });
 
   const deleteMutation = useMutation({
@@ -528,9 +529,10 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
   }, [open, isEdit, projectDetail]);
 
   const chefNum = form.chef_id ? Number(form.chef_id) : null;
-  const chefRequired = !isEdit;
+  const chefRequired = false;
   const ownerId = isEdit ? projectDetail?.owner?.id : authUser?.id;
-  const availableMembers = users.filter(
+  const nonAdminUsers = users.filter((u) => !u.roles?.includes('admin'));
+  const availableMembers = nonAdminUsers.filter(
     (u) =>
       u.id !== chefNum
       && u.id !== ownerId
@@ -706,11 +708,9 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
 
           {/* Chef de projet */}
           <div>
-            <label className="mb-1 block text-sm font-medium">
-              Chef de projet {chefRequired && <span className="text-destructive">*</span>}
-            </label>
+            <label className="mb-1 block text-sm font-medium">Chef de projet</label>
             <UserSelect
-              users={users}
+              users={nonAdminUsers}
               value={form.chef_id}
               onChange={(v) => {
                 setForm((f) => ({
@@ -724,9 +724,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
             {errors.chef_id && (
               <p className="mt-0.5 text-xs text-destructive">{errors.chef_id[0]}</p>
             )}
-            {!chefRequired && (
-              <p className="mt-0.5 text-xs text-muted-foreground">Optionnel en modification.</p>
-            )}
+            <p className="mt-0.5 text-xs text-muted-foreground">Optionnel · seuls les membres non-admin peuvent être désignés chef.</p>
           </div>
 
           {/* Membres */}

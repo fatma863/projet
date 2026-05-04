@@ -39,16 +39,16 @@ export function formatAppRole(role, locale = 'fr') {
   return labels[key] ?? role;
 }
 
-/** Rôles projet simplifiés : chef (1 par projet) et membre */
+/** Rôles projet simplifiés : chef (1 par projet), membre et client */
 export const PROJECT_ROLE_LABELS = {
   chef:   'Chef de projet',
   membre: 'Membre',
   // legacy — kept for backward compat display only
   admin:  'Chef de projet',
   member: 'Membre',
-  client: 'Membre',
-  guest:  'Membre',
-  viewer: 'Membre',
+  client: 'Client',
+  guest:  'Client',
+  viewer: 'Client',
   owner:  'Chef de projet',
 };
 

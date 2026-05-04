@@ -32,8 +32,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
@@ -194,9 +194,16 @@ class TaskController extends Controller
         $query->orderBy($sortField, $sortDir);
 
         $perPage = ApiPagination::perPage($request);
-        $tasks = $request->boolean('all')
-            ? $query->limit(200)->get()
-            : $query->paginate($perPage);
+
+        // Cache the full unfiltered list (all=1) for 90 s — busted on any task mutation.
+        if ($request->boolean('all') && !$request->hasAny(['search', 'status_id', 'priority', 'assignee_id', 'workflow_status'])) {
+            $cacheKey = "project_tasks_all_{$project->id}";
+            $tasks = Cache::remember($cacheKey, 90, fn () => $query->limit(200)->get());
+        } else {
+            $tasks = $request->boolean('all')
+                ? $query->limit(200)->get()
+                : $query->paginate($perPage);
+        }
 
         return response()->json([
             'tasks' => TaskResource::collection($tasks),
@@ -329,6 +336,7 @@ class TaskController extends Controller
             }
         }
         $this->invalidateMemberDashboardCaches($task->fresh());
+        self::forgetProjectTasksCache($project->id);
 
         return response()->json([
             'message' => 'Tâche créée.',
@@ -495,6 +503,7 @@ class TaskController extends Controller
         ]);
         $this->notifyDelayIfNeeded($task);
         ProjectController::forgetDashboardCache($task->project_id);
+        self::forgetProjectTasksCache($task->project_id);
 
         return response()->json([
             'message' => 'Tâche mise à jour.',
@@ -508,6 +517,7 @@ class TaskController extends Controller
         $this->invalidateMemberDashboardCaches($task);
         $project = $task->project;
         $title = $task->title;
+        self::forgetProjectTasksCache($project->id);
         $task->delete();
         $this->activityLogService->log($project, Auth::user(), 'task.deleted', $task, [
             'task_title' => $title,
@@ -549,6 +559,7 @@ class TaskController extends Controller
         ]);
         $this->invalidateMemberDashboardCaches($task);
         $this->notifyDelayIfNeeded($task);
+        self::forgetProjectTasksCache($task->project_id);
         try {
             $this->aiService->refreshRiskAfterUpdate($task);
         } catch (\Throwable) {
@@ -1103,6 +1114,11 @@ class TaskController extends Controller
     /**
      * @param  array<int>  $extraUserIds
      */
+    private static function forgetProjectTasksCache(int $projectId): void
+    {
+        Cache::forget("project_tasks_all_{$projectId}");
+    }
+
     private function invalidateMemberDashboardCaches(Task $task, array $extraUserIds = []): void
     {
         $ids = $task->assignees()->pluck('users.id')->all();
@@ -1119,9 +1135,9 @@ class TaskController extends Controller
         if ($project->owner_id) {
             $ids = $ids->push((int) $project->owner_id);
         }
-        if (Schema::hasTable('project_user')) {
+        try {
             $ids = $ids->merge($project->users()->pluck('users.id'));
-        }
+        } catch (\Throwable) {}
         MemberDashboardService::forgetCacheForUsers($ids->unique()->filter()->all());
     }
 

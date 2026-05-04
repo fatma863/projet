@@ -398,11 +398,19 @@ function InternalDashboard() {
   const { data: projectDashboards = [], isLoading: loadingDashboards } = useQuery({
     queryKey: ['dashboard-project-metrics', projects.map((p) => p.id)],
     enabled: projects.length > 0 && !isViewerUser,
+    staleTime: 120_000,
     queryFn: async () => {
-      const responses = await Promise.all(
-        projects.map((project) => api.get(`/projects/${project.id}/dashboard`).then((r) => ({ projectId: project.id, ...r.data }))),
-      );
-      return responses;
+      // Batch in groups of 4 to avoid overwhelming the server
+      const chunks = [];
+      for (let i = 0; i < projects.length; i += 4) chunks.push(projects.slice(i, i + 4));
+      const results = [];
+      for (const chunk of chunks) {
+        const r = await Promise.all(
+          chunk.map((project) => api.get(`/projects/${project.id}/dashboard`).then((r) => ({ projectId: project.id, ...r.data }))),
+        );
+        results.push(...r);
+      }
+      return results;
     },
   });
 
@@ -459,18 +467,13 @@ function InternalDashboard() {
   });
 
   const { data: projectTasks = [], isLoading: loadingProjectTasks } = useQuery({
-    queryKey: ['dashboard-tasks', isAdmin, projects.map((p) => p.id).join(',')],
+    queryKey: ['dashboard-tasks'],
     enabled: isAdmin ? true : !usePersonalDashboardApi && projects.length > 0,
+    staleTime: 120_000,
     queryFn: async () => {
-      if (isAdmin) {
-        const res = await api.get('/tasks?all=1');
-        const tasks = res.data.tasks?.data || res.data.tasks || [];
-        return [{ projectId: 'all', tasks }];
-      }
-      const responses = await Promise.all(
-        projects.map((project) => api.get(`/projects/${project.id}/tasks?all=1`).then((r) => ({ projectId: project.id, tasks: r.data.tasks?.data || r.data.data || [] }))),
-      );
-      return responses;
+      const res = await api.get('/tasks?all=1');
+      const tasks = res.data.tasks?.data || res.data.tasks || [];
+      return [{ projectId: 'all', tasks }];
     },
   });
 

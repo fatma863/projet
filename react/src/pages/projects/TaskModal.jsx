@@ -14,10 +14,11 @@ import { toast } from 'sonner';
 import {
   MessageSquare, Users, Trash2, Send, Plus, ChevronDown, ChevronRight,
   LayoutGrid, UserCircle, CalendarRange, SlidersHorizontal, Link2, Sparkles,
-  Pencil, Tag, Zap, Star,
+  Pencil, Tag, Star,
 } from 'lucide-react';
 import { MemberAssigneePicker } from '../../components/tasks/MemberAssigneePicker';
 import { TaskDependencyPicker } from '../../components/tasks/TaskDependencyPicker';
+import { MLRecommendationModal } from '../../components/tasks/MLRecommendationModal';
 
 const EMPTY_FORM = {
   title: '',
@@ -70,8 +71,9 @@ export default function TaskModal({
   const [generalError, setGeneralError] = useState(null);
   const [activeTab, setActiveTab] = useState('details');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [autoAssignResult, setAutoAssignResult] = useState(null); // { best_user, top_users, message }
+  const [autoAssignResult, setAutoAssignResult] = useState(null);
   const [isAutoAssigning, setIsAutoAssigning] = useState(false);
+  const [showMLModal, setShowMLModal] = useState(false);
   const canEditTask = isEdit ? (isAdmin || Boolean(task?.access?.can_edit)) : canWriteProject;
   const canDeleteTask = isEdit && (isAdmin || Boolean(task?.access?.can_delete));
 
@@ -238,19 +240,19 @@ export default function TaskModal({
     setAutoAssignResult(null);
     try {
       const params = new URLSearchParams();
-      const selectedSpecialtyId = (form.specialty_ids || [])[0];
-      if (selectedSpecialtyId) {
-        params.append('specialty_ids[]', selectedSpecialtyId);
-      }
-      const res = await api.get(`/projects/${projectId}/auto-assign?${params.toString()}`);
+      (form.specialty_ids || []).forEach((id) => params.append('specialty_ids[]', id));
+      if (form.priority)         params.append('priority',         form.priority);
+      if (form.issue_type)       params.append('issue_type',       form.issue_type);
+      if (form.complexity)       params.append('complexity',       form.complexity);
+      if (form.estimated_hours)  params.append('estimated_hours',  form.estimated_hours);
+      if (form.planned_end)      params.append('planned_end',      form.planned_end);
+      params.append('top_n', '5');
+      const res  = await api.get(`/projects/${projectId}/auto-assign?${params.toString()}`);
       const data = res.data;
       setAutoAssignResult(data);
-      if (data.best_user) {
-        set('assignee_id', data.best_user.id);
-        set('ai_auto_assign', false);
-      }
+      setShowMLModal(true);
     } catch {
-      setAutoAssignResult({ best_user: null, top_users: [], message: 'Erreur lors de l\'auto-assignation.' });
+      setAutoAssignResult({ best_user: null, candidates: [], message: "Erreur lors de l'analyse IA. Vérifiez que le service Python est démarré." });
     } finally {
       setIsAutoAssigning(false);
     }
@@ -342,6 +344,7 @@ export default function TaskModal({
   const set = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -511,117 +514,39 @@ export default function TaskModal({
                       </p>
                     )}
                   </div>
-                  {/* ── Bouton Auto assigner ── */}
+                  {/* ── Bouton Recommandation IA ── */}
                   {!isEdit && canEditTask && (
-                    <div className="space-y-3">
+                    <div>
                       <button
                         type="button"
                         onClick={handleAutoAssign}
                         disabled={isAutoAssigning}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 px-4 py-3 text-sm font-medium text-primary transition-all hover:border-primary/70 hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-violet-400/50 bg-gradient-to-r from-violet-500/5 to-primary/5 px-4 py-3 text-sm font-medium text-violet-700 dark:text-violet-300 transition-all hover:border-violet-500/70 hover:from-violet-500/10 hover:to-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {isAutoAssigning ? (
                           <>
-                            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                            Analyse en cours…
+                            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+                            Analyse IA en cours…
                           </>
                         ) : (
                           <>
-                            <Zap className="h-4 w-4 fill-primary" />
-                            Auto assigner
-                            <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold">IA</span>
+                            <Sparkles className="h-4 w-4" />
+                            Recommandation IA
+                            <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                              ML · 22 features
+                            </span>
                           </>
                         )}
                       </button>
-
-                      {/* Résultats auto-assignation */}
-                      {autoAssignResult && (
-                        <div className="rounded-xl border border-border bg-card overflow-hidden">
-                          {autoAssignResult.best_user ? (
-                            <>
-                              {/* TOP 3 */}
-                              <div className="border-b border-border bg-muted/30 px-3 py-2">
-                                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                                  <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
-                                  Meilleurs candidats
-                                </p>
-                              </div>
-                              <div className="divide-y divide-border">
-                                {(autoAssignResult.top_users || []).map((u, idx) => {
-                                  const isSelected = String(form.assignee_id) === String(u.id);
-                                  const scoreColor = u.score >= 70 ? 'text-emerald-600 dark:text-emerald-400' : u.score >= 45 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground';
-                                  const barColor = u.score >= 70 ? 'bg-emerald-500' : u.score >= 45 ? 'bg-amber-500' : 'bg-slate-400';
-                                  return (
-                                    <button
-                                      key={u.id}
-                                      type="button"
-                                      onClick={() => { set('assignee_id', u.id); set('ai_auto_assign', false); }}
-                                      className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent ${isSelected ? 'bg-primary/5' : ''}`}
-                                    >
-                                      {/* Rang */}
-                                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">
-                                        {idx + 1}
-                                      </span>
-                                      {/* Avatar */}
-                                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
-                                        {u.name?.[0] || '?'}
-                                      </div>
-                                      {/* Infos */}
-                                      <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-1.5">
-                                          <p className="truncate text-sm font-medium text-foreground">{u.name}</p>
-                                          {idx === 0 && (
-                                            <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                                              ⭐ Recommandé
-                                            </span>
-                                          )}
-                                        </div>
-                                        {/* Barre de score */}
-                                        <div className="mt-1 flex items-center gap-2">
-                                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                                            <div
-                                              className={`h-full rounded-full transition-all ${barColor}`}
-                                              style={{ width: `${u.score}%` }}
-                                            />
-                                          </div>
-                                          <span className={`text-[11px] font-semibold tabular-nums ${scoreColor}`}>
-                                            {u.score}%
-                                          </span>
-                                        </div>
-                                        {/* Spécialités du membre */}
-                                        {u.specialties?.length > 0 && (
-                                          <div className="mt-1 flex flex-wrap gap-1">
-                                            {u.specialties.slice(0, 3).map((s) => (
-                                              <span
-                                                key={s.id}
-                                                className="rounded-full px-1.5 py-0.5 text-[10px] font-medium text-white"
-                                                style={{ backgroundColor: s.color || '#6366f1' }}
-                                              >
-                                                {s.name}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                      {/* Indicateur sélectionné */}
-                                      {isSelected && (
-                                        <span className="shrink-0 text-[11px] font-semibold text-primary">✓ Sélectionné</span>
-                                      )}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </>
-                          ) : (
-                            <div className="flex items-center gap-3 px-4 py-4 text-sm text-muted-foreground">
-                              <span className="text-xl">⚠️</span>
-                              <div>
-                                <p className="font-medium text-foreground">Aucun membre disponible</p>
-                                <p className="text-xs">{autoAssignResult.message || 'Aucun membre compatible avec les spécialités requises.'}</p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                      {autoAssignResult?.best_user && !showMLModal && (
+                        <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
+                          IA recommande&nbsp;
+                          <button type="button" onClick={() => setShowMLModal(true)}
+                            className="font-semibold text-violet-600 dark:text-violet-400 underline underline-offset-2 hover:no-underline">
+                            {autoAssignResult.best_user.name}
+                          </button>
+                          &nbsp;· Cliquez pour voir l'analyse
+                        </p>
                       )}
                     </div>
                   )}
@@ -833,6 +758,18 @@ export default function TaskModal({
       )}
       {activeTab === 'assignees' && isEdit && <AssigneesTab taskId={task.id} isAdmin={isAdmin} canEdit={canEditTask} />}
     </Modal>
+
+    <MLRecommendationModal
+      open={showMLModal}
+      onClose={() => setShowMLModal(false)}
+      result={autoAssignResult}
+      selectedId={form.assignee_id}
+      onAccept={(id) => {
+        set('assignee_id', id);
+        set('ai_auto_assign', false);
+      }}
+    />
+    </>
   );
 }
 

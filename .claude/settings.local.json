@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep *)",
+      "Bash(php -r ' *)",
+      "Bash(php artisan *)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); cmds=[c['name'] for c in d['commands'] if c['name'].startswith\\('ml:'\\)]; print\\('\\\\n'.join\\(cmds\\)\\)\")"
+    ]
+  }
+}

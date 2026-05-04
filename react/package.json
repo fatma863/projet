@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "prestart": "node scripts/kill-ports.cjs",
+    "start": "concurrently --kill-others-on-fail --names \"Laravel,PythonML,React\" --prefix-colors \"blue,magenta,cyan\" \"cd ../laravel && php artisan serve\" \"cd ../python/ml && py -3.13 -m uvicorn app:app --host 127.0.0.1 --port 8001\" \"vite\"",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint . || true",
@@ -34,6 +36,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

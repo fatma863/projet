@@ -40,4 +40,9 @@ return [
         'model'   => env('OPENROUTER_MODEL', 'meta-llama/llama-3.3-70b-instruct:free'),
     ],
 
+    'ml_python' => [
+        'url'     => env('ML_SERVICE_URL', 'http://127.0.0.1:8001'),
+        'timeout' => env('ML_SERVICE_TIMEOUT', 3),
+    ],
+
 ];
