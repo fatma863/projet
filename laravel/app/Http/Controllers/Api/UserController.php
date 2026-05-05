@@ -70,4 +70,11 @@ class UserController extends Controller
 
         return response()->json(['message' => 'Utilisateur désactivé.']);
     }
+
+    public function forceDestroy(Request $request, User $user): JsonResponse
+    {
+        $this->userManagementService->permanentDeleteUser($request->user(), $user);
+
+        return response()->json(['message' => 'Utilisateur supprimé définitivement.']);
+    }
 }

@@ -89,6 +89,7 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::delete('teams/{team}/members/{user}', [TeamController::class, 'removeMember']);
     Route::middleware('check.role:admin')->group(function () {
         Route::apiResource('users', UserController::class)->except(['show']);
+        Route::delete('users/{user}/permanent', [UserController::class, 'forceDestroy']);
     });
 
     // Projects / Clients

@@ -124,6 +124,31 @@ class UserManagementService
         }
     }
 
+    public function permanentDeleteUser(User $actor, User $target): void
+    {
+        if ((int) $actor->id === (int) $target->id) {
+            throw ValidationException::withMessages([
+                'user' => ['Impossible de supprimer votre propre compte.'],
+            ]);
+        }
+
+        if ($target->hasRole('admin')) {
+            throw ValidationException::withMessages([
+                'user' => ['Impossible de supprimer un administrateur.'],
+            ]);
+        }
+
+        $ownsProjects = Project::query()->where('owner_id', $target->id)->exists();
+        if ($ownsProjects) {
+            throw ValidationException::withMessages([
+                'user' => ['Impossible de supprimer un utilisateur propriétaire de projet(s).'],
+            ]);
+        }
+
+        $target->tokens()->delete();
+        $target->delete();
+    }
+
     public function disableUser(User $actor, User $target): void
     {
         if ((int) $actor->id === (int) $target->id) {
