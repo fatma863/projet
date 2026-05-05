@@ -20,6 +20,16 @@ class NotificationService
     /** Nombre minimum de tâches en retard pour signaler un projet à risque. */
     public const PROJECT_AT_RISK_MIN_DELAYED = 4;
 
+    private function userAvatarUrl(?User $user): ?string
+    {
+        if (! $user) {
+            return null;
+        }
+        $path = $user->avatar ?: $user->profile_photo;
+
+        return $path ? '/storage/'.str_replace('\\', '/', $path) : null;
+    }
+
     public function notifyTaskAssigned(Task $task, User $assignee, ?User $actor = null): ?Notification
     {
         $message = 'Une tâche vous a été assignée';
@@ -35,6 +45,8 @@ class NotificationService
                 'task_id' => $task->id,
                 'project_id' => $task->project_id,
                 'assigned_by' => $actor?->id,
+                'actor_name' => $actor?->name,
+                'actor_avatar_url' => $this->userAvatarUrl($actor),
             ]
         );
     }
@@ -55,6 +67,8 @@ class NotificationService
                 'project_id' => $task->project_id,
                 'comment_id' => $commentId,
                 'author_id' => $actor?->id,
+                'actor_name' => $actor?->name,
+                'actor_avatar_url' => $this->userAvatarUrl($actor),
             ]
         );
     }
@@ -157,6 +171,8 @@ class NotificationService
                 'project_id' => $project->id,
                 'invitation_id' => $invitation->id,
                 'token' => $invitation->token,
+                'inviter_name' => $inviter->name,
+                'inviter_avatar_url' => $this->userAvatarUrl($inviter),
             ]
         );
     }

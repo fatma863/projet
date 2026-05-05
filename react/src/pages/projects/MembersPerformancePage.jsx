@@ -92,9 +92,13 @@ function MemberRow({ member, rank }) {
         {/* Member info */}
         <td className="px-3 py-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-bold text-primary">
-              {(member.name || '?')[0].toUpperCase()}
-            </div>
+            {member.avatar_url ? (
+              <img src={member.avatar_url} alt={member.name} className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-background" />
+            ) : (
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-bold text-primary">
+                {(member.name || '?')[0].toUpperCase()}
+              </div>
+            )}
             <div>
               <p className="font-medium text-foreground text-sm">{member.name}</p>
               <p className="text-[10px] text-muted-foreground">{member.email}</p>

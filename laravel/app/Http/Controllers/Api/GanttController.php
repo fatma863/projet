@@ -66,15 +66,22 @@ class GanttController extends Controller
         ]);
     }
 
-    public function show(Project $project): JsonResponse
+    public function show(Request $request, Project $project): JsonResponse
     {
         Gate::authorize('view', $project);
 
-        $taskCollection = $project->tasks()
+        $user = $request->user();
+
+        $query = $project->tasks()
             ->with(['status', 'assignees', 'dependencies', 'dependents'])
-            ->whereNotNull('planned_start')
-            ->orderBy('planned_start')
-            ->get();
+            ->whereNotNull('planned_start');
+
+        // Non-admin users see only their own assigned tasks.
+        if (! $user->hasRole('admin')) {
+            $query->whereHas('assignees', fn ($q) => $q->where('users.id', $user->id));
+        }
+
+        $taskCollection = $query->orderBy('planned_start')->get();
 
         $criticalIds = $this->criticalPathService->criticalTaskIds($taskCollection);
 

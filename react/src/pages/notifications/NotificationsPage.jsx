@@ -27,6 +27,11 @@ function actorLabelForNotification(n) {
   return 'Équipe';
 }
 
+function actorAvatarForNotification(n) {
+  const d = n.data || {};
+  return d.inviter_avatar_url || d.actor_avatar_url || null;
+}
+
 const TYPE_CATEGORIES = {
   task: {
     label: 'Tâches',
@@ -234,6 +239,7 @@ export default function NotificationsPage() {
                       const read = notif.read_at || notif.read;
                       const link = getNotificationLink(notif);
                       const actorName = actorLabelForNotification(notif);
+                      const actorAvatar = actorAvatarForNotification(notif);
                       const category = getNotifCategory(notif.type);
                       const catCfg = TYPE_CATEGORIES[category];
                       return (
@@ -266,7 +272,7 @@ export default function NotificationsPage() {
                               link ? 'cursor-pointer' : 'cursor-default'
                             }`}
                           >
-                            <UserAvatar name={actorName} size="md" className="mt-0.5 shrink-0" />
+                            <UserAvatar name={actorName} src={actorAvatar} size="md" className="mt-0.5 shrink-0" />
                             <div className="min-w-0 flex-1">
                               <p className={`text-sm ${read ? 'text-muted-foreground' : 'font-medium text-foreground'}`}>
                                 {notif.message || notif.data?.message || notif.data?.title || notif.type}

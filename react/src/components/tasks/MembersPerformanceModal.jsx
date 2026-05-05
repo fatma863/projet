@@ -92,10 +92,14 @@ function MemberItem({ member, isSelected, isAssigned, onClick }) {
           : 'hover:bg-muted/50 border border-transparent'
       }`}
     >
-      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold overflow-hidden ${
         isAssigned ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
       }`}>
-        {isAssigned ? <UserCheck className="h-4 w-4" /> : initials(member.name)}
+        {isAssigned ? <UserCheck className="h-4 w-4" /> : (
+          member.avatar_url ? (
+            <img src={member.avatar_url} alt={member.name} className="h-full w-full object-cover" />
+          ) : initials(member.name)
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <p className={`truncate text-xs font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>
@@ -124,9 +128,13 @@ function MemberDetail({ member, isAssigned, onAssign }) {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 p-5 border-b border-border/60">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/20 text-base font-bold text-primary">
-            {initials(member.name)}
-          </div>
+          {member.avatar_url ? (
+            <img src={member.avatar_url} alt={member.name} className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-background" />
+          ) : (
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/20 text-base font-bold text-primary">
+              {initials(member.name)}
+            </div>
+          )}
           <div>
             <p className="font-semibold text-foreground">{member.name}</p>
             <p className="text-xs text-muted-foreground">{member.email}</p>

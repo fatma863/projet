@@ -17,11 +17,15 @@ class TeamMemberResource extends JsonResource
             $skills = [];
         }
 
+        $path = $this->avatar ?: $this->profile_photo;
+        $avatarUrl = $path ? '/storage/'.str_replace('\\', '/', $path) : null;
+
         return [
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
             'avatar' => $this->avatar,
+            'avatar_url' => $avatarUrl,
             'project_role' => $this->resource->getAttribute('project_access_role'),
             'job_role' => $jobRole,
             'role_in_team' => $jobRole,

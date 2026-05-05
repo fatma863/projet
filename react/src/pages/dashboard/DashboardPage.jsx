@@ -231,13 +231,15 @@ function ProjectCard({ project }) {
           <div className="flex items-center justify-between pt-1">
             <div className="flex -space-x-1.5">
               {(project.members || []).slice(0, 3).map((m) => (
-                <div
-                  key={m.id}
-                  className="w-6 h-6 rounded-full border-2 border-card bg-indigo-100 flex items-center justify-center text-[9px] font-bold text-indigo-700"
-                  title={m.name}
-                >
-                  {(m.name || '?')[0].toUpperCase()}
-                </div>
+                m.avatar_url ? (
+                  <img key={m.id} src={m.avatar_url} alt={m.name} title={m.name}
+                    className="w-6 h-6 rounded-full border-2 border-card object-cover" />
+                ) : (
+                  <div key={m.id} title={m.name}
+                    className="w-6 h-6 rounded-full border-2 border-card bg-indigo-100 flex items-center justify-center text-[9px] font-bold text-indigo-700">
+                    {(m.name || '?')[0].toUpperCase()}
+                  </div>
+                )
               ))}
               {(project.members_count > 3) && (
                 <div className="w-6 h-6 rounded-full border-2 border-card bg-muted flex items-center justify-center text-[9px] font-bold text-muted-foreground">

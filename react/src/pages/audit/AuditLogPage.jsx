@@ -87,7 +87,7 @@ function ActivityRow({ a, idx }) {
         {/* Actor + project */}
         <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <UserAvatar name={actorName} size="sm" className="shrink-0 !h-5 !w-5" />
+            <UserAvatar name={actorName} src={a.actor?.avatar_url} size="sm" className="shrink-0 !h-5 !w-5" />
             {actorName}
           </span>
           {a.project_name && (

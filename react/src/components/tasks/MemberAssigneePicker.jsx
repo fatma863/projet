@@ -71,11 +71,11 @@ export function MemberAssigneePicker({
   if (selected && !open) {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2">
-        {selected.avatar ? (
+        {(selected.avatar_url || selected.avatar) ? (
           <img
-            src={selected.avatar}
+            src={selected.avatar_url || selected.avatar}
             alt=""
-            className="h-9 w-9 shrink-0 rounded-full object-cover"
+            className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-background"
           />
         ) : (
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
@@ -142,8 +142,8 @@ export function MemberAssigneePicker({
                 setSearch('');
               }}
             >
-              {m.avatar ? (
-                <img src={m.avatar} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+              {(m.avatar_url || m.avatar) ? (
+                <img src={m.avatar_url || m.avatar} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover ring-2 ring-background" />
               ) : (
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
                   {initials(m.name)}

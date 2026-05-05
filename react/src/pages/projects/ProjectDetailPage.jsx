@@ -630,8 +630,15 @@ export default function ProjectDetailPage() {
         <div className="pt-4">
           {loadingGantt ? (
             <div className="flex justify-center py-20"><Spinner size="lg" /></div>
+          ) : !ganttData?.length ? (
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-20 text-center">
+              <p className="text-sm font-medium text-foreground">Aucune tâche planifiée</p>
+              <p className="text-xs text-muted-foreground">
+                {isAdmin ? 'Aucune tâche de ce projet n\'a de date planifiée.' : 'Aucune de vos tâches dans ce projet n\'a de date planifiée.'}
+              </p>
+            </div>
           ) : (
-            <GanttChart tasks={ganttData || []} variant="compact" />
+            <GanttChart tasks={ganttData} variant="compact" />
           )}
         </div>
       )}
@@ -904,7 +911,7 @@ function ProjectActivityTab({ projectId }) {
                     </time>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
-                    <UserAvatar name={actorName} size="sm" className="shrink-0" />
+                    <UserAvatar name={actorName} src={a.actor?.avatar_url} size="sm" className="shrink-0" />
                     <span className="text-xs text-muted-foreground">{actorName}</span>
                   </div>
                   {detailRows.length > 0 && (
@@ -1111,15 +1118,19 @@ function KanbanCard({ task, onClick, onDelete, canWriteTask, columns, currentCol
 
       <div className="mt-2 flex items-center justify-between">
         <div className="flex -space-x-1">
-          {(task.assignees || []).slice(0, 3).map((a) => (
-            <div
-              key={a.id}
-              className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-primary/15 text-xs font-semibold text-primary"
-              title={a.name || a.user?.name}
-            >
-              {(a.name || a.user?.name || '?')[0]}
-            </div>
-          ))}
+          {(task.assignees || []).slice(0, 3).map((a) => {
+            const name = a.name || a.user?.name || '?';
+            const avatarUrl = a.avatar_url || a.user?.avatar_url;
+            return avatarUrl ? (
+              <img key={a.id} src={avatarUrl} alt={name} title={name}
+                className="h-7 w-7 rounded-full border-2 border-white object-cover" />
+            ) : (
+              <div key={a.id} title={name}
+                className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-primary/15 text-xs font-semibold text-primary">
+                {name[0].toUpperCase()}
+              </div>
+            );
+          })}
         </div>
         {task.progress_percent > 0 && (
           <div className="flex items-center gap-1">
@@ -1351,9 +1362,13 @@ function MemberRow({ member: m, isChef, removable, onRemove }) {
   return (
     <div className={`flex items-center justify-between rounded-lg border bg-card p-3 ${isChef ? 'border-amber-300 dark:border-amber-700' : 'border-border'}`}>
       <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
-          {m.name?.[0] || '?'}
-        </div>
+        {m.avatar_url ? (
+          <img src={m.avatar_url} alt={m.name} className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-background" />
+        ) : (
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
+            {m.name?.[0] || '?'}
+          </div>
+        )}
         <div>
           <div className="flex items-center gap-1.5">
             <p className="text-sm font-medium text-foreground">{m.name}</p>
@@ -1644,9 +1659,13 @@ function AssigneeRows({ assignees }) {
           transition={{ delay: ai * 0.05 + 0.1, duration: 0.3 }}
           className="flex items-center gap-3"
         >
-          <div className="h-7 w-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center shrink-0 text-[11px] font-bold text-white shadow-sm">
-            {(a.name || '?')[0].toUpperCase()}
-          </div>
+          {a.avatar_url ? (
+            <img src={a.avatar_url} alt={a.name} className="h-7 w-7 shrink-0 rounded-full object-cover shadow-sm" />
+          ) : (
+            <div className="h-7 w-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center shrink-0 text-[11px] font-bold text-white shadow-sm">
+              {(a.name || '?')[0].toUpperCase()}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <div className="flex justify-between items-baseline mb-1.5">
               <span className="text-xs font-semibold text-foreground truncate max-w-[90px]">{a.name}</span>

@@ -399,9 +399,13 @@ export default function TeamDetailPage() {
                 <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
                   {/* Avatar + identité */}
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
-                      {m.name?.[0] || '?'}
-                    </div>
+                    {m.avatar_url ? (
+                      <img src={m.avatar_url} alt={m.name} className="h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-background" />
+                    ) : (
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
+                        {m.name?.[0] || '?'}
+                      </div>
+                    )}
                     <div className="min-w-0">
                       <p className="font-medium text-foreground">{m.name}</p>
                       <p className="truncate text-sm text-muted-foreground">{m.email}</p>

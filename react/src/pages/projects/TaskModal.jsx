@@ -1095,9 +1095,14 @@ function AssigneesTab({ taskId, isAdmin, canEdit = true }) {
         {assignees?.map((a) => (
           <div key={a.id} className="flex items-center justify-between rounded-lg bg-accent/30 p-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
-                {(a.name || a.user?.name || '?')[0]}
-              </div>
+              {(a.avatar_url || a.user?.avatar_url) ? (
+                <img src={a.avatar_url || a.user?.avatar_url} alt={a.name || a.user?.name}
+                  className="h-8 w-8 shrink-0 rounded-full object-cover ring-2 ring-background" />
+              ) : (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
+                  {(a.name || a.user?.name || '?')[0]}
+                </div>
+              )}
               <div>
                 <p className="text-sm font-medium">{a.name || a.user?.name}</p>
                 <p className="text-xs text-muted-foreground">{a.allocation_percent}% allocation</p>

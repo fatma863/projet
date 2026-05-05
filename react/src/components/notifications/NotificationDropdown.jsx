@@ -35,6 +35,11 @@ function actorLabelForNotification(n) {
   return 'Équipe';
 }
 
+function actorAvatarForNotification(n) {
+  const d = n.data || {};
+  return d.inviter_avatar_url || d.actor_avatar_url || null;
+}
+
 export default function NotificationDropdown() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -166,6 +171,7 @@ export default function NotificationDropdown() {
                         const sev = n.severity || 'info';
                         const link = getNotificationLink(n);
                         const actorName = actorLabelForNotification(n);
+                        const actorAvatar = actorAvatarForNotification(n);
                         return (
                           <motion.li
                             key={n.id}
@@ -190,7 +196,7 @@ export default function NotificationDropdown() {
                                 !isRead ? `ring-1 ring-inset ${severityRing(sev)}` : ''
                               } ${!link ? 'cursor-default hover:bg-transparent' : ''}`}
                             >
-                              <UserAvatar name={actorName} size="md" className="mt-0.5" />
+                              <UserAvatar name={actorName} src={actorAvatar} size="md" className="mt-0.5" />
                               <div className="min-w-0 flex-1">
                                 <p
                                   className={`text-sm leading-snug ${
