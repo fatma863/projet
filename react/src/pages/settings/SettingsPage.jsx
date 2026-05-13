@@ -314,7 +314,7 @@ export default function SettingsPage() {
   const passwordMutation = useMutation({
     mutationFn: (payload) => api.post('/change-password', payload),
     onSuccess: () => {
-      toast.success(t('settings.toastPasswordOk'));
+      toast.success(t('settings.toastMotDePasseOk'));
       setCurrentPassword('');
       setNewPassword('');
       setNewPasswordConfirmation('');
@@ -323,7 +323,7 @@ export default function SettingsPage() {
       const msg =
         e?.response?.data?.message ||
         (e?.response?.data?.errors && Object.values(e.response.data.errors).flat().join(' ')) ||
-        t('settings.toastPasswordErr');
+        t('settings.toastMotDePasseErr');
       toast.error(msg);
     },
   });
@@ -498,7 +498,7 @@ export default function SettingsPage() {
             <p className="text-sm text-muted-foreground">{t('settings.securityIntro')}</p>
             <div className="space-y-1.5">
               <label className="text-sm font-medium" htmlFor="cur-pw">
-                {t('settings.currentPassword')}
+                {t('settings.motDePasseActuel')}
               </label>
               <Input
                 id="cur-pw"
@@ -511,7 +511,7 @@ export default function SettingsPage() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium" htmlFor="new-pw">
-                {t('settings.newPassword')}
+                {t('settings.nouveauMotDePasse')}
               </label>
               <Input
                 id="new-pw"
@@ -525,7 +525,7 @@ export default function SettingsPage() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium" htmlFor="new-pw2">
-                {t('settings.confirmPassword')}
+                {t('settings.confirmationMotDePasse')}
               </label>
               <Input
                 id="new-pw2"
@@ -538,7 +538,7 @@ export default function SettingsPage() {
               />
             </div>
             <Button type="submit" disabled={passwordMutation.isPending}>
-              {passwordMutation.isPending ? t('settings.updatingPassword') : t('settings.updatePassword')}
+              {passwordMutation.isPending ? t('settings.updatingPassword') : t('settings.mettreAJourMotDePasse')}
             </Button>
           </form>
         </div>

@@ -19,7 +19,7 @@ import { humanizeActivityLine } from '../../lib/activityHumanize';
 import { cn } from '../../lib/utils';
 import {
   FolderKanban, CheckCircle2, AlertTriangle, Clock,
-  Users, ArrowRight, ListTodo, Sparkles, Mail,
+  Users, ArrowRight, ListTodo, Mail,
   History, XCircle, Plus, Calendar,
   BarChart3, Brain, TrendingUp, Zap,
 } from 'lucide-react';
