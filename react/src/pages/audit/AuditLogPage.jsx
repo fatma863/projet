@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import PropTypes from 'prop-types';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -118,6 +119,69 @@ function ActivityRow({ a, idx }) {
     </motion.li>
   );
 }
+
+ActivityRow.propTypes = {
+  a: PropTypes.shape({
+    id: PropTypes.number,
+    action: PropTypes.string,
+    meta: PropTypes.object,
+    created_at: PropTypes.string,
+    project_name: PropTypes.string,
+    actor: PropTypes.shape({
+      name: PropTypes.string,
+      avatar_url: PropTypes.string,
+    }),
+  }),
+  idx: PropTypes.number,
+};
+
+function AuditContent({ isLoading, isError, error, filtered, resetFilters, refetch }) {
+  if (isLoading) {
+    return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
+  }
+  if (isError) {
+    return (
+      <Card className="border-destructive/40 bg-destructive/5">
+        <CardContent className="py-10 text-center text-sm">
+          <p className="font-medium text-destructive">Impossible de charger le journal</p>
+          <p className="mt-2 text-muted-foreground">
+            {error?.response?.data?.message || error?.message || 'Erreur réseau ou serveur.'}
+          </p>
+          <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
+            Réessayer
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+  if (filtered.length === 0) {
+    return (
+      <EmptyState
+        icon={History}
+        title="Aucune entrée"
+        description="Aucun résultat pour ces filtres ou le journal est vide."
+      >
+        <Button type="button" variant="outline" onClick={resetFilters}>Effacer les filtres</Button>
+      </EmptyState>
+    );
+  }
+  return (
+    <ul className="space-y-3">
+      {filtered.map((a, idx) => (
+        <ActivityRow key={a.id ?? idx} a={a} idx={idx} />
+      ))}
+    </ul>
+  );
+}
+
+AuditContent.propTypes = {
+  isLoading: PropTypes.bool,
+  isError: PropTypes.bool,
+  error: PropTypes.object,
+  filtered: PropTypes.array,
+  resetFilters: PropTypes.func,
+  refetch: PropTypes.func,
+};
 
 export default function AuditLogPage() {
   const navigate = useNavigate();
@@ -256,37 +320,14 @@ export default function AuditLogPage() {
       </Card>
 
       {/* Content */}
-      {isLoading ? (
-        <div className="flex justify-center py-20"><Spinner size="lg" /></div>
-      ) : isError ? (
-        <Card className="border-destructive/40 bg-destructive/5">
-          <CardContent className="py-10 text-center text-sm">
-            <p className="font-medium text-destructive">Impossible de charger le journal</p>
-            <p className="mt-2 text-muted-foreground">
-              {error?.response?.data?.message || error?.message || 'Erreur réseau ou serveur.'}
-            </p>
-            <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
-              Réessayer
-            </Button>
-          </CardContent>
-        </Card>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={History}
-          title="Aucune entrée"
-          description={search || actionFilter ? 'Aucun résultat pour ces filtres.' : 'Le journal d\'audit est vide.'}
-        >
-          {(search || actionFilter) && (
-            <Button type="button" variant="outline" onClick={resetFilters}>Effacer les filtres</Button>
-          )}
-        </EmptyState>
-      ) : (
-        <ul className="space-y-3">
-          {filtered.map((a, idx) => (
-            <ActivityRow key={a.id ?? idx} a={a} idx={idx} />
-          ))}
-        </ul>
-      )}
+      <AuditContent
+        isLoading={isLoading}
+        isError={isError}
+        error={error}
+        filtered={filtered}
+        resetFilters={resetFilters}
+        refetch={refetch}
+      />
     </div>
   );
 }

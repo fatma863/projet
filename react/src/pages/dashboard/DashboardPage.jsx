@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -18,10 +19,10 @@ import { formatRelativeTimeFr } from '../../lib/formatRelativeTime';
 import { humanizeActivityLine } from '../../lib/activityHumanize';
 import { cn } from '../../lib/utils';
 import {
-  FolderKanban, CheckCircle2, AlertTriangle, Clock,
+  FolderKanban, CheckCircle2, AlertTriangle,
   Users, ArrowRight, ListTodo, Mail,
   History, XCircle, Plus, Calendar,
-  BarChart3, Brain, TrendingUp, Zap,
+  BarChart3, Brain, TrendingUp,
 } from 'lucide-react';
 import ClientDashboard from './ClientDashboard';
 
@@ -80,6 +81,15 @@ function KpiCard({ label, value, icon: Icon, error = false, progress = null, sub
   );
 }
 
+KpiCard.propTypes = {
+  label: PropTypes.string,
+  value: PropTypes.node,
+  icon: PropTypes.elementType,
+  error: PropTypes.bool,
+  progress: PropTypes.number,
+  sub: PropTypes.string,
+};
+
 function SectionPanel({ title, icon: Icon, iconColor = 'text-indigo-600 dark:text-indigo-400', children, className, ghost }) {
   return (
     <div className={cn(
@@ -95,6 +105,15 @@ function SectionPanel({ title, icon: Icon, iconColor = 'text-indigo-600 dark:tex
     </div>
   );
 }
+
+SectionPanel.propTypes = {
+  title: PropTypes.string,
+  icon: PropTypes.elementType,
+  iconColor: PropTypes.string,
+  children: PropTypes.node,
+  className: PropTypes.string,
+  ghost: PropTypes.bool,
+};
 
 function AiAlertItem({ title, sub, level = 'danger', score }) {
   const styles = level === 'danger'
@@ -123,11 +142,18 @@ function AiAlertItem({ title, sub, level = 'danger', score }) {
   );
 }
 
+AiAlertItem.propTypes = {
+  title: PropTypes.string,
+  sub: PropTypes.string,
+  level: PropTypes.string,
+  score: PropTypes.number,
+};
+
 function DeadlineItem({ title, sub, date }) {
   const d = date ? new Date(date) : null;
   const month = d ? d.toLocaleDateString('fr-FR', { month: 'short' }) : '—';
   const day = d ? d.getDate() : '—';
-  const isUrgent = d && (d - new Date()) < 3 * 86400000;
+  const isUrgent = d && (d - Date.now()) < 3 * 86400000;
   return (
     <div className="flex gap-4 items-start">
       <div className={cn(
@@ -150,6 +176,12 @@ function DeadlineItem({ title, sub, date }) {
     </div>
   );
 }
+
+DeadlineItem.propTypes = {
+  title: PropTypes.string,
+  sub: PropTypes.string,
+  date: PropTypes.string,
+};
 
 /* ─────────────────────────────────────────────────────────────
    Project Card — Prototype Style
@@ -264,6 +296,25 @@ function ProjectCard({ project }) {
   );
 }
 
+ProjectCard.propTypes = {
+  project: PropTypes.shape({
+    id: PropTypes.number,
+    name: PropTypes.string,
+    description: PropTypes.string,
+    status: PropTypes.string,
+    progress_percent: PropTypes.number,
+    overdue_tasks: PropTypes.number,
+    overdue_tasks_count: PropTypes.number,
+    tasks_count: PropTypes.number,
+    members_count: PropTypes.number,
+    members: PropTypes.arrayOf(PropTypes.shape({
+      id: PropTypes.number,
+      name: PropTypes.string,
+      avatar_url: PropTypes.string,
+    })),
+  }),
+};
+
 /* ─────────────────────────────────────────────────────────────
    Premium chart primitives — inline SVG, no external lib
    ───────────────────────────────────────────────────────────── */
@@ -318,6 +369,19 @@ function DashDonut({ segments, size = 130, stroke = 17, label, sublabel, labelCo
   );
 }
 
+DashDonut.propTypes = {
+  segments: PropTypes.arrayOf(PropTypes.shape({
+    key: PropTypes.string,
+    value: PropTypes.number,
+    color: PropTypes.string,
+  })),
+  size: PropTypes.number,
+  stroke: PropTypes.number,
+  label: PropTypes.node,
+  sublabel: PropTypes.string,
+  labelColor: PropTypes.string,
+};
+
 function DashBarRows({ items }) {
   const max = Math.max(1, ...items.map((i) => i.value));
   if (!items.length) return <p className="text-sm text-muted-foreground text-center py-4">Aucune donnée.</p>;
@@ -353,6 +417,15 @@ function DashBarRows({ items }) {
   );
 }
 
+DashBarRows.propTypes = {
+  items: PropTypes.arrayOf(PropTypes.shape({
+    label: PropTypes.string,
+    value: PropTypes.number,
+    color: PropTypes.string,
+    avatar: PropTypes.string,
+  })),
+};
+
 /* ─────────────────────────────────────────────────────────────
    DashboardTaskBadges (kept for at-risk task cards)
    ───────────────────────────────────────────────────────────── */
@@ -378,6 +451,18 @@ function DashboardTaskBadges({ task }) {
     </div>
   );
 }
+
+DashboardTaskBadges.propTypes = {
+  task: PropTypes.shape({
+    workflow_status: PropTypes.string,
+    is_done: PropTypes.bool,
+    progress_percent: PropTypes.number,
+    is_at_risk: PropTypes.bool,
+    is_overdue: PropTypes.bool,
+    is_blocked: PropTypes.bool,
+    dependencies: PropTypes.array,
+  }),
+};
 
 /* ─────────────────────────────────────────────────────────────
    InternalDashboard — main component

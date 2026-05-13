@@ -24,7 +24,8 @@
       "Read(//mnt/c/Users/rjebf/Downloads/projet/**)",
       "Bash(awk '/password|Password/i {print NR\": \"$0}' \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\react\\\\src\\\\i18n\\\\messages.js\")",
       "Bash(awk '/^\\\\s+fr:\\\\s*\\\\{/,/^\\\\s+\\\\},\\\\n\\\\s+en:/ {print}' \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\react\\\\src\\\\i18n\\\\messages.js\")",
-      "Bash(awk '/^\\\\s+en:\\\\s*\\\\{/,/^\\\\s+\\\\}/ {if\\(/^\\\\s+[a-z]+:/\\) print}' \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\react\\\\src\\\\i18n\\\\messages.js\")"
+      "Bash(awk '/^\\\\s+en:\\\\s*\\\\{/,/^\\\\s+\\\\}/ {if\\(/^\\\\s+[a-z]+:/\\) print}' \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\react\\\\src\\\\i18n\\\\messages.js\")",
+      "Bash(npm install *)"
     ]
   }
 }

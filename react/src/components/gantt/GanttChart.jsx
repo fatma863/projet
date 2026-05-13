@@ -1,4 +1,5 @@
 import { useMemo, useCallback, useId } from 'react';
+import PropTypes from 'prop-types';
 import { cn } from '../../lib/utils';
 
 /** Couleurs de base → dégradés (look pro, lisible en clair/sombre) */
@@ -171,7 +172,7 @@ export function GanttChart({ tasks = [], showProject = false, variant = 'default
         const x1 = safeNum(from.left + from.width);
         const x2 = safeNum(to.left);
         const midX = safeNum((x1 + x2) / 2);
-        if (![x1, x2, y1, y2, midX].every((v) => Number.isFinite(v))) return;
+        if (!Number.isFinite(x1) || !Number.isFinite(x2) || !Number.isFinite(y1) || !Number.isFinite(y2) || !Number.isFinite(midX)) return;
         lines.push({
           key: `${dep.id}-${task.id}-${dep.type || 'dep'}`,
           x1,
@@ -415,6 +416,13 @@ export function GanttChart({ tasks = [], showProject = false, variant = 'default
     );
   }
 }
+
+GanttChart.propTypes = {
+  tasks: PropTypes.array,
+  showProject: PropTypes.bool,
+  variant: PropTypes.string,
+  rowLabel: PropTypes.string,
+};
 
 function GanttLegend() {
   const items = [
