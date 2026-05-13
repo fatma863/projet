@@ -14,7 +14,7 @@ import { WORKFLOW_COLUMNS, ISSUE_TYPE_LABELS } from '../../lib/taskConstants';
 import { PROJECT_ROLE_LABELS, formatProjectRole, isGuestViewer } from '../../lib/roles';
 import {
   ArrowLeft, Plus, GripVertical, Clock, User, AlertTriangle,
-  BarChart3, Users, Calendar, Mail, Download, History, Layers, ChevronDown,
+  BarChart3, Users, Calendar, Mail, Download, History,
   Pencil, Trash2, LayoutGrid, MessageSquare, Link2, FolderKanban, Crown,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -145,16 +145,6 @@ export default function ProjectDetailPage() {
               : normalizeWorkflowStatus(getTaskStatus(t)),
           }));
 
-        if (import.meta.env.DEV) {
-          console.debug('[ProjectDetailPage] tasks API response', {
-            projectId,
-            fetched: Array.isArray(rawTasks) ? rawTasks.length : 0,
-            keptForProject: normalized.length,
-            filteredOut: (Array.isArray(rawTasks) ? rawTasks.length : 0) - normalized.length,
-            filters: kanbanFilters,
-          });
-          console.log('[ProjectDetailPage] tasks before filtering', normalized);
-        }
 
         return normalized;
       };
@@ -167,18 +157,8 @@ export default function ProjectDetailPage() {
           return primary;
         }
 
-        if (import.meta.env.DEV) {
-          console.warn('[ProjectDetailPage] project tasks endpoint returned empty, trying global fallback', {
-            projectId,
-          });
-        }
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.warn('[ProjectDetailPage] project tasks endpoint failed, trying global fallback', {
-            projectId,
-            error: error?.response?.data ?? error?.message,
-          });
-        }
+      } catch {
+        // fallback vers l'endpoint global
       }
 
       // Fallback défensif: endpoint global filtré par projet.
@@ -202,11 +182,6 @@ export default function ProjectDetailPage() {
     }
   }, [tasks, searchParams, setSearchParams]);
 
-  useEffect(() => {
-    if (import.meta.env.DEV && Array.isArray(tasks) && tasks.length > 0) {
-      console.log('TASK SAMPLE', tasks[0]);
-    }
-  }, [tasks]);
 
   const { data: dashboard } = useQuery({
     queryKey: ['project-dashboard', id],
@@ -288,9 +263,6 @@ export default function ProjectDetailPage() {
       && !hasDueFrom
       && !hasDueTo
     ) {
-      if (import.meta.env.DEV) {
-        console.log('[ProjectDetailPage] tasks after filtering (no filters)', list);
-      }
       return list;
     }
 
@@ -317,13 +289,6 @@ export default function ProjectDetailPage() {
       list = list.filter((t) => {
         const d = t.due_date || t.planned_end;
         return d && d <= kanbanFilters.due_to;
-      });
-    }
-    if (import.meta.env.DEV) {
-      console.log('[ProjectDetailPage] tasks after filtering', {
-        filters: kanbanFilters,
-        count: list.length,
-        tasks: list,
       });
     }
     return list;
@@ -390,30 +355,6 @@ export default function ProjectDetailPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={async () => {
-              try {
-                const token = localStorage.getItem('token');
-                const res = await fetch(`/api/projects/${id}/export/tasks`, {
-                  headers: { Authorization: token ? `Bearer ${token}` : '', Accept: 'text/csv' },
-                });
-                if (!res.ok) throw new Error('Export impossible');
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `projet-${project.code}-taches.csv`;
-                a.click();
-                URL.revokeObjectURL(url);
-              } catch {
-                toast.error('Export CSV impossible');
-              }
-            }}
-          >
-            <Download className="mr-2 h-4 w-4" /> Export CSV
-          </Button>
           {canInvite && (
             <Button variant="outline" onClick={() => setInviteOpen(true)}>
               <Mail className="mr-2 h-4 w-4" /> Inviter
@@ -581,7 +522,7 @@ export default function ProjectDetailPage() {
                 <option value="">Tous</option>
                 <option value="task">Tâche</option>
                 <option value="bug">Anomalie</option>
-                <option value="story">Story</option>
+                <option value="story">Fonctionnalité</option>
               </Select>
             </div>
             <div className="w-full min-w-0 sm:min-w-[min(100%,22rem)] sm:max-w-md">
@@ -669,8 +610,7 @@ export default function ProjectDetailPage() {
 }
 
 function InviteUserModal({ open, onClose, projectId, onInvited }) {
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState('member');
+  const [email, setEmail] = useState("");
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
@@ -687,11 +627,10 @@ function InviteUserModal({ open, onClose, projectId, onInvited }) {
       onInvited?.();
       setSuccess(response.data);
       setError(null);
-      setEmail('');
-      setRole('member');
+      setEmail("");
     },
     onError: (e) => {
-      setError(e.response?.data?.message || e.message || 'Erreur');
+      setError(e.response?.data?.message || e.message || "Erreur");
     },
   });
 
@@ -702,7 +641,7 @@ function InviteUserModal({ open, onClose, projectId, onInvited }) {
   };
 
   return (
-    <Modal open={open} onClose={handleClose} title="Inviter un utilisateur" size="md">
+    <Modal open={open} onClose={handleClose} title="Inviter un client" size="md">
       <div className="space-y-4">
         {error && (
           <p className="text-sm text-destructive">{error}</p>
@@ -714,7 +653,7 @@ function InviteUserModal({ open, onClose, projectId, onInvited }) {
               Partagez ce lien (valide 48&nbsp;h, usage unique après acceptation)&nbsp;:
             </p>
             <p className="mt-1 break-all rounded border border-border bg-muted/50 px-2 py-1 font-mono text-xs text-foreground">
-              {typeof window !== 'undefined' ? `${window.location.origin}${success.invitation_path}` : success.invitation_path}
+              {typeof window !== "undefined" ? `${window.location.origin}${success.invitation_path}` : success.invitation_path}
             </p>
             <Button
               type="button"
@@ -732,57 +671,27 @@ function InviteUserModal({ open, onClose, projectId, onInvited }) {
         )}
         {!success && (
           <>
+            <p className="text-xs text-muted-foreground">
+              Le client aura un acc&egrave;s en lecture seule : il pourra consulter le Kanban, le Gantt et les tableaux de bord.
+            </p>
             <div>
-              <label className="mb-1 block text-sm font-medium">E-mail</label>
+              <label className="mb-1 block text-sm font-medium">E-mail du client</label>
               <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="collegue@exemple.com"
+                placeholder="client@exemple.com"
                 autoComplete="off"
               />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Rôle sur le projet</label>
-              <div className="mt-1 grid grid-cols-2 gap-2">
-                {[
-                  {
-                    value: 'member',
-                    label: 'Membre',
-                    desc: 'Crée et modifie des tâches, ajoute des commentaires et suit l\'avancement.',
-                  },
-                  {
-                    value: 'client',
-                    label: 'Client',
-                    desc: 'Accès lecture seule : consulte le Kanban, le Gantt et les tableaux de bord.',
-                  },
-                ].map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setRole(opt.value)}
-                    className={`rounded-lg border-2 p-3 text-left transition-colors ${
-                      role === opt.value
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border bg-card hover:bg-accent/40'
-                    }`}
-                  >
-                    <p className={`text-sm font-semibold ${role === opt.value ? 'text-primary' : 'text-foreground'}`}>
-                      {opt.label}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground leading-snug">{opt.desc}</p>
-                  </button>
-                ))}
-              </div>
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={handleClose}>Annuler</Button>
               <Button
                 type="button"
                 disabled={!email.trim() || mutation.isPending}
-                onClick={() => mutation.mutate({ email: email.trim(), role })}
+                onClick={() => mutation.mutate({ email: email.trim(), role: "client" })}
               >
-                {mutation.isPending ? 'Envoi…' : 'Créer l’invitation'}
+                {mutation.isPending ? "Envoi…" : "Créer l’invitation"}
               </Button>
             </div>
           </>
@@ -1205,10 +1114,7 @@ function MembersTab({ project, projectId, canEditProject, canInvite, isAdmin, on
 
   const trimmedInput = userSearch.trim().toLowerCase();
   const filteredUsers = trimmedInput.length > 0
-    ? allUsers.filter((u) =>
-        u.name?.toLowerCase().includes(trimmedInput) ||
-        u.email?.toLowerCase().includes(trimmedInput)
-      )
+    ? allUsers.filter((u) => u.name?.toLowerCase().includes(trimmedInput))
     : allUsers;
 
   const addMutation = useMutation({
@@ -1278,7 +1184,7 @@ function MembersTab({ project, projectId, canEditProject, canInvite, isAdmin, on
                     onFocus={() => setDropdownOpen(true)}
                     onKeyDown={(e) => { if (e.key === 'Escape') setDropdownOpen(false); }}
                     className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground shadow-sm"
-                    placeholder="Filtrer par nom ou e-mail…"
+                    placeholder="Filtrer par nom…"
                   />
                   {dropdownOpen && (
                     <div
@@ -1299,7 +1205,21 @@ function MembersTab({ project, projectId, canEditProject, canInvite, isAdmin, on
                           onClick={() => { setSelectedUser(u); setUserSearch(''); setDropdownOpen(false); }}
                         >
                           <span className="font-medium text-foreground">{u.name}</span>
-                          <span className="block text-xs text-muted-foreground">{u.email}</span>
+                          {u.specialties?.length > 0 ? (
+                            <div className="mt-0.5 flex flex-wrap gap-1">
+                              {u.specialties.map((s) => (
+                                <span
+                                  key={s.id}
+                                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
+                                  style={{ backgroundColor: s.color || '#6366f1' }}
+                                >
+                                  {s.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="block text-xs text-muted-foreground">{u.email}</span>
+                          )}
                         </button>
                       ))}
                     </div>

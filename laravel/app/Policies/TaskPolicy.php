@@ -29,7 +29,7 @@ class TaskPolicy
 
     public function create(User $user): bool
     {
-        if ($user->hasRole('viewer')) {
+        if ($user->hasRole('client')) {
             return false;
         }
 

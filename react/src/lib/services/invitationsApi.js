@@ -1,7 +1,7 @@
 import api from '../api';
 
 export function fetchMyInvites() {
-  return api.get('/my-invites').then((r) => r.data);
+  return api.get('/invitations/pending').then((r) => r.data);
 }
 
 /** Acceptation invitation projet (alias REST vers InvitationController). */

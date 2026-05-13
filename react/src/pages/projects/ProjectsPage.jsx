@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { createPortal } from 'react-dom';import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { createPortal } from 'react-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
@@ -669,7 +670,34 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium">Équipe</label>
-              <Select value={form.team_id} onChange={(e) => set('team_id', e.target.value)}>
+              <Select value={form.team_id} onChange={(e) => {
+                const teamId = e.target.value;
+                if (!teamId) {
+                  setForm((f) => ({ ...f, team_id: '', chef_id: '', memberIds: [] }));
+                  return;
+                }
+                const selectedTeam = teams.find((t) => String(t.id) === teamId);
+                if (!selectedTeam) {
+                  set('team_id', teamId);
+                  return;
+                }
+                const leaderId = selectedTeam.team_leader_id;
+                const leaderUser = users.find((u) => u.id === leaderId);
+                const leaderIsAdmin = leaderUser?.roles?.includes('admin');
+                const ownerNum = isEdit ? projectDetail?.owner?.id : authUser?.id;
+                const newMemberIds = (selectedTeam.members || [])
+                  .map((m) => m.id)
+                  .filter((id) => {
+                    const u = users.find((u) => u.id === id);
+                    return u && !u.roles?.includes('admin') && id !== ownerNum && id !== leaderId;
+                  });
+                setForm((f) => ({
+                  ...f,
+                  team_id: teamId,
+                  chef_id: leaderId && !leaderIsAdmin ? String(leaderId) : '',
+                  memberIds: newMemberIds,
+                }));
+              }}>
                 <option value="">Aucune</option>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
@@ -694,12 +722,28 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium">Date de début</label>
-              <Input type="date" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} />
+              <Input
+                type="date"
+                value={form.start_date}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  set('start_date', next);
+                  // Réinitialise la date de fin si elle devient invalide
+                  if (form.end_date && next && form.end_date < next) {
+                    set('end_date', '');
+                  }
+                }}
+              />
               {errors.start_date && <p className="mt-0.5 text-xs text-destructive">{errors.start_date[0]}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Date de fin</label>
-              <Input type="date" value={form.end_date} onChange={(e) => set('end_date', e.target.value)} />
+              <Input
+                type="date"
+                value={form.end_date}
+                min={form.start_date || undefined}
+                onChange={(e) => set('end_date', e.target.value)}
+              />
               {errors.end_date && <p className="mt-0.5 text-xs text-destructive">{errors.end_date[0]}</p>}
             </div>
           </div>
@@ -709,54 +753,117 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
           {/* Chef de projet */}
           <div>
             <label className="mb-1 block text-sm font-medium">Chef de projet</label>
-            <UserSelect
-              users={nonAdminUsers}
-              value={form.chef_id}
-              onChange={(v) => {
-                setForm((f) => ({
-                  ...f,
-                  chef_id: v,
-                  memberIds: f.memberIds.filter((id) => Number(id) !== Number(v)),
-                }));
-              }}
-              placeholder="Sélectionner le chef de projet"
-            />
+            {form.team_id ? (
+              (() => {
+                const chefUser = form.chef_id ? users.find((u) => u.id === Number(form.chef_id)) : null;
+                return chefUser ? (
+                  <div className="flex items-center gap-2.5 rounded-lg border border-input bg-muted/30 px-3 py-2">
+                    <UserAvatar user={chefUser} size={28} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{chefUser.name}</p>
+                      {chefUser.specialties?.length > 0 && (
+                        <p className="text-[11px] text-muted-foreground truncate leading-tight">
+                          {chefUser.specialties.map((s) => s.name).join(' · ')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-input bg-muted/30 px-3 py-2 text-sm italic text-muted-foreground">
+                    Aucun chef défini dans cette équipe
+                  </p>
+                );
+              })()
+            ) : (
+              <UserSelect
+                users={nonAdminUsers}
+                value={form.chef_id}
+                onChange={(v) => {
+                  setForm((f) => ({
+                    ...f,
+                    chef_id: v,
+                    memberIds: f.memberIds.filter((id) => Number(id) !== Number(v)),
+                  }));
+                }}
+                placeholder="Sélectionner le chef de projet"
+              />
+            )}
             {errors.chef_id && (
               <p className="mt-0.5 text-xs text-destructive">{errors.chef_id[0]}</p>
             )}
-            <p className="mt-0.5 text-xs text-muted-foreground">Optionnel · seuls les membres non-admin peuvent être désignés chef.</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {form.team_id
+                ? 'Chef de l\'équipe sélectionnée · retirez l\'équipe pour modifier manuellement.'
+                : 'Optionnel · seuls les membres non-admin peuvent être désignés chef.'}
+            </p>
           </div>
 
           {/* Membres */}
           <div>
             <label className="mb-1 block text-sm font-medium">Membres du projet</label>
-            {selectedMemberUsers.length > 0 && (
-              <div className="mb-2 rounded-lg border border-border divide-y divide-border bg-accent/20">
-                {selectedMemberUsers.map((u) => (
-                  <div key={u.id} className="flex items-center gap-2 px-3 py-1.5">
-                    <UserAvatar user={u} size={28} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{u.name}</p>
+            {form.team_id ? (
+              selectedMemberUsers.length > 0 ? (
+                <div className="rounded-lg border border-input bg-muted/30 divide-y divide-border">
+                  {selectedMemberUsers.map((u) => (
+                    <div key={u.id} className="flex items-center gap-2.5 px-3 py-1.5">
+                      <UserAvatar user={u} size={28} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{u.name}</p>
+                        {u.specialties?.length > 0 && (
+                          <p className="text-[11px] text-muted-foreground truncate leading-tight">
+                            {u.specialties.map((s) => s.name).join(' · ')}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeMember(u.id)}
-                      className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                      aria-label={`Retirer ${u.name}`}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-lg border border-input bg-muted/30 px-3 py-2 text-sm italic text-muted-foreground">
+                  Aucun autre membre dans cette équipe
+                </p>
+              )
+            ) : (
+              <>
+                {selectedMemberUsers.length > 0 && (
+                  <div className="mb-2 rounded-lg border border-border divide-y divide-border bg-accent/20">
+                    {selectedMemberUsers.map((u) => (
+                      <div key={u.id} className="flex items-center gap-2 px-3 py-1.5">
+                        <UserAvatar user={u} size={28} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{u.name}</p>
+                          {u.specialties?.length > 0 && (
+                            <p className="text-[11px] text-muted-foreground truncate leading-tight">
+                              {u.specialties.map((s) => s.name).join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeMember(u.id)}
+                          className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          aria-label={`Retirer ${u.name}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+                <UserSelect
+                  users={availableMembers}
+                  value=""
+                  onChange={(v) => { addMember(v); }}
+                  placeholder={availableMembers.length === 0 ? 'Aucun membre disponible' : 'Ajouter un membre…'}
+                  disabled={availableMembers.length === 0}
+                />
+              </>
             )}
-            <UserSelect
-              users={availableMembers}
-              value=""
-              onChange={(v) => { addMember(v); }}
-              placeholder={availableMembers.length === 0 ? 'Aucun membre disponible' : 'Ajouter un membre…'}
-              disabled={availableMembers.length === 0}
-            />
+            {form.team_id && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Membres de l'équipe sélectionnée · retirez l'équipe pour modifier manuellement.
+              </p>
+            )}
           </div>
         </form>
       )}

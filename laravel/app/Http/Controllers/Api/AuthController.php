@@ -32,7 +32,7 @@ class AuthController extends Controller
 
         // Tout nouveau compte doit avoir un rôle applicatif explicite
         // pour éviter les 403 sur les routes protégées par check.role.
-        if (! $user->hasAnyRole(['admin', 'member', 'viewer'])) {
+        if (! $user->hasAnyRole(['admin', 'member', 'client'])) {
             $user->assignRole('member');
         }
 

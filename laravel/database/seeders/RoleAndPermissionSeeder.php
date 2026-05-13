@@ -44,8 +44,8 @@ class RoleAndPermissionSeeder extends Seeder
             'use-ai-features',
         ]);
 
-        $viewer = Role::firstOrCreate(['name' => 'viewer']);
-        $viewer->syncPermissions([
+        $client = Role::firstOrCreate(['name' => 'client']);
+        $client->syncPermissions([
             'view-projects',
             'view-tasks',
             'view-reports',

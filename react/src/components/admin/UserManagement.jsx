@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
@@ -20,7 +21,7 @@ import { formatAppRole, normalizeAppRole } from '../../lib/roles';
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Administrateur' },
   { value: 'member', label: 'Membre' },
-  { value: 'viewer', label: 'Client' },
+  { value: 'client', label: 'Client' },
 ];
 
 function StatCard({ icon: Icon, label, value, color }) {
@@ -130,19 +131,19 @@ export default function UserManagement({ variant = 'page' }) {
   const disableMutation = useMutation({
     mutationFn: (id) => api.delete(`/users/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
-    onError: (err) => window.alert(err.response?.data?.message || err.message || 'Erreur'),
+    onError: (err) => toast.error(err.response?.data?.message || err.message || 'Une erreur est survenue.'),
   });
 
   const enableMutation = useMutation({
     mutationFn: (id) => api.put(`/users/${id}`, { status: 'active' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
-    onError: (err) => window.alert(err.response?.data?.message || err.message || 'Erreur'),
+    onError: (err) => toast.error(err.response?.data?.message || err.message || 'Une erreur est survenue.'),
   });
 
   const permanentDeleteMutation = useMutation({
     mutationFn: (id) => api.delete(`/users/${id}/permanent`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
-    onError: (err) => window.alert(err.response?.data?.message || err.message || 'Erreur'),
+    onError: (err) => toast.error(err.response?.data?.message || err.message || 'Une erreur est survenue.'),
   });
 
   if (!isAdmin) return null;
@@ -153,7 +154,7 @@ export default function UserManagement({ variant = 'page' }) {
     const cls =
       key === 'admin'
         ? 'border-violet-500/30 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300'
-        : key === 'viewer'
+        : key === 'client'
           ? 'border-amber-500/30 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
           : 'border-emerald-500/30 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300';
     return (
@@ -494,7 +495,7 @@ export default function UserManagement({ variant = 'page' }) {
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">
-                Confirmation {editingUser && <span className="font-normal text-muted-foreground">(optionnel)</span>}
+                Confirmation du mot de passe {editingUser && <span className="font-normal text-muted-foreground">(optionnel)</span>}
               </label>
               <Input
                 type="password"

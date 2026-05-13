@@ -57,7 +57,7 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::put('/me', [AuthController::class, 'updateMe']);
     Route::post('/me/avatar', [AuthController::class, 'updateAvatar']);
     Route::patch('/me/preferences', [AuthController::class, 'updatePreferences']);
-    Route::put('/user/preferences', [AuthController::class, 'updatePreferences']);
+
     Route::post('/change-password', [AuthController::class, 'changePassword']);
     Route::post('/logout-all-devices', [AuthController::class, 'logoutAllDevices']);
     Route::get('/notifications/preferences', [NotificationPreferencesController::class, 'show']);
@@ -66,7 +66,6 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::get('search', GlobalSearchController::class);
 
     Route::get('invitations/pending', [InvitationController::class, 'pending']);
-    Route::get('my-invites', [InvitationController::class, 'pending']);
     Route::post('invitations/{token}/accept', [InvitationController::class, 'accept']);
     Route::post('invitations/{token}/decline', [InvitationController::class, 'decline']);
 
@@ -228,7 +227,7 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
         });
     });
 
-    // IA Services (membres & admins — pas les invités applicatifs `viewer`)
+    // IA Services (membres & admins — pas les clients)
     Route::middleware('check.role:admin,member')->group(function () {
         Route::prefix('ai')->group(function () {
             Route::get('estimate/{task}', [AiController::class, 'estimateTask']);

@@ -31,7 +31,7 @@ class UserResource extends JsonResource
             'timezone' => $this->timezone,
             'locale' => $this->locale ?? 'fr',
             'roles' => $roles,
-            /** Rôle applicatif principal (Spatie) : admin | member | guest (viewer) */
+            /** Rôle applicatif principal (Spatie) : admin | member | client */
             'role' => $roles->first() ?? 'member',
             'permissions' => $this->getAllPermissions()->pluck('name'),
             'notify_in_app' => (bool) ($this->notify_in_app ?? true),

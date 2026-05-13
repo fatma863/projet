@@ -531,7 +531,7 @@ function InternalDashboard() {
       (task.assignees || []).forEach((assignee) => {
         const u = assignee.user || assignee;
         if (!u?.id) return;
-        const current = map.get(u.id) || { id: u.id, name: u.name || 'User', count: 0 };
+        const current = map.get(u.id) || { id: u.id, name: u.name || 'Utilisateur', count: 0 };
         current.count += 1;
         map.set(u.id, current);
       });
@@ -594,7 +594,7 @@ function InternalDashboard() {
                 : 'Vos tâches assignées et les projets auxquels vous participez.'}
           </p>
         </div>
-        
+
       </div>
 
       {/* ── Invitations banner ── */}
@@ -614,7 +614,7 @@ function InternalDashboard() {
               <div>
                 <p className="font-semibold text-sm text-foreground">{inv.project?.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  Rôle : {inv.role === 'client' || inv.role === 'guest' || inv.role === 'viewer' ? PROJECT_ROLE_LABELS.client : PROJECT_ROLE_LABELS.member}
+                  Rôle : {inv.role === 'client' || inv.role === 'guest' ? PROJECT_ROLE_LABELS.client : PROJECT_ROLE_LABELS.member}
                   {inv.invited_by?.name ? ` · Invité par ${inv.invited_by.name}` : ''}
                 </p>
               </div>

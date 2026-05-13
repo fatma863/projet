@@ -54,11 +54,7 @@ export function GanttChart({ tasks = [], showProject = false, variant = 'default
   let list = [];
   try {
     list = Array.isArray(tasks) ? tasks : [];
-    if (import.meta.env?.DEV) {
-      console.log('Gantt tasks (chart):', list);
-    }
-  } catch (e) {
-    console.error('GanttChart: invalid tasks prop', e);
+  } catch {
     list = [];
   }
 
@@ -410,7 +406,6 @@ export function GanttChart({ tasks = [], showProject = false, variant = 'default
     </div>
   );
   } catch (renderErr) {
-    console.error('GanttChart render error', renderErr);
     return (
       <div className="rounded-2xl border border-destructive/40 bg-destructive/5 px-6 py-12 text-center text-sm text-muted-foreground">
         <p className="font-medium text-destructive">Erreur d&apos;affichage du Gantt</p>

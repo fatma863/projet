@@ -95,7 +95,7 @@ function StepIndicator({ current }) {
 // Per-step validation
 // ---------------------------------------------------------------------------
 
-function validateStep(step, form) {
+function validateStep(step, form, projectStart, projectEnd, isEdit) {
   const e = {};
   if (step === 0) {
     if (!form.title?.trim()) e.title = 'Le titre est obligatoire.';
@@ -104,8 +104,27 @@ function validateStep(step, form) {
   if (step === 1) {
     const ps = form.planned_start?.trim() || '';
     const pe = form.planned_end?.trim()   || '';
-    if ((ps && !pe) || (!ps && pe)) e.planned_end = 'Indiquez les deux dates ou laissez les deux vides.';
-    if (ps && pe && pe < ps)        e.planned_end = 'La date de fin doit être après le début.';
+
+    if ((ps && !pe) || (!ps && pe)) {
+      e.planned_end = 'Indiquez les deux dates ou laissez les deux vides.';
+    }
+    if (ps && pe && pe < ps) {
+      e.planned_end = 'La date de fin doit être postérieure ou égale à la date de début.';
+    }
+
+    // Vérification que les dates restent dans la période du projet
+    if (!isEdit && ps && projectStart && ps < projectStart) {
+      e.planned_start = `La date de début doit être dans la période projet (à partir du ${fmtFr(projectStart)}).`;
+    }
+    if (!isEdit && ps && projectEnd && ps > projectEnd) {
+      e.planned_start = `La date de début ne peut pas dépasser la fin du projet (${fmtFr(projectEnd)}).`;
+    }
+    if (pe && projectStart && pe < projectStart) {
+      e.planned_end = `La date de fin doit être dans la période projet (à partir du ${fmtFr(projectStart)}).`;
+    }
+    if (pe && projectEnd && pe > projectEnd) {
+      e.planned_end = `La date de fin ne peut pas dépasser la fin du projet (${fmtFr(projectEnd)}).`;
+    }
   }
   if (step === 2) {
     const ids = (form.specialty_ids || []).filter(Boolean);
@@ -294,7 +313,8 @@ export default function TaskFormPage() {
         const errorKeys = Object.keys(serverErrors);
         const stepMap = {
           title: 0, description: 0, issue_type: 0, priority: 0, story_points: 0,
-          planned_start: 1, planned_end: 1, estimated_hours: 1, complexity: 1, workflow_status: 1,
+          planned_start: 1, planned_end: 1, estimated_hours: 1, complexity: 1,
+          workflow_status: 1, duration_days: 1,
           specialty_ids: 2, depends_on_task_ids: 2,
           assignee_id: 3,
         };
@@ -310,7 +330,7 @@ export default function TaskFormPage() {
   });
 
   const handleSubmit = () => {
-    const stepErrors = validateStep(step, form);
+    const stepErrors = validateStep(step, form, projectStart, projectEnd, isEdit);
     if (Object.keys(stepErrors).length) {
       setErrors(stepErrors);
       return;
@@ -373,7 +393,7 @@ export default function TaskFormPage() {
   // ── Step navigation ───────────────────────────────────────────────────────
 
   const goNext = () => {
-    const stepErrors = validateStep(step, form);
+    const stepErrors = validateStep(step, form, projectStart, projectEnd, isEdit);
     if (Object.keys(stepErrors).length) {
       setErrors(stepErrors);
       return;
@@ -489,7 +509,7 @@ export default function TaskFormPage() {
             </div>
 
             <div className="max-w-xs">
-              <label className="mb-1.5 block text-sm font-medium">Effort (story points)</label>
+              <label className="mb-1.5 block text-sm font-medium">Effort (points)</label>
               <Input
                 type="number" min={0}
                 value={form.story_points}
@@ -520,8 +540,8 @@ export default function TaskFormPage() {
                   value={form.planned_start}
                   onChange={e => set('planned_start', e.target.value)}
                   disabled={!canEdit || isEdit}
-                  min={projectStart || undefined}
-                  max={projectEnd || undefined}
+                  min={!isEdit ? (projectStart || undefined) : undefined}
+                  max={!isEdit ? (projectEnd   || undefined) : undefined}
                 />
                 {isEdit && <p className="mt-1 text-xs text-muted-foreground">Figée après création.</p>}
                 {errors.planned_start && <FieldError msg={errors.planned_start} />}

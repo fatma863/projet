@@ -34,7 +34,7 @@ class AppServiceProvider extends ServiceProvider
         if (Schema::hasTable('roles')) {
             Role::findOrCreate('admin', 'web');
             Role::findOrCreate('member', 'web');
-            Role::findOrCreate('viewer', 'web');
+            Role::findOrCreate('client', 'web');
         }
 
         Gate::policy(Project::class, ProjectPolicy::class);

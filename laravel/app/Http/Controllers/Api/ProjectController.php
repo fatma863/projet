@@ -400,10 +400,7 @@ class ProjectController extends Controller
             ->limit(50);
 
         if (mb_strlen($search) >= 2) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', '%'.$search.'%')
-                    ->orWhere('email', 'like', '%'.$search.'%');
-            });
+            $query->where('name', 'like', '%'.$search.'%');
         }
 
         if ($excludeIds !== []) {

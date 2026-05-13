@@ -77,7 +77,7 @@ export default function AcceptInvitePage() {
 
   const roleLabel = useMemo(() => {
     const r = invite?.role;
-    if (r === 'client' || r === 'guest' || r === 'viewer') return PROJECT_ROLE_LABELS.client;
+    if (r === 'client' || r === 'guest') return PROJECT_ROLE_LABELS.client;
     if (r === 'member') return PROJECT_ROLE_LABELS.member;
     return r || '—';
   }, [invite?.role]);

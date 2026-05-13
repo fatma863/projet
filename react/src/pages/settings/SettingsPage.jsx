@@ -234,7 +234,7 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const fileRef = useRef(null);
   const isAdmin = Boolean(user?.roles?.includes('admin'));
-  const isViewer = Boolean(user?.roles?.includes('viewer'));
+  const isViewer = Boolean(user?.roles?.includes('client'));
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');

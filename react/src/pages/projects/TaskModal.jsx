@@ -114,7 +114,7 @@ export default function TaskModal({
     memberOptions.forEach((m) => {
       const role = String(m.role || 'member').toLowerCase();
       if (role === 'admin') stats.admin += 1;
-      else if (role === 'client' || role === 'guest' || role === 'viewer') stats.client += 1;
+      else if (role === 'client' || role === 'guest') stats.client += 1;
       else stats.member += 1;
     });
     return stats;
@@ -483,9 +483,9 @@ export default function TaskModal({
                   <div className="rounded-lg border border-border bg-background/70 p-3 text-xs">
                     <p className="font-medium text-foreground">Membres du projet ({memberStats.total})</p>
                     <div className="mt-2 flex flex-wrap gap-2 text-muted-foreground">
-                      <span className="rounded-full border border-border bg-card px-2 py-0.5">Admins: {memberStats.admin}</span>
-                      <span className="rounded-full border border-border bg-card px-2 py-0.5">Membres: {memberStats.member}</span>
-                      <span className="rounded-full border border-border bg-card px-2 py-0.5">Clients: {memberStats.client}</span>
+                      <span className="rounded-full border border-border bg-card px-2 py-0.5">Administrateurs : {memberStats.admin}</span>
+                      <span className="rounded-full border border-border bg-card px-2 py-0.5">Membres : {memberStats.member}</span>
+                      <span className="rounded-full border border-border bg-card px-2 py-0.5">Clients : {memberStats.client}</span>
                     </div>
                     <p className="mt-2 text-muted-foreground">
                       Sélectionnez un membre pour cette tâche. Seuls les membres du projet sont proposés.
@@ -1105,7 +1105,7 @@ function AssigneesTab({ taskId, isAdmin, canEdit = true }) {
               )}
               <div>
                 <p className="text-sm font-medium">{a.name || a.user?.name}</p>
-                <p className="text-xs text-muted-foreground">{a.allocation_percent}% allocation</p>
+                <p className="text-xs text-muted-foreground">{a.allocation_percent}% d'allocation</p>
               </div>
             </div>
             {canEdit && (

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Events\TaskCommentCreated;
 use App\Events\TaskCommentDeleted;
 use App\Http\Controllers\Controller;
-use App\Http\Controllers\Api\ProjectController;
 use App\Http\Resources\AttachmentResource;
 use App\Http\Resources\CommentResource;
 use App\Http\Resources\TaskAssigneeResource;
@@ -1057,18 +1056,21 @@ class TaskController extends Controller
             $errors['planned_end'] = ['La date de fin doit être postérieure ou égale à la date de début.'];
         }
 
+        $fmtStart = $projectStart?->translatedFormat('d/m/Y');
+        $fmtEnd   = $projectEnd?->translatedFormat('d/m/Y');
+
         if ($plannedStart && $projectStart && $plannedStart->lt($projectStart)) {
-            $errors['planned_start'] = ["La date de début doit être >= à la date de début du projet ({$projectStart->toDateString()})."];
+            $errors['planned_start'] = ["La date de début ne peut pas être antérieure au démarrage du projet ({$fmtStart})."];
         }
         if ($plannedStart && $projectEnd && $plannedStart->gt($projectEnd)) {
-            $errors['planned_start'] = ["La date de début doit être <= à la date de fin du projet ({$projectEnd->toDateString()})."];
+            $errors['planned_start'] = ["La date de début ne peut pas dépasser la date de fin du projet ({$fmtEnd})."];
         }
 
         if ($plannedEnd && $projectStart && $plannedEnd->lt($projectStart)) {
-            $errors['planned_end'] = ["La date de fin doit être >= à la date de début du projet ({$projectStart->toDateString()})."];
+            $errors['planned_end'] = ["La date de fin ne peut pas être antérieure au démarrage du projet ({$fmtStart})."];
         }
         if ($plannedEnd && $projectEnd && $plannedEnd->gt($projectEnd)) {
-            $errors['planned_end'] = ["La date de fin doit être <= à la date de fin du projet ({$projectEnd->toDateString()})."];
+            $errors['planned_end'] = ["La date de fin ne peut pas dépasser la date de fin du projet ({$fmtEnd})."];
         }
 
         if (! empty($errors)) {
@@ -1085,7 +1087,7 @@ class TaskController extends Controller
 
         if ($user->hasRole('admin')) {
             throw ValidationException::withMessages([
-                $field => ['Les utilisateurs avec le role admin ne peuvent pas etre assignes aux taches.'],
+                $field => ["Les administrateurs de l'application ne peuvent pas être assignés à des tâches."],
             ]);
         }
     }

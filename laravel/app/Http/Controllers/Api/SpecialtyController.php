@@ -10,6 +10,7 @@ use App\Models\Specialty;
 use App\Models\Task;
 use App\Models\User;
 use App\Services\ML\PythonMLClient;
+use App\Support\AccessControl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -229,14 +230,21 @@ class SpecialtyController extends Controller
 
     public function membersPerformance(Request $request, Project $project): JsonResponse
     {
+        $viewer    = $request->user();
+        $canSeeAll = AccessControl::canEditProject($viewer, $project);
+
         $memberIds = collect()
             ->merge(DB::table('project_user')->where('project_id', $project->id)->pluck('user_id'))
             ->merge(DB::table('project_members')->where('project_id', $project->id)->pluck('user_id'))
             ->unique()
             ->values();
 
+        // Membres non-admin/chef : seulement leurs propres données
+        if (! $canSeeAll) {
+            $memberIds = $memberIds->filter(fn ($id) => (int) $id === (int) $viewer->id)->values();
+        }
+
         $members = User::whereIn('id', $memberIds)
-            ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'admin'))
             ->with('specialties')
             ->get();
 
@@ -318,11 +326,16 @@ class SpecialtyController extends Controller
                 fn ($t) => $t->updated_at >= $cutoff30->toDateTimeString()
             )->count();
 
+            $avatarPath = $member->avatar ?: $member->profile_photo;
+            $avatarUrl  = $avatarPath
+                ? '/storage/'.str_replace('\\', '/', $avatarPath)
+                : null;
+
             $stats[] = [
                 'id'          => $member->id,
                 'name'        => $member->name,
                 'email'       => $member->email,
-                'avatar'      => $member->avatar,
+                'avatar_url'  => $avatarUrl,
                 'specialties' => $member->specialties->map(fn ($s) => [
                     'id' => $s->id, 'name' => $s->name, 'color' => $s->color,
                 ])->values(),
@@ -354,7 +367,10 @@ class SpecialtyController extends Controller
 
         usort($stats, fn ($a, $b) => $b['performance_score'] <=> $a['performance_score']);
 
-        return response()->json(['members' => $stats]);
+        return response()->json([
+            'members'          => $stats,
+            'is_personal_view' => ! $canSeeAll,
+        ]);
     }
 
 }

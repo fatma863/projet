@@ -83,7 +83,7 @@ export function WorkflowBoard({ tasks, loading }) {
             <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
               {(grouped[col.id] || []).length === 0 && (
                 <div className="rounded-lg border border-dashed border-border bg-background/70 px-3 py-4 text-center text-xs text-muted-foreground">
-                  Aucune tache dans cette colonne
+                  Aucune tâche dans cette colonne
                 </div>
               )}
               {(grouped[col.id] || []).map((task) => (

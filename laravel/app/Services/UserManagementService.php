@@ -11,7 +11,7 @@ use Illuminate\Validation\ValidationException;
 class UserManagementService
 {
     /** @var list<string> */
-    public const APP_ROLES = ['admin', 'member', 'viewer'];
+    public const APP_ROLES = ['admin', 'member', 'client'];
 
     public function paginateUsers(string $search = '', ?string $status = null, int $perPage = 25): LengthAwarePaginator
     {

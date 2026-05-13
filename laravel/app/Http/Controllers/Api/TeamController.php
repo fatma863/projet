@@ -257,6 +257,13 @@ class TeamController extends Controller
         ]);
 
         if ($jobRole === 'lead' && (int) $team->team_leader_id !== $userId) {
+            // Demote all previous leads to developer
+            $team->members()
+                ->wherePivot('role_in_team', 'lead')
+                ->where('users.id', '!=', $userId)
+                ->get()
+                ->each(fn ($m) => $team->members()->updateExistingPivot($m->id, ['role_in_team' => 'developer']));
+
             $team->team_leader_id = $userId;
             $team->save();
         }

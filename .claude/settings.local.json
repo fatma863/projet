@@ -4,7 +4,24 @@
       "Bash(xargs grep *)",
       "Bash(php -r ' *)",
       "Bash(php artisan *)",
-      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); cmds=[c['name'] for c in d['commands'] if c['name'].startswith\\('ml:'\\)]; print\\('\\\\n'.join\\(cmds\\)\\)\")"
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); cmds=[c['name'] for c in d['commands'] if c['name'].startswith\\('ml:'\\)]; print\\('\\\\n'.join\\(cmds\\)\\)\")",
+      "PowerShell(dir -Recurse \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\react\\\\src\" | Where-Object { $_.Name -match \"\\(?i\\)\\(project|create\\)\" } | Select-Object FullName)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\react\\\\src\\\\components\" -Recurse | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\react\\\\src\\\\pages\" -Recurse | ForEach-Object { $_.FullName })",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\" -Recurse -Directory)",
+      "Bash(Select-Object -First 50 FullName)",
+      "Bash(python3 -c ' *)",
+      "Bash(grep -v \"//.*\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\" -Force)",
+      "Bash(Select-Object Name, BaseName, Extension)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(xargs -I {} basename {} .php)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(grep -E \"\\\\.php$\")",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\" -Force | Format-Table Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\laravel\" -Depth 2 -Directory | Where-Object {$_.FullName -notmatch \"vendor\"} | Select-Object FullName | Format-List)",
+      "Bash(wc -l \"/mnt/c/Users/rjebf/Downloads/projet/DOCUMENTATION.md\" 2>/dev/null || echo \"cannot count\")",
+      "Read(//mnt/c/Users/rjebf/Downloads/projet/**)"
     ]
   }
 }

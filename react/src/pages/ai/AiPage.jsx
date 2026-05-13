@@ -212,7 +212,7 @@ export default function AiPage() {
             {t.label}
             {t.key === 'chat' && (
               <span className="ml-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
-                NEW
+                NOUVEAU
               </span>
             )}
           </button>
@@ -258,7 +258,7 @@ function EstimatePanel() {
           <Clock className="h-5 w-5 text-primary" /> Estimation de durée
         </CardTitle>
         <CardDescription>
-          Estimation basée sur les story points, la priorité et l'historique — justifiée par l'IA
+          Estimation basée sur les points d'effort, la priorité et l'historique — justifiée par l'IA
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

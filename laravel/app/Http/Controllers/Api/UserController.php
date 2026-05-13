@@ -34,7 +34,7 @@ class UserController extends Controller
             'password' => 'required|string|min:6|confirmed',
             'password_confirmation' => 'required|string|min:6',
             'status' => 'sometimes|string|in:active,disabled',
-            'role' => 'sometimes|string|in:admin,member,viewer',
+            'role' => 'sometimes|string|in:admin,member,client',
         ]);
 
         $user = $this->userManagementService->createUser($data);
@@ -53,7 +53,7 @@ class UserController extends Controller
             'password' => 'sometimes|nullable|string|min:6|confirmed',
             'password_confirmation' => 'sometimes|nullable|string|min:6',
             'status' => 'sometimes|string|in:active,disabled',
-            'role' => 'sometimes|string|in:admin,member,viewer',
+            'role' => 'sometimes|string|in:admin,member,client',
         ]);
 
         $user = $this->userManagementService->updateUser($request->user(), $user, $data);

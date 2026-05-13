@@ -207,7 +207,7 @@ export const messages = {
       reporter: 'Rapporteur',
       priority: 'Priorité',
       issueType: 'Type',
-      storyPoints: 'Story Points',
+      storyPoints: "Points d'effort",
       complexity: 'Complexité',
       plannedStart: 'Début planifié',
       plannedEnd: 'Fin planifiée',
@@ -243,7 +243,7 @@ export const messages = {
         task: 'Tâche',
         bug: 'Bug',
         feature: 'Fonctionnalité',
-        story: 'User Story',
+        story: 'Fonctionnalité',
         epic: 'Épique',
         subtask: 'Sous-tâche',
       },
@@ -505,7 +505,7 @@ export const messages = {
     roles: {
       admin: 'Administrateur',
       member: 'Membre',
-      viewer: 'Client',
+      client: 'Client',
     },
   },
   en: {
@@ -1013,7 +1013,7 @@ export const messages = {
     roles: {
       admin: 'Administrator',
       member: 'Member',
-      viewer: 'Guest',
+      client: 'Client',
     },
   },
 };

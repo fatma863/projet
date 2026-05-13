@@ -1,34 +1,34 @@
-/** Rôles applicatifs (Spatie) — clés API : admin, member, viewer */
+/** Rôles applicatifs (Spatie) — clés API : admin, member, client */
 export const APP_ROLE_LABELS = {
   admin: 'Administrateur',
   member: 'Membre',
-  viewer: 'Client',
+  client: 'Client',
 };
 
 const APP_ROLE_LABELS_EN = {
   admin: 'Administrator',
   member: 'Member',
-  viewer: 'Guest',
+  client: 'Client',
 };
 
-const CANONICAL_ROLES = ['admin', 'member', 'viewer'];
+const CANONICAL_ROLES = ['admin', 'member', 'client'];
 
 /** Map anciens noms ou valeurs inconnues vers un rôle assignable */
 export function normalizeAppRole(role) {
   if (!role) return 'member';
-  const legacy = { guest: 'viewer', manager: 'member' };
+  const legacy = { guest: 'client', viewer: 'client', manager: 'member' };
   const resolved = legacy[role] ?? role;
   return CANONICAL_ROLES.includes(resolved) ? resolved : 'member';
 }
 
 /**
- * Profil invité (lecture seule) : rôle applicatif `viewer` (Spatie), y compris `guest` legacy.
+ * Profil client (lecture seule) : rôle applicatif `client` (Spatie), y compris legacy guest/viewer.
  */
 export function isGuestViewer(user) {
   if (!user) return false;
   const list = Array.isArray(user.roles) ? user.roles : [];
-  if (list.some((r) => normalizeAppRole(r) === 'viewer')) return true;
-  return normalizeAppRole(user.role) === 'viewer';
+  if (list.some((r) => normalizeAppRole(r) === 'client')) return true;
+  return normalizeAppRole(user.role) === 'client';
 }
 
 /** @param {'fr'|'en'} [locale] */
@@ -39,7 +39,7 @@ export function formatAppRole(role, locale = 'fr') {
   return labels[key] ?? role;
 }
 
-/** Rôles projet simplifiés : chef (1 par projet), membre et client */
+/** Rôles projet : chef (1 par projet), membre, client */
 export const PROJECT_ROLE_LABELS = {
   chef:   'Chef de projet',
   membre: 'Membre',

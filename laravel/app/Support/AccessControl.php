@@ -80,7 +80,7 @@ class AccessControl
         $resolved = match (true) {
             in_array($legacyRole, ['owner', 'manager'], true) => 'admin',
             in_array($legacyRole, ['guest', 'client'], true) => 'client',
-            in_array($legacyRole, ['admin', 'member', 'viewer'], true) => self::normalizePivotRole($legacyRole),
+            in_array($legacyRole, ['admin', 'member', 'client'], true) => self::normalizePivotRole($legacyRole),
             default => 'member',
         };
 
@@ -125,7 +125,7 @@ class AccessControl
 
         $projectRole = self::projectRole($user, $project);
 
-        if ($user->hasRole('viewer') && $projectRole === null && (int) $project->owner_id !== (int) $user->id) {
+        if ($user->hasRole('client') && $projectRole === null && (int) $project->owner_id !== (int) $user->id) {
             return false;
         }
 
@@ -141,7 +141,7 @@ class AccessControl
             return true;
         }
 
-        if (! $user->hasRole('viewer')) {
+        if (! $user->hasRole('client')) {
             return $project->tasks()
                 ->whereHas('assignees', fn ($q) => $q->where('users.id', $user->id))
                 ->exists();
@@ -156,7 +156,7 @@ class AccessControl
             return true;
         }
 
-        if ($user->hasRole('viewer')) {
+        if ($user->hasRole('client')) {
             return false;
         }
 
@@ -180,7 +180,7 @@ class AccessControl
             return true;
         }
 
-        if ($user->hasRole('viewer')) {
+        if ($user->hasRole('client')) {
             return false;
         }
 
@@ -213,7 +213,7 @@ class AccessControl
             return true;
         }
 
-        if ($user->hasRole('viewer')) {
+        if ($user->hasRole('client')) {
             return false;
         }
 
@@ -232,7 +232,7 @@ class AccessControl
 
         $project = $task->project;
 
-        if ($user->hasRole('viewer')) {
+        if ($user->hasRole('client')) {
             return false;
         }
 
