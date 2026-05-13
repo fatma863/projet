@@ -353,7 +353,7 @@ function TeamFormModal({ open, onClose, team, onSuccess }) {
                 </option>
               ))}
             </Select>
-            {leaderIdNum && availableToAdd.length === 0 && form.memberIds.length === 0 && (
+            {!!leaderIdNum && availableToAdd.length === 0 && form.memberIds.length === 0 && (
               <p className="mt-1 text-xs text-muted-foreground">Aucun autre utilisateur à ajouter.</p>
             )}
           </div>

@@ -850,7 +850,7 @@ class TaskController extends Controller
 
         $data = $request->validate([
             'type' => 'required|in:file,link',
-            'file' => 'required_if:type,file|file|max:10240',
+            'file' => 'required_if:type,file|file|max:10240', // NOSONAR - 10 MB upload limit is intentional
             'url' => 'required_if:type,link|nullable|url|max:2048',
             'filename' => 'required_if:type,link|nullable|string|max:255',
         ]);

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Project;
 use App\Models\Task;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -42,83 +43,112 @@ class SyncTaskWorkflowStatus extends Command
             $query->where('id', $projectId);
         }
 
-        $projects  = $query->get();
-        $totalFix  = 0;
-        $totalOk   = 0;
+        $totalFix = 0;
+        $totalOk  = 0;
 
-        foreach ($projects as $project) {
-            $statuses = $project->statuses()->orderBy('order')->get();
-            $n = $statuses->count();
-
-            if ($n === 0) {
-                $this->line("  Projet #{$project->id} ({$project->name}) — aucun statut, ignoré.");
-                continue;
-            }
-
-            // Mappage status_id → workflow_status attendu
-            $mapping = [];
-            foreach ($statuses as $i => $status) {
-                if ($i === 0) {
-                    $mapping[$status->id] = 'todo';
-                } elseif ($i === $n - 1) {
-                    $mapping[$status->id] = 'done';
-                } else {
-                    $mapping[$status->id] = 'in_progress';
-                }
-            }
-
-            $tasks = Task::where('project_id', $project->id)
-                ->whereNull('deleted_at')
-                ->get(['id', 'title', 'status_id', 'workflow_status']);
-
-            $fixes = [];
-            foreach ($tasks as $task) {
-                $expected = $mapping[$task->status_id] ?? null;
-                if ($expected === null) {
-                    // status_id orphelin (statut supprimé)
-                    $expected = 'todo';
-                }
-                if ($task->workflow_status !== $expected) {
-                    $fixes[] = [
-                        'id'       => $task->id,
-                        'title'    => mb_substr($task->title, 0, 50),
-                        'current'  => $task->workflow_status,
-                        'expected' => $expected,
-                        'status_id' => $task->status_id,
-                    ];
-                } else {
-                    $totalOk++;
-                }
-            }
-
-            if (empty($fixes)) {
-                $this->line("  <fg=green>✓</> Projet #{$project->id} ({$project->name}) — {$tasks->count()} tâches OK");
-                continue;
-            }
-
-            $this->newLine();
-            $this->line("  <fg=yellow>!</> Projet #{$project->id} ({$project->name}) — {$tasks->count()} tâches, ".count($fixes).' à corriger :');
-
-            $this->table(
-                ['task_id', 'Titre', 'status_id', 'workflow_status actuel', 'workflow_status attendu'],
-                array_map(fn ($f) => [
-                    $f['id'], $f['title'], $f['status_id'], $f['current'], $f['expected'],
-                ], $fixes),
-            );
-
-            if (! $dryRun) {
-                DB::transaction(function () use ($fixes) {
-                    foreach ($fixes as $f) {
-                        Task::where('id', $f['id'])->update(['workflow_status' => $f['expected']]);
-                    }
-                });
-                $this->info('  → '.count($fixes).' tâche(s) corrigées.');
-            }
-
-            $totalFix += count($fixes);
+        foreach ($query->get() as $project) {
+            [$fix, $ok] = $this->syncProject($project, $dryRun);
+            $totalFix += $fix;
+            $totalOk  += $ok;
         }
 
         $this->newLine();
+        $this->printSummary($dryRun, $totalFix, $totalOk);
+
+        return self::SUCCESS;
+    }
+
+    private function syncProject(Project $project, bool $dryRun): array
+    {
+        $statuses = $project->statuses()->orderBy('order')->get();
+
+        if ($statuses->isEmpty()) {
+            $this->line("  Projet #{$project->id} ({$project->name}) — aucun statut, ignoré.");
+            return [0, 0];
+        }
+
+        $mapping = $this->buildStatusMapping($statuses);
+        $tasks   = Task::where('project_id', $project->id)
+            ->whereNull('deleted_at')
+            ->get(['id', 'title', 'status_id', 'workflow_status']);
+
+        $fixes = $this->findTaskFixes($tasks, $mapping);
+
+        if (empty($fixes)) {
+            $this->line("  <fg=green>✓</> Projet #{$project->id} ({$project->name}) — {$tasks->count()} tâches OK");
+            return [0, $tasks->count()];
+        }
+
+        $ok = $tasks->count() - count($fixes);
+        $this->reportProjectFixes($project, $tasks->count(), $fixes);
+
+        if (! $dryRun) {
+            $this->applyFixes($fixes);
+            $this->info('  → '.count($fixes).' tâche(s) corrigées.');
+        }
+
+        return [count($fixes), $ok];
+    }
+
+    private function buildStatusMapping(Collection $statuses): array
+    {
+        $n       = $statuses->count();
+        $mapping = [];
+
+        foreach ($statuses as $i => $status) {
+            if ($i === 0) {
+                $mapping[$status->id] = 'todo';
+            } elseif ($i === $n - 1) {
+                $mapping[$status->id] = 'done';
+            } else {
+                $mapping[$status->id] = 'in_progress';
+            }
+        }
+
+        return $mapping;
+    }
+
+    private function findTaskFixes(Collection $tasks, array $mapping): array
+    {
+        $fixes = [];
+
+        foreach ($tasks as $task) {
+            $expected = $mapping[$task->status_id] ?? 'todo';
+            if ($task->workflow_status !== $expected) {
+                $fixes[] = [
+                    'id'        => $task->id,
+                    'title'     => mb_substr($task->title, 0, 50),
+                    'current'   => $task->workflow_status,
+                    'expected'  => $expected,
+                    'status_id' => $task->status_id,
+                ];
+            }
+        }
+
+        return $fixes;
+    }
+
+    private function reportProjectFixes(Project $project, int $taskCount, array $fixes): void
+    {
+        $this->newLine();
+        $this->line("  <fg=yellow>!</> Projet #{$project->id} ({$project->name}) — {$taskCount} tâches, ".count($fixes).' à corriger :');
+        $this->table(
+            ['task_id', 'Titre', 'status_id', 'workflow_status actuel', 'workflow_status attendu'],
+            array_map(fn ($f) => [$f['id'], $f['title'], $f['status_id'], $f['current'], $f['expected']], $fixes),
+        );
+    }
+
+    private function applyFixes(array $fixes): void
+    {
+        DB::transaction(function () use ($fixes) {
+            foreach ($fixes as $f) {
+                Task::where('id', $f['id'])->update(['workflow_status' => $f['expected']]);
+            }
+        });
+    }
+
+    private function printSummary(bool $dryRun, int $totalFix, int $totalOk): void
+    {
         if ($dryRun) {
             $this->warn("Résumé (dry-run) : {$totalFix} correction(s) nécessaire(s), {$totalOk} déjà cohérente(s).");
             if ($totalFix > 0) {
@@ -127,7 +157,5 @@ class SyncTaskWorkflowStatus extends Command
         } else {
             $this->info("Résumé : {$totalFix} correction(s) appliquée(s), {$totalOk} déjà cohérente(s).");
         }
-
-        return self::SUCCESS;
     }
 }

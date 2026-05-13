@@ -1,3 +1,4 @@
+import os
 import requests
 import json
 from datetime import datetime
@@ -6,7 +7,7 @@ from datetime import datetime
 SONAR_HOST_URL = "https://sonarcloud.io"
 ORGANIZATION = "fatma863"
 PROJECT_KEY = "fatma863_projet"
-SONAR_TOKEN = "71c93dbe4436e571ea8079a672713bbe786c4a1e"
+SONAR_TOKEN = os.environ.get("SONAR_TOKEN", "")
 BRANCH = "master"
 
 OUTPUT_FILE = "sonar-premium-report.html"

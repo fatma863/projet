@@ -67,45 +67,9 @@ class CriticalPathService
     private function computeFromCollection(Collection $tasks): array
     {
         $taskById = $tasks->keyBy('id');
-        $successors = [];
-        $predecessors = [];
-        $inDegree = [];
+        [$successors, $predecessors, $inDegree] = $this->buildGraph($tasks, $taskById);
 
-        foreach ($tasks as $task) {
-            $successors[$task->id] = [];
-            $predecessors[$task->id] = [];
-            $inDegree[$task->id] = 0;
-        }
-
-        foreach ($tasks as $task) {
-            foreach ($task->dependencies as $dep) {
-                if (! $taskById->has($dep->id)) {
-                    continue;
-                }
-                $successors[$dep->id][] = $task->id;
-                $predecessors[$task->id][] = $dep->id;
-                $inDegree[$task->id]++;
-            }
-        }
-
-        $queue = [];
-        foreach ($inDegree as $id => $deg) {
-            if ($deg === 0) {
-                $queue[] = $id;
-            }
-        }
-
-        $topo = [];
-        while (! empty($queue)) {
-            $id = array_shift($queue);
-            $topo[] = $id;
-            foreach ($successors[$id] as $next) {
-                $inDegree[$next]--;
-                if ($inDegree[$next] === 0) {
-                    $queue[] = $next;
-                }
-            }
-        }
+        $topo = $this->topologicalSort($successors, $inDegree);
 
         if (count($topo) !== $tasks->count()) {
             return [
@@ -116,13 +80,70 @@ class CriticalPathService
             ];
         }
 
-        $duration = [];
+        $duration   = $tasks->mapWithKeys(fn ($t) => [$t->id => $this->taskDurationDays($t)])->all();
+        [$es, $ef]  = $this->forwardPass($topo, $predecessors, $duration);
+        $projectEnd = max($ef);
+        [$ls, $lf]  = $this->backwardPass($topo, $successors, $duration, $projectEnd);
+
+        $criticalTasks = $this->collectCriticalTasks($topo, $taskById, $es, $ef, $ls, $lf, $duration);
+
+        return [
+            'critical_tasks' => $criticalTasks,
+            'total_duration' => (float) $projectEnd,
+            'graph_valid' => true,
+        ];
+    }
+
+    private function buildGraph(Collection $tasks, Collection $taskById): array
+    {
+        $successors   = [];
+        $predecessors = [];
+        $inDegree     = [];
+
         foreach ($tasks as $task) {
-            $duration[$task->id] = $this->taskDurationDays($task);
+            $successors[$task->id]   = [];
+            $predecessors[$task->id] = [];
+            $inDegree[$task->id]     = 0;
         }
 
-        $es = array_fill_keys(array_keys($successors), 0);
-        $ef = array_fill_keys(array_keys($successors), 0);
+        foreach ($tasks as $task) {
+            foreach ($task->dependencies as $dep) {
+                if (! $taskById->has($dep->id)) {
+                    continue;
+                }
+                $successors[$dep->id][]    = $task->id;
+                $predecessors[$task->id][] = $dep->id;
+                $inDegree[$task->id]++;
+            }
+        }
+
+        return [$successors, $predecessors, $inDegree];
+    }
+
+    private function topologicalSort(array $successors, array $inDegree): array
+    {
+        $queue = array_keys(array_filter($inDegree, fn ($d) => $d === 0));
+        $topo  = [];
+
+        while (! empty($queue)) {
+            $id    = array_shift($queue);
+            $topo[] = $id;
+            foreach ($successors[$id] as $next) {
+                $inDegree[$next]--;
+                if ($inDegree[$next] === 0) {
+                    $queue[] = $next;
+                }
+            }
+        }
+
+        return $topo;
+    }
+
+    private function forwardPass(array $topo, array $predecessors, array $duration): array
+    {
+        $keys = array_fill_keys($topo, 0);
+        $es   = $keys;
+        $ef   = $keys;
 
         foreach ($topo as $id) {
             $es[$id] = empty($predecessors[$id])
@@ -131,42 +152,47 @@ class CriticalPathService
             $ef[$id] = $es[$id] + $duration[$id];
         }
 
-        $projectEnd = max($ef);
-        $ls = array_fill_keys(array_keys($successors), 0);
-        $lf = array_fill_keys(array_keys($successors), 0);
+        return [$es, $ef];
+    }
+
+    private function backwardPass(array $topo, array $successors, array $duration, float $projectEnd): array
+    {
+        $keys = array_fill_keys($topo, 0);
+        $ls   = $keys;
+        $lf   = $keys;
 
         for ($i = count($topo) - 1; $i >= 0; $i--) {
-            $id = $topo[$i];
+            $id      = $topo[$i];
             $lf[$id] = empty($successors[$id])
                 ? $projectEnd
                 : min(array_map(fn ($succ) => $ls[$succ], $successors[$id]));
             $ls[$id] = $lf[$id] - $duration[$id];
         }
 
+        return [$ls, $lf];
+    }
+
+    private function collectCriticalTasks(
+        array $topo,
+        Collection $taskById,
+        array $es,
+        array $ef,
+        array $ls,
+        array $lf,
+        array $duration
+    ): array {
         $criticalTasks = [];
+
         foreach ($topo as $id) {
-            $slack = $ls[$id] - $es[$id];
-            if (abs($slack) > 0.0001) {
+            if (abs($ls[$id] - $es[$id]) > 0.0001) {
                 continue;
             }
             /** @var Task $task */
-            $task = $taskById->get($id);
-            $criticalTasks[] = $this->formatCriticalTask(
-                $task,
-                $es[$id],
-                $ef[$id],
-                $ls[$id],
-                $lf[$id],
-                0.0,
-                $duration[$id]
-            );
+            $task            = $taskById->get($id);
+            $criticalTasks[] = $this->formatCriticalTask($task, $es[$id], $ef[$id], $ls[$id], $lf[$id], 0.0, $duration[$id]);
         }
 
-        return [
-            'critical_tasks' => $criticalTasks,
-            'total_duration' => (float) $projectEnd,
-            'graph_valid' => true,
-        ];
+        return $criticalTasks;
     }
 
     private function taskDurationDays(Task $task): int

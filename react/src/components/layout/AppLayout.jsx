@@ -15,6 +15,8 @@ export default function AppLayout() {
           ${sidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}
         `}
         onClick={() => setSidebarOpen(false)}
+        onKeyDown={(e) => { if (e.key === 'Escape') setSidebarOpen(false); }}
+        role="presentation"
       />
 
       {/* Sidebar */}

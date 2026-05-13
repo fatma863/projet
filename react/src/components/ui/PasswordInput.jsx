@@ -26,7 +26,7 @@ const PasswordInput = forwardRef(({ className, ...props }, ref) => {
   );
 });
 
-PasswordInput.displayName = 'PasswordInput';
+PasswordInput.displayName = 'PasswordInput'; // NOSONAR - component display name, not a credential
 
 /** Visual password strength bar */
 export function PasswordStrength({ password }) {

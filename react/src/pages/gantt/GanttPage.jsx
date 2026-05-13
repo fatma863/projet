@@ -93,9 +93,61 @@ function buildProjectGanttRows(projects, ganttTasks) {
     });
 }
 
+function GanttContent({ viewMode, selectedProject, isLoading, ganttError, ganttErrorDetail, isEmpty, emptyDescription, displayRows }) {
+  if (viewMode === 'project' && !selectedProject) {
+    return (
+      <Card>
+        <CardContent className="py-16 text-center">
+          <BarChart3 className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+          <p className="text-muted-foreground">Sélectionnez un projet pour afficher ses tâches dans le Gantt</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  if (isLoading) {
+    return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
+  }
+  if (ganttError) {
+    return (
+      <Card className="border-destructive/40 bg-destructive/5">
+        <CardContent className="py-10 text-center text-sm">
+          <p className="font-medium text-destructive">Impossible de charger le Gantt</p>
+          <p className="mt-2 text-muted-foreground">
+            {ganttErrorDetail?.response?.data?.message || ganttErrorDetail?.message || 'Erreur réseau ou serveur.'}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+  if (isEmpty) {
+    return (
+      <Card>
+        <CardContent className="py-8">
+          <EmptyState
+            icon={BarChart3}
+            title={viewMode === 'global' ? 'Aucun projet à afficher' : 'Aucune tâche à afficher'}
+            description={emptyDescription}
+            className="border-0 bg-transparent py-10"
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <ErrorBoundary>
+      <GanttChart
+        tasks={displayRows}
+        showProject={false}
+        rowLabel={viewMode === 'global' ? 'Projet' : 'Tâche'}
+      />
+    </ErrorBoundary>
+  );
+}
+
 export default function GanttPage() {
   const [viewMode, setViewMode] = useState('global');
   const [selectedProject, setSelectedProject] = useState('');
+  const isGlobal = viewMode === 'global';
 
   const { data: projectsPayload } = useQuery({
     queryKey: ['projects-for-gantt'],
@@ -111,13 +163,13 @@ export default function GanttPage() {
   const { data: ganttGlobalRaw, isLoading: loadingGlobal, isError: errGlobal, error: errGlobalDetail } = useQuery({
     queryKey: ['gantt', 'global'],
     queryFn: () => api.get('/gantt').then((r) => parseGanttPayload(r.data)),
-    enabled: viewMode === 'global',
+    enabled: isGlobal,
   });
 
   const { data: ganttProject, isLoading: loadingProject, isError: errProject, error: errProjectDetail } = useQuery({
     queryKey: ['gantt', 'project', selectedProject],
     queryFn: () => api.get(`/gantt?project_id=${selectedProject}`).then((r) => parseGanttPayload(r.data)),
-    enabled: viewMode === 'project' && !!selectedProject,
+    enabled: !isGlobal && !!selectedProject,
   });
 
   // Global view: build project-level rows
@@ -132,22 +184,20 @@ export default function GanttPage() {
     [ganttProject],
   );
 
-  const ganttError = viewMode === 'global' ? errGlobal : errProject;
-  const ganttErrorDetail = viewMode === 'global' ? errGlobalDetail : errProjectDetail;
-  const isLoading = viewMode === 'global' ? loadingGlobal : loadingProject;
+  const ganttError = isGlobal ? errGlobal : errProject;
+  const ganttErrorDetail = isGlobal ? errGlobalDetail : errProjectDetail;
+  const isLoading = isGlobal ? loadingGlobal : loadingProject;
+  const displayRows = isGlobal ? projectGanttRows : ganttTasksNormalized;
+  const isEmpty = !displayRows || displayRows.length === 0;
+
+  const emptyDescription = !isGlobal && selectedProject
+    ? 'Aucune tâche planifiée pour ce projet'
+    : 'Aucun projet avec des dates planifiées';
 
   const resetGanttFilters = () => {
     setViewMode('global');
     setSelectedProject('');
   };
-
-  const emptyDescription =
-    viewMode === 'project' && selectedProject
-      ? 'Aucune tâche planifiée pour ce projet'
-      : 'Aucun projet avec des dates planifiées';
-
-  const displayRows = viewMode === 'global' ? projectGanttRows : ganttTasksNormalized;
-  const isEmpty = !displayRows || displayRows.length === 0;
 
   return (
     <div className="space-y-6">
@@ -248,47 +298,17 @@ export default function GanttPage() {
         </div>
       )}
 
-      {/* Project selector prompt for project view */}
-      {viewMode === 'project' && !selectedProject ? (
-        <Card>
-          <CardContent className="py-16 text-center">
-            <BarChart3 className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="text-muted-foreground">Sélectionnez un projet pour afficher ses tâches dans le Gantt</p>
-          </CardContent>
-        </Card>
-      ) : isLoading ? (
-        <div className="flex justify-center py-20">
-          <Spinner size="lg" />
-        </div>
-      ) : ganttError ? (
-        <Card className="border-destructive/40 bg-destructive/5">
-          <CardContent className="py-10 text-center text-sm">
-            <p className="font-medium text-destructive">Impossible de charger le Gantt</p>
-            <p className="mt-2 text-muted-foreground">
-              {ganttErrorDetail?.response?.data?.message || ganttErrorDetail?.message || 'Erreur réseau ou serveur.'}
-            </p>
-          </CardContent>
-        </Card>
-      ) : isEmpty ? (
-        <Card>
-          <CardContent className="py-8">
-            <EmptyState
-              icon={BarChart3}
-              title={viewMode === 'global' ? 'Aucun projet à afficher' : 'Aucune tâche à afficher'}
-              description={emptyDescription}
-              className="border-0 bg-transparent py-10"
-            />
-          </CardContent>
-        </Card>
-      ) : (
-        <ErrorBoundary>
-          <GanttChart
-            tasks={displayRows}
-            showProject={false}
-            rowLabel={viewMode === 'global' ? 'Projet' : 'Tâche'}
-          />
-        </ErrorBoundary>
-      )}
+      {/* Main gantt content area */}
+      <GanttContent
+        viewMode={viewMode}
+        selectedProject={selectedProject}
+        isLoading={isLoading}
+        ganttError={ganttError}
+        ganttErrorDetail={ganttErrorDetail}
+        isEmpty={isEmpty}
+        emptyDescription={emptyDescription}
+        displayRows={displayRows}
+      />
     </div>
   );
 }

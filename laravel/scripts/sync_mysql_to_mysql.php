@@ -58,7 +58,10 @@ function parseEnvFile(string $path): array
 
 function quoteIdentifier(string $name): string
 {
-    return '`' . str_replace('`', '``', $name) . '`';
+    if (!preg_match('/^[a-zA-Z0-9_$]+$/', $name)) {
+        throw new RuntimeException("Unsafe table/column identifier: {$name}");
+    }
+    return '`' . $name . '`';
 }
 
 $options = getopt('', [
@@ -135,17 +138,17 @@ try {
         $qTable = quoteIdentifier($table);
         echo "Sync table: {$table}" . PHP_EOL;
 
-        $createStmt = $sourcePdo->query('SHOW CREATE TABLE ' . $qTable)->fetch(PDO::FETCH_ASSOC);
+        $createStmt = $sourcePdo->query('SHOW CREATE TABLE ' . $qTable)->fetch(PDO::FETCH_ASSOC); // NOSONAR - identifier validated by quoteIdentifier()
         if (!$createStmt || !isset($createStmt['Create Table'])) {
             throw new RuntimeException("Unable to read CREATE TABLE for {$table}");
         }
 
         // Recreate each table so target schema stays identical to source schema.
-        $targetPdo->exec('DROP TABLE IF EXISTS ' . $qTable);
+        $targetPdo->exec('DROP TABLE IF EXISTS ' . $qTable); // NOSONAR - identifier validated by quoteIdentifier()
         $targetPdo->exec($createStmt['Create Table']);
         echo "  Recreated table on target." . PHP_EOL;
 
-        $dataStmt = $sourcePdo->query('SELECT * FROM ' . $qTable);
+        $dataStmt = $sourcePdo->query('SELECT * FROM ' . $qTable); // NOSONAR - identifier validated by quoteIdentifier()
         $insertStmt = null;
         $rowCount = 0;
 

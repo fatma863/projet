@@ -17,7 +17,7 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // No service bindings required; all setup is handled in boot().
     }
 
     public function boot(): void

@@ -94,14 +94,15 @@ export function GanttChart({ tasks = [], showProject = false, variant = 'default
     const maxD = new Date(max);
 
     const monthsArr = [];
-    const cursor = new Date(minD.getFullYear(), minD.getMonth(), 1);
-    while (cursor <= maxD) {
+    let cursor = new Date(minD.getFullYear(), minD.getMonth(), 1);
+    const maxDTime = maxD.getTime();
+    while (cursor.getTime() <= maxDTime) {
       const offset = Math.max(0, (cursor.getTime() - min) / 86400000);
       monthsArr.push({
         label: cursor.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }),
         offset,
       });
-      cursor.setMonth(cursor.getMonth() + 1);
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
     }
 
     const now = Date.now();

@@ -27,6 +27,24 @@ import {
   Users,
 } from 'lucide-react';
 
+const ALERT_CARD_CLASS = {
+  danger:  'border-red-200 bg-red-50/50 dark:border-red-900/40 dark:bg-red-950/20',
+  warning: 'border-amber-200 bg-amber-50/50 dark:border-amber-900/40',
+  success: 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/40',
+};
+
+const ALERT_ICON_CLASS = {
+  danger:  'text-red-600',
+  warning: 'text-amber-600',
+  success: 'text-emerald-600',
+};
+
+const ALERT_TEXT_CLASS = {
+  danger:  'font-medium text-red-900 dark:text-red-100',
+  warning: 'font-medium text-amber-900 dark:text-amber-100',
+  success: 'text-emerald-900 dark:text-emerald-100',
+};
+
 /**
  * Dashboard dédié à l'expérience CLIENT (rôle viewer/invité).
  *
@@ -107,6 +125,15 @@ export default function ClientDashboard() {
   const aiRisk = clientReport?.ai_risk_analysis;
   const aiRecs = clientReport?.ai_recommendations;
 
+  // Overdue card styling (computed outside JSX to reduce complexity)
+  const hasOverdue = overdueCount > 0;
+  const overdueCardExtra = hasOverdue ? 'border-red-200 dark:border-red-900/40' : '';
+  const overdueBar = hasOverdue ? 'from-red-400 to-red-600' : 'from-emerald-400 to-emerald-600';
+  const overdueIcon = hasOverdue ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600';
+
+  // Progress bar color (computed outside JSX to reduce complexity)
+  const progressColor = overallProgress >= 80 ? 'bg-emerald-500' : overallProgress >= 40 ? 'bg-blue-500' : 'bg-amber-500';
+
   return (
     <div className="space-y-6">
       {/* ─── Hero section client ─── */}
@@ -150,7 +177,7 @@ export default function ClientDashboard() {
                 initial={{ width: 0 }}
                 animate={{ width: `${overallProgress}%` }}
                 transition={{ duration: 1, ease: 'easeOut' }}
-                className={`h-2.5 rounded-full ${overallProgress >= 80 ? 'bg-emerald-500' : overallProgress >= 40 ? 'bg-blue-500' : 'bg-amber-500'}`}
+                className={`h-2.5 rounded-full ${progressColor}`}
               />
             </div>
             <p className="mt-2 text-xs text-muted-foreground">{completedCount}/{totalTasks} tâches terminées</p>
@@ -191,10 +218,10 @@ export default function ClientDashboard() {
         </Card>
 
         {/* En retard */}
-        <Card className={`group relative overflow-hidden rounded-2xl border-border/80 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${overdueCount > 0 ? 'border-red-200 dark:border-red-900/40' : ''}`}>
-          <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${overdueCount > 0 ? 'from-red-400 to-red-600' : 'from-emerald-400 to-emerald-600'}`} />
+        <Card className={`group relative overflow-hidden rounded-2xl border-border/80 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${overdueCardExtra}`}>
+          <div className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${overdueBar}`} />
           <CardContent className="flex items-center gap-4 p-5">
-            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${overdueCount > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${overdueIcon}`}>
               <AlertTriangle size={20} />
             </div>
             <div>
@@ -208,16 +235,14 @@ export default function ClientDashboard() {
 
       {/* ─── Alertes ─── */}
       {alerts.length > 0 && (
-        <Card className={`shadow-sm ${alerts[0].type === 'danger' ? 'border-red-200 bg-red-50/50 dark:border-red-900/40 dark:bg-red-950/20' : alerts[0].type === 'warning' ? 'border-amber-200 bg-amber-50/50 dark:border-amber-900/40' : 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/40'}`}>
+        <Card className={`shadow-sm ${ALERT_CARD_CLASS[alerts[0].type]}`}>
           <CardContent className="flex flex-wrap gap-3 py-4">
             {alerts.map((alert, idx) => {
               const Icon = alert.icon;
               return (
                 <div key={idx} className="flex items-center gap-2 text-sm">
-                  <Icon size={16} className={alert.type === 'danger' ? 'text-red-600' : alert.type === 'warning' ? 'text-amber-600' : 'text-emerald-600'} />
-                  <span className={alert.type === 'danger' ? 'font-medium text-red-900 dark:text-red-100' : alert.type === 'warning' ? 'font-medium text-amber-900 dark:text-amber-100' : 'text-emerald-900 dark:text-emerald-100'}>
-                    {alert.message}
-                  </span>
+                  <Icon size={16} className={ALERT_ICON_CLASS[alert.type]} />
+                  <span className={ALERT_TEXT_CLASS[alert.type]}>{alert.message}</span>
                 </div>
               );
             })}

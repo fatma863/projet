@@ -41,6 +41,8 @@ export function Modal({ open, onClose, title, children, footer, className, size 
       ref={overlayRef}
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 bg-black/50 backdrop-blur-[2px] animate-in fade-in-0 duration-150"
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      role="presentation"
     >
       <div
         className={cn(
