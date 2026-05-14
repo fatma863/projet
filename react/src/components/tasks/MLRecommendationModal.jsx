@@ -332,7 +332,9 @@ export function MLRecommendationModal({ open, onClose, result, selectedId, onAcc
   return createPortal(
     <div
       className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm"
+      role="presentation"
       onClick={e => { if (e.currentTarget === e.target) onClose(); }}
+      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
     >
       <div className="relative flex w-full max-w-2xl flex-col rounded-2xl border border-border bg-card shadow-2xl max-h-[calc(100dvh-3rem)] animate-in fade-in-0 zoom-in-[0.97] slide-in-from-bottom-4 duration-200">
 

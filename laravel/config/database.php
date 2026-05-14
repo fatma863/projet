@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Str;
 
-$localHost = $localHost;
+$localHost = '127.0.0.1';
 
 return [
 
