@@ -1,0 +1,89 @@
+\chapter{Annexe C — Glossaire technique}
+
+\begin{description}[leftmargin=3.5cm,style=nextline]
+
+  \item[API REST]
+    \textit{Application Programming Interface Representational State Transfer}.
+    Interface de communication entre clients et serveur via des requêtes HTTP
+    utilisant les méthodes GET, POST, PUT, PATCH et DELETE.
+
+  \item[Bearer Token]
+    Jeton d'accès transmis dans l'en-tête HTTP \texttt{Authorization: Bearer <token>}.
+    Utilisé par Laravel Sanctum pour l'authentification stateless.
+
+  \item[BFS]
+    \textit{Breadth-First Search} (Parcours en largeur). Algorithme de parcours de
+    graphe utilisé pour détecter les cycles dans le graphe de dépendances des tâches.
+
+  \item[CPM]
+    \textit{Critical Path Method} (Méthode du chemin critique). Algorithme de
+    planification de projet identifiant la séquence de tâches dont le float est
+    nul, déterminant ainsi la durée minimale du projet.
+
+  \item[Drag-and-drop]
+    Interaction UI permettant à l'utilisateur de glisser-déposer des éléments
+    (cartes Kanban) d'une zone à une autre avec la souris.
+
+  \item[Eager Loading]
+    Stratégie Eloquent ORM chargeant en avance les relations associées
+    (\texttt{with()}) pour éviter le problème des requêtes N+1.
+
+  \item[Float (CPM)]
+    Marge totale d'une tâche : différence entre sa date de début au plus tard (LST)
+    et sa date de début au plus tôt (EST). Une tâche critique a un float de zéro.
+
+  \item[GBM]
+    \textit{Gradient Boosting Machine}. Algorithme d'ensemble ML qui construit
+    séquentiellement des arbres de décision, chacun corrigeant les erreurs du
+    précédent.
+
+  \item[Kanban]
+    Méthode de gestion visuelle du flux de travail, organisée en colonnes
+    représentant les états d'avancement des tâches.
+
+  \item[LLM]
+    \textit{Large Language Model}. Modèle de langage de grande taille entraîné
+    sur des corpus textuels massifs, capable de générer du texte en langage naturel.
+    Ex. : Llama 3.3 70B.
+
+  \item[Middleware]
+    Composant logiciel Laravel interceptant les requêtes HTTP avant qu'elles
+    n'atteignent le contrôleur. Ex. : \texttt{CheckRole}, \texttt{CheckProjectAccess}.
+
+  \item[Optimistic Update]
+    Technique UI consistant à mettre à jour l'interface immédiatement (avant la
+    réponse serveur), puis à annuler en cas d'erreur.
+
+  \item[RBAC]
+    \textit{Role-Based Access Control}. Modèle de contrôle d'accès où les droits
+    sont associés à des rôles, eux-mêmes attribués à des utilisateurs.
+
+  \item[Random Forest]
+    Algorithme d'ensemble ML créant un grand nombre d'arbres de décision sur des
+    sous-ensembles aléatoires des données, puis agrégeant leurs prédictions.
+
+  \item[Sanctum]
+    Package Laravel fournissant une authentification légère par Bearer Token pour
+    les SPA et les API REST.
+
+  \item[SPA]
+    \textit{Single Page Application}. Application web dont la navigation est
+    entièrement gérée côté client (React Router), sans rechargement complet de page.
+
+  \item[Sprint]
+    Itération de longueur fixe (ici : 2 semaines) dans la méthode Scrum, à l'issue
+    de laquelle un incrément fonctionnel livrable est produit.
+
+  \item[Story Points]
+    Unité relative d'estimation de l'effort dans Scrum, généralement exprimée en
+    suite de Fibonacci (1, 2, 3, 5, 8, 13...).
+
+  \item[VotingClassifier]
+    Ensemble Scikit-learn combinant plusieurs classifieurs par vote pondéré
+    (\textit{soft voting}) pour améliorer la robustesse des prédictions.
+
+  \item[WebSocket]
+    Protocole de communication bidirectionnel persistent entre client et serveur.
+    Utilisé via Laravel Reverb pour les mises à jour en temps réel.
+
+\end{description}

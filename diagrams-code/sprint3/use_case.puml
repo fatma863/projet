@@ -1,0 +1,38 @@
+@startuml sprint3_use_case
+!theme plain
+skinparam actorStyle awesome
+skinparam usecaseBackgroundColor #F5F3FF
+skinparam usecaseBorderColor #6D28D9
+left to right direction
+
+actor "Member" as Member #8B5CF6
+actor "Chef de projet" as Chef #6D28D9
+
+rectangle "Sprint 3 — Tâches et Kanban" {
+  usecase "Créer tâche\n(type, priorité)" as UC1
+  usecase "Ajouter sous-tâche" as UC2
+  usecase "Dépendance\nFS/SS/FF/SF" as UC3
+  usecase "Détection cycle\n(BFS)" as UC4
+  usecase "Affecter membres\n(%)" as UC5
+  usecase "Déplacer\nKanban" as UC6
+  usecase "Commenter\net @ mention" as UC7
+  usecase "Attacher\nfichier / lien" as UC8
+  usecase "Saisir temps\n/ timer" as UC9
+  usecase "Vue globale\ntâches + filtres" as UC10
+  usecase "Exporter CSV" as UC11
+}
+
+Member --> UC1
+Member --> UC2
+Member --> UC3
+Member --> UC5
+Member --> UC6
+Member --> UC7
+Member --> UC8
+Member --> UC9
+Member --> UC10
+Chef --> UC11
+
+UC3 ..> UC4 : <<include>>
+
+@enduml

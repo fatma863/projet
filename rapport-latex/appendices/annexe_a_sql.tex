@@ -1,0 +1,78 @@
+\chapter{Annexe A — Schéma SQL principal}
+
+Les extraits SQL ci-dessous illustrent les tables centrales de la base de données.
+Le schéma complet est généré par les 42 migrations Laravel disponibles dans
+\texttt{laravel/database/migrations/}.
+
+\begin{lstlisting}[style=sqlstyle,caption={Schéma SQL — Tables users et projects},label={lst:sql_main}]
+-- Table users
+CREATE TABLE users (
+    id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name       VARCHAR(255)    NOT NULL,
+    email      VARCHAR(255)    NOT NULL UNIQUE,
+    password   VARCHAR(255)    NOT NULL,
+    status     ENUM('active','disabled') DEFAULT 'active',
+    avatar_url VARCHAR(512),
+    locale     VARCHAR(10)     DEFAULT 'fr',
+    theme      ENUM('light','dark','system') DEFAULT 'system',
+    notify_in_app TINYINT(1)   DEFAULT 1,
+    notify_email  TINYINT(1)   DEFAULT 1,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+
+-- Table projects
+CREATE TABLE projects (
+    id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name        VARCHAR(255)   NOT NULL,
+    code        VARCHAR(10)    NOT NULL UNIQUE,
+    description TEXT,
+    status      ENUM('planning','active','suspended','archived')
+                               DEFAULT 'planning',
+    priority    ENUM('low','medium','high','urgent') DEFAULT 'medium',
+    start_date  DATE,
+    end_date    DATE,
+    team_id     BIGINT UNSIGNED,
+    owner_id    BIGINT UNSIGNED NOT NULL,
+    created_at  TIMESTAMP,
+    updated_at  TIMESTAMP,
+    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Table tasks
+CREATE TABLE tasks (
+    id               BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    project_id       BIGINT UNSIGNED NOT NULL,
+    sprint_id        BIGINT UNSIGNED,
+    parent_id        BIGINT UNSIGNED,
+    status_id        BIGINT UNSIGNED,
+    title            VARCHAR(255)    NOT NULL,
+    description      TEXT,
+    issue_type       ENUM('task','bug','story') DEFAULT 'task',
+    priority         ENUM('low','medium','high','urgent') DEFAULT 'medium',
+    workflow_status  ENUM('todo','in_progress','at_risk','done') DEFAULT 'todo',
+    progress_percent TINYINT         DEFAULT 0,
+    story_points     TINYINT,
+    estimated_hours  DECIMAL(6,2),
+    actual_hours     DECIMAL(6,2),
+    planned_start    DATE,
+    planned_end      DATE,
+    due_date         DATE,
+    risk_level       ENUM('low','medium','high') DEFAULT 'low',
+    complexity       TINYINT         DEFAULT 5,
+    created_at       TIMESTAMP,
+    updated_at       TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- Table task_dependencies
+CREATE TABLE task_dependencies (
+    id                   BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    task_id              BIGINT UNSIGNED NOT NULL,
+    depends_on_task_id   BIGINT UNSIGNED NOT NULL,
+    type                 ENUM('FS','SS','FF','SF') DEFAULT 'FS',
+    UNIQUE (task_id, depends_on_task_id),
+    FOREIGN KEY (task_id)            REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (depends_on_task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+\end{lstlisting}

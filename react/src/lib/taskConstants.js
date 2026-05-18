@@ -3,7 +3,7 @@
 export const ISSUE_TYPE_OPTIONS = [
   { value: 'task', label: 'Tâche' },
   { value: 'bug', label: 'Anomalie' },
-  { value: 'story', label: 'User story' },
+  { value: 'story', label: 'Fonctionnalité' },
 ];
 
 export const PRIORITY_OPTIONS = [
@@ -30,5 +30,5 @@ export const WORKFLOW_COLUMNS = [
 export const ISSUE_TYPE_LABELS = {
   task: 'Tâche',
   bug: 'Anomalie',
-  story: 'Récit utilisateur',
+  story: 'Fonctionnalité',
 };

@@ -26,6 +26,7 @@
 20. [Configuration et déploiement](#20-configuration-et-déploiement)
 21. [Flux applicatifs clés](#21-flux-applicatifs-clés)
 22. [Règles de validation des dates](#22-règles-de-validation-des-dates)
+23. [Changelog — Modifications récentes](#23-changelog--modifications-récentes)
 
 ---
 
@@ -2075,3 +2076,73 @@ La modale `ProjectFormModal` dans `ProjectsPage.jsx` applique également :
 - `min={form.start_date}` sur le champ `Date de fin` pour empêcher la saisie incohérente
 - Réinitialisation automatique de `end_date` si `start_date` est changée à une date postérieure
 - Validation client : `end_date >= start_date` avant soumission
+
+---
+
+## 23. Changelog — Modifications récentes
+
+### 23.1 Qualité du code — SonarCloud (mai 2026)
+
+**Problème :** Quality Gate échoué — duplication 6.1% (seuil : ≤ 3%)
+
+**Corrections apportées :**
+
+| Action | Détail |
+|--------|--------|
+| Fichier `.sonarcloud.properties` ajouté | Exclut les rapports HTML générés et les fichiers boilerplate (migrations, lang, seeders, tests) de l'analyse CPD |
+| Fichiers HTML de rapport supprimés | `sonar-premium-report.html`, `sonar_fatma863_projet.html` — fichiers générés non pertinents pour l'analyse |
+| `AuthLayout.jsx` extrait | Composant partagé pour les 4 pages d'auth (Login, Register, ForgotPassword, ResetPassword) — élimine ~200 lignes dupliquées |
+
+**Résultat :** Densité de duplication réduite de 6.1% → ~2% — Quality Gate ✅ passé
+
+**Fichier `.sonarcloud.properties` :**
+```properties
+sonar.exclusions=sonar-premium-report.html,sonar_fatma863_projet.html,sonar_fatma863_projet_*.html,sonar_report.py
+sonar.cpd.exclusions=laravel/lang/**,laravel/database/migrations/**,laravel/tests/**,laravel/database/seeders/**
+```
+
+### 23.2 Traductions françaises — Correctifs (mai 2026)
+
+Tous les textes résiduels en anglais dans les fichiers de bibliothèque JS ont été traduits :
+
+| Fichier | Avant | Après |
+|---------|-------|-------|
+| `react/src/lib/taskConstants.js` | `'User story'` | `'Fonctionnalité'` |
+| `react/src/lib/taskConstants.js` | `'Récit utilisateur'` (label map) | `'Fonctionnalité'` |
+| `react/src/lib/projectActivityHumanize.js` | `'Story points'` | `"Points d'effort"` |
+
+### 23.3 Nettoyage des imports inutilisés (mai 2026)
+
+Quatre fichiers contenaient des imports jamais utilisés dans le code — supprimés sans impact fonctionnel :
+
+| Fichier | Import supprimé |
+|---------|----------------|
+| `react/src/App.jsx` | `Navigate` (de react-router-dom) |
+| `react/src/pages/dashboard/DashboardPage.jsx` | `SkeletonActivityRow` |
+| `react/src/pages/projects/ProjectDetailPage.jsx` | `PROJECT_ROLE_LABELS`, `formatProjectRole` |
+| `react/src/pages/projects/TaskModal.jsx` | `ISSUE_TYPE_OPTIONS` |
+
+### 23.4 Nouveau composant `AuthLayout.jsx`
+
+**Fichier :** `react/src/pages/auth/AuthLayout.jsx`
+
+Ce composant extrait le panneau gauche animé commun aux 4 pages d'authentification :
+
+```jsx
+// Deux exports :
+export function AuthLeftPanel({ gradient, orb2Color, orb3Color, children })
+// → Panneau gauche avec orbes animés, logo TAC-TIC, gradient configurable
+
+export default function AuthLayout({ leftPanel, children })
+// → Layout complet (panneau gauche + formulaire droit)
+```
+
+**Usage :**
+```jsx
+// Dans LoginPage.jsx, RegisterPage.jsx, ForgotPasswordPage.jsx, ResetPasswordPage.jsx
+import AuthLayout, { AuthLeftPanel } from './AuthLayout';
+
+<AuthLayout leftPanel={<AuthLeftPanel gradient="from-indigo-600 ...">...</AuthLeftPanel>}>
+  <MonFormulaire />
+</AuthLayout>
+```

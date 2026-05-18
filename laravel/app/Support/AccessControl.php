@@ -100,6 +100,27 @@ class AccessControl
         return self::projectRole($user, $project) === 'client';
     }
 
+    /**
+     * Seuls l'admin système et le chef de projet (owner ou chef_id) peuvent
+     * ajouter un membre directement ou inviter un client.
+     */
+    public static function canManageProjectMembers(User $user, Project $project): bool
+    {
+        if (self::isAdmin($user)) {
+            return true;
+        }
+
+        if ((int) $project->owner_id === (int) $user->id) {
+            return true;
+        }
+
+        if ($project->chef_id && (int) $project->chef_id === (int) $user->id) {
+            return true;
+        }
+
+        return false;
+    }
+
     public static function canInviteToProject(User $user, Project $project): bool
     {
         if (self::isAdmin($user)) {

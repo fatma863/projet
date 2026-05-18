@@ -1,0 +1,108 @@
+\section*{Bilan du projet}
+
+Ce projet de fin d'études nous a permis de concevoir et de développer
+\textbf{TAC-TIC IntelliPM}, une plateforme de gestion de projets complète et
+intelligente. En cinq sprints Scrum de deux semaines chacun, nous avons livré
+l'intégralité des 28 user stories planifiées, représentant 177 story points.
+
+\medskip
+Les principaux résultats techniques obtenus sont les suivants :
+
+\begin{itemize}
+  \item \textbf{Architecture distribuée opérationnelle} : backend Laravel~12
+        exposant 251 routes REST, SPA React~19 intégralement en français, et
+        microservice FastAPI Python~3.11 pour les modèles ML.
+  \item \textbf{Sécurité multicouche} : authentification Sanctum (Bearer Token),
+        RBAC à deux niveaux (système + projet), Policies Laravel, journal d'audit
+        complet. Protection OWASP Top~10 couverte.
+  \item \textbf{Temps réel} : notifications in-app et mises à jour Kanban via
+        Laravel Reverb, latence médiane inférieure à 20\,ms.
+  \item \textbf{IA opérationnelle} : AUC ROC 0,92 (détection de risques),
+        MAE 1,42\,h (estimation de durée), inférence ML $<$ 45\,ms (P50).
+  \item \textbf{Qualité certifiée} : SonarCloud Quality Gate passé --- 0 bug
+        critique, 0 vulnérabilité, duplication $\approx$ 2\,\%.
+  \item \textbf{Performance} : P95 API $<$ 500\,ms, temps de chargement initial
+        SPA $<$ 2\,s (code splitting + cache React Query).
+\end{itemize}
+
+\section*{Déploiement}
+
+L'application est conçue pour un déploiement cloud en trois composants indépendants :
+
+\begin{table}[H]
+  \centering
+  \begin{tabularx}{\textwidth}{L{3cm}L{4cm}X}
+    \toprule
+    \textbf{Composant} & \textbf{Infrastructure} & \textbf{Détails} \\
+    \midrule
+    \rowcolor{lightgray}
+    Frontend React  & Vercel (CDN mondial)    & Build Vite, déploiement automatique GitHub Actions \\
+    Backend Laravel & VPS 4 vCPU / 8\,Go RAM & PHP-FPM + Nginx, Redis, Laravel Horizon (queues) \\
+    \rowcolor{lightgray}
+    ML FastAPI      & VPS 2 vCPU / 4\,Go RAM & Uvicorn, modèles persistés Joblib, rechargement à chaud \\
+    Base de données & OVH MySQL 8 managé      & Sauvegardes automatiques, réplication lecture \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+La chaîne CI/CD (GitHub Actions) orchestre : lint, tests PHPUnit, analyse SonarCloud,
+build Docker, déploiement automatique sur branche \texttt{main}. Cloudflare assure le
+TLS, le CDN et la protection DDoS.
+
+\section*{Apports personnels}
+
+Ce projet nous a offert une formation transversale couvrant plusieurs domaines :
+
+\begin{description}[leftmargin=3cm]
+  \item[Génie logiciel] Architecture en couches, patterns Repositories et Services,
+        SOLID, Clean Architecture.
+  \item[Bases de données] Modélisation ERD, optimisation des requêtes Eloquent,
+        migrations, indexation.
+  \item[Intelligence artificielle] Préparation de données, feature engineering,
+        sélection de modèles, validation croisée.
+  \item[Sécurité] RBAC, politiques d'autorisation, protection OWASP, audit trail.
+  \item[Méthodes agiles] Cérémonies Scrum, story points, vélocité, rétrospective.
+  \item[DevOps] CI/CD GitHub Actions, Docker Compose, déploiement cloud.
+\end{description}
+
+\section*{Limites}
+
+Nous identifions les principales limites de la version actuelle :
+
+\begin{itemize}
+  \item Les données d'entraînement des modèles ML sont synthétiques (simulées) ;
+        en production réelle, l'historique de projets alimenterait des modèles
+        plus précis.
+  \item L'application est uniquement disponible en version web ; une application
+        mobile (React Native) permettrait un accès en mobilité.
+  \item La fonctionnalité d'intégration GitHub/GitLab (lier des commits à des tâches)
+        a été reportée faute de temps.
+\end{itemize}
+
+\section*{Perspectives}
+
+Les évolutions envisagées pour TAC-TIC IntelliPM s'articulent autour de trois axes :
+
+\paragraph{Enrichissement fonctionnel}
+Application mobile React Native, tableau de bord exécutif, chat intégré aux tâches,
+localisation arabe (RTL), gamification (badges, points de productivité), export
+PDF/Excel des rapports et du Gantt.
+
+\paragraph{Intelligence artificielle avancée}
+Réentraînement continu sur les données réelles, analyse NLP des commentaires pour
+détection de conflits, valeurs SHAP pour l'explicabilité des recommandations,
+détection automatique de surcharge d'équipe.
+
+\paragraph{Industrialisation SaaS}
+Déploiement Kubernetes/Helm, architecture multi-tenant, connecteurs Teams/Slack,
+certification ISO~27001, modèle de facturation par siège.
+
+\bigskip
+\noindent\rule{\linewidth}{0.5pt}
+
+\medskip
+Ce projet a été l'occasion de cultiver l'équilibre entre rigueur technique
+et humilité intellectuelle, entre précision de l'ingénieur et curiosité du
+chercheur. Nous espérons que TAC-TIC IntelliPM constituera une base solide
+pour une suite industrielle au service des équipes de développement tunisiennes
+et au-delà.

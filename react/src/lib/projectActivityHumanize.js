@@ -13,7 +13,7 @@ const FIELD_LABELS = {
   due_date: 'Échéance',
   issue_type: 'Type de ticket',
   assignee_id: 'Assignation',
-  story_points: 'Story points',
+  story_points: "Points d'effort",
   sprint_id: 'Sprint',
 };
 

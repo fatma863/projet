@@ -1,0 +1,77 @@
+@startuml global_use_case
+!theme plain
+skinparam actorStyle awesome
+skinparam packageBorderColor #6D28D9
+skinparam packageBackgroundColor #F5F3FF
+skinparam usecaseBackgroundColor #FFFFFF
+skinparam usecaseBorderColor #6D28D9
+left to right direction
+
+actor "Administrateur" as Admin #6D28D9
+actor "Member" as Member #8B5CF6
+actor "Client" as Client #A78BFA
+actor "Service ML\n(FastAPI)" as ML #059669
+actor "LLM\n(OpenRouter)" as LLM #0891B2
+
+rectangle "TAC-TIC IntelliPM" {
+  package "Authentification" #EDE9FE {
+    usecase "S'authentifier" as A1
+    usecase "Gérer utilisateurs" as A2
+    usecase "Modifier profil" as A3
+  }
+  package "Projets et Équipes" #EDE9FE {
+    usecase "Gérer projets" as P1
+    usecase "Gérer sprints" as P2
+    usecase "Inviter par email" as P3
+    usecase "Gérer équipes" as P4
+  }
+  package "Tâches" #EDE9FE {
+    usecase "Créer / modifier tâche" as T1
+    usecase "Kanban drag-and-drop" as T2
+    usecase "Dépendances FS/SS/FF/SF" as T3
+  }
+  package "Planification" #EDE9FE {
+    usecase "Diagramme de Gantt + CPM" as V1
+    usecase "Calendrier mensuel" as V2
+    usecase "Notifications temps réel" as V3
+    usecase "Dashboards multi-rôles" as V4
+  }
+  package "Intelligence Artificielle" #EDE9FE {
+    usecase "Recommandation ML" as I1
+    usecase "Estimation LLM" as I2
+    usecase "Détection de risques" as I3
+    usecase "Chat assistant IA" as I4
+  }
+}
+
+Admin --> A1
+Admin --> A2
+Admin --> P4
+Admin --> V4
+Admin --> I4
+
+Member --> A1
+Member --> A3
+Member --> P1
+Member --> P2
+Member --> P3
+Member --> T1
+Member --> T2
+Member --> T3
+Member --> V1
+Member --> V2
+Member --> V3
+Member --> I1
+Member --> I2
+Member --> I3
+Member --> I4
+
+Client --> V3
+Client --> V4
+
+I1 --> ML : <<use>>
+I2 --> LLM : <<use>>
+I3 --> LLM : <<use>>
+I4 --> LLM : <<use>>
+
+@enduml

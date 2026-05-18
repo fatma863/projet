@@ -1,0 +1,42 @@
+@startuml sprint2_sequence_invite
+!theme plain
+skinparam sequenceArrowThickness 2
+skinparam participantBackgroundColor #F5F3FF
+skinparam participantBorderColor #6D28D9
+
+actor "Chef de projet" as C
+participant "React UI" as R #EDE9FE
+participant "ProjectController" as PC #F5F3FF
+participant "ProjectInviteService" as PIS #F5F3FF
+participant "Mail Queue" as MQ #F5F3FF
+participant "Email SMTP" as E #DCFCE7
+actor "Invité" as I
+participant "InvitationController" as IC #F5F3FF
+database "MySQL" as DB #DBEAFE
+
+== Phase d'envoi ==
+C  -> R   : Saisit email + rôle
+R  -> PC  : POST /api/projects/{id}/invite\n{email, role}
+PC -> PIS : invite(project, email, role)
+PIS -> DB : ProjectInvitation::create(\n  token=UUID, expires_at=+7j)
+PIS -> MQ : Mail::queue(ProjectInvitationMail)
+MQ -> E   : Email avec lien sécurisé
+PC --> R  : 201 {invitation}
+R --> C   : "Invitation envoyée"
+
+== Phase d'acceptation ==
+E --> I   : Email reçu avec lien
+I  -> IC  : GET /accept-invite?token=xxx
+IC -> DB  : SELECT WHERE token=? AND expires_at > now()
+
+alt Token expiré
+  IC --> I : 410 "Invitation expirée"
+else Token déjà utilisé
+  IC --> I : 422 "Invitation déjà acceptée"
+else Token valide
+  IC -> DB : project_members::create(\n  user_id, project_id, role)
+  IC -> DB : invitation::update(status='accepted')
+  IC --> I  : Redirection /projects/{id}
+end
+
+@enduml

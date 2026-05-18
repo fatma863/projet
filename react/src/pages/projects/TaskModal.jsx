@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
 import { getEcho } from '../../lib/echo';
-import { ISSUE_TYPE_OPTIONS, PRIORITY_OPTIONS, WORKFLOW_OPTIONS } from '../../lib/taskConstants';
+import { PRIORITY_OPTIONS, WORKFLOW_OPTIONS } from '../../lib/taskConstants';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';

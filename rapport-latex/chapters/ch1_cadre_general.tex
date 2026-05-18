@@ -1,0 +1,266 @@
+\chapter{Cadre général du projet}
+
+\section*{Introduction}
+Ce premier chapitre pose le cadre dans lequel s'inscrit notre projet de fin d'études.
+Nous présentons successivement l'entreprise d'accueil, la problématique identifiée,
+l'étude critique des solutions existantes, puis la solution proposée et la méthodologie
+de développement retenue.
+
+% ============================================================
+\section{Présentation de l'entreprise TAC-TIC}
+
+\subsection{Identité et activité}
+
+\textbf{TAC-TIC}, filiale du Groupe New Ways, est une entreprise de services
+numériques (ESN) fondée en 2012 et implantée au Technoparc El Ghazela, Ariana
+(Tunisie). Elle compte plus d'une centaine de collaborateurs et est certifiée
+\textbf{ISO 27001} (sécurité de l'information) et \textbf{ISO 9001} (management
+de la qualité). Son cœur de métier couvre le développement web et mobile,
+l'architecture cloud et l'intégration de solutions d'intelligence artificielle
+et d'IoT.
+
+\subsection{Évolution historique}
+
+\begin{table}[H]
+  \centering
+  \caption{Jalons historiques de TAC-TIC}
+  \label{tab:historique_tactic}
+  \begin{tabularx}{\textwidth}{C{2cm}X}
+    \toprule
+    \thead{Année} & \thead{Étape clé} \\
+    \midrule
+    \rowcolor{lightgray}
+    2012 & Création de TAC-TIC au sein du Groupe New Ways ; premiers projets web \\
+    2014 & Obtention de la certification ISO 27001 ; spécialisation en cybersécurité \\
+    \rowcolor{lightgray}
+    2017 & Transition vers l'architecture cloud (AWS, Azure) \\
+    2020 & Lancement de la division IA/IoT ; déploiement de premiers modèles ML en production \\
+    \rowcolor{lightgray}
+    2023 & Dépassement du cap des 100 projets livrés ; ouverture d'un bureau à Paris \\
+    2026 & Développement de TAC-TIC IntelliPM (présent PFE) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Domaines d'activité}
+
+\begin{table}[H]
+  \centering
+  \caption{Domaines d'activité de TAC-TIC}
+  \label{tab:domaines_tactic}
+  \begin{tabularx}{\textwidth}{L{3.5cm}X}
+    \toprule
+    \thead{Domaine} & \thead{Activités principales} \\
+    \midrule
+    \rowcolor{lightgray}
+    Développement web & Applications SPA React/Vue, APIs REST Laravel/Node.js \\
+    Développement mobile & Applications iOS/Android (React Native, Flutter) \\
+    \rowcolor{lightgray}
+    Cloud \& DevOps & Architecture AWS/Azure, CI/CD, Kubernetes, monitoring \\
+    Intelligence artificielle & ML supervisé/non supervisé, NLP, vision par ordinateur \\
+    \rowcolor{lightgray}
+    Conseil \& audit & Audit sécurité ISO 27001, conseil en transformation numérique \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Organigramme}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/organigramme_tactic.png}{%
+    \includegraphics[width=0.85\textwidth]{figures/organigramme_tactic.png}%
+  }{%
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{1.5cm}
+      \textbf{[IMAGE A INSÉRER]}\\[0.4em]
+      \texttt{figures/organigramme\_tactic.png}\\[0.3em]
+      \textit{Organigramme de l'entreprise TAC-TIC}
+    \vspace{1.5cm}}}%
+  }
+  \caption{Organigramme de TAC-TIC — Groupe New Ways}
+  \label{fig:organigramme}
+\end{figure}
+
+Notre stage s'est déroulé au sein du \textbf{département Développement informatique},
+encadrés par le responsable technique de la division web/cloud.
+
+% ============================================================
+\section{Contexte et problématique}
+
+\subsection{Contexte}
+
+TAC-TIC gère simultanément une dizaine à une quinzaine de projets actifs, mobilisant
+des équipes de 3 à 12 développeurs par projet. La coordination de ces équipes, la
+traçabilité des décisions et le respect des délais constituent des défis quotidiens.
+Les outils utilisés jusqu'alors — combinaison de Trello et de tableurs Excel — ne
+permettaient pas :
+\begin{itemize}
+  \item une vue consolidée multi-projets ;
+  \item la planification fine par sprints avec suivi de vélocité ;
+  \item l'aide à la décision par l'IA pour l'assignation et le risque.
+\end{itemize}
+
+\subsection{Problématique}
+
+\begin{mdframed}[linecolor=primary,linewidth=1.5pt,frametitle={}]
+\centering
+\textit{Comment concevoir une plateforme de gestion de projets qui intègre nativement
+l'intelligence artificielle pour assister les chefs de projet dans leurs décisions
+d'assignation, de planification et de gestion des risques, tout en garantissant une
+expérience utilisateur fluide et une architecture logicielle maintenable ?}
+\end{mdframed}
+
+\subsection{Objectifs}
+
+\textbf{Objectifs métier :}
+\begin{itemize}
+  \item Centraliser la gestion de tous les projets sur une seule plateforme ;
+  \item Adopter les cérémonies Scrum (sprints, rétrospective, vélocité) ;
+  \item Offrir des visualisations décisionnelles (Gantt, Kanban, dashboards) ;
+  \item Automatiser les alertes de retard et les recommandations d'assignation.
+\end{itemize}
+
+\textbf{Objectifs techniques :}
+\begin{itemize}
+  \item Architecture distribuée (backend Laravel + SPA React + microservice ML) ;
+  \item Sécurité multicouche (Sanctum, RBAC, policies, audit) ;
+  \item Temps réel via WebSocket (Laravel Reverb) ;
+  \item Qualité de code vérifiée par SonarCloud (Quality Gate \(\leq\) 3\,\% duplication).
+\end{itemize}
+
+% ============================================================
+\section{Étude de l'existant et critique}
+
+\subsection{Solutions analysées}
+
+Nous avons étudié trois outils majeurs du marché : \textbf{Trello}, \textbf{Jira}
+et \textbf{Asana}.
+
+\begin{table}[H]
+  \centering
+  \caption{Comparaison des solutions de gestion de projets existantes}
+  \label{tab:comparaison_existant}
+  \small
+  \begin{tabularx}{\textwidth}{L{4.5cm}C{2cm}C{2cm}C{2cm}C{2.5cm}}
+    \toprule
+    \thead{Fonctionnalité} & \thead{Trello} & \thead{Jira} & \thead{Asana} & \thead{TAC-TIC IntelliPM} \\
+    \midrule
+    \rowcolor{lightgray}
+    Kanban drag-and-drop  & \cmark & \cmark & \cmark & \cmark \\
+    Diagramme de Gantt    & \xmark & \cmark & \cmark & \cmark \\
+    \rowcolor{lightgray}
+    Chemin critique (CPM) & \xmark & \xmark & \xmark & \cmark \\
+    Gestion des sprints   & \xmark & \cmark & \cmark & \cmark \\
+    \rowcolor{lightgray}
+    Recommandation ML IA  & \xmark & \xmark & \xmark & \cmark \\
+    Estimation LLM        & \xmark & \xmark & \xmark & \cmark \\
+    \rowcolor{lightgray}
+    Notifications WebSocket & \xmark & \cmark & \cmark & \cmark \\
+    Multi-rôles par projet & \cmark & \cmark & \cmark & \cmark \\
+    \rowcolor{lightgray}
+    Internationalisation FR & \cmark & \cmark & \cmark & \cmark \\
+    Open source / hébergeable & \xmark & \xmark & \xmark & \cmark \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Critique}
+
+\begin{itemize}
+  \item \textbf{Trello} : simple et visuel, mais limité aux tableaux Kanban. Aucune
+        notion de sprint, pas de Gantt, pas d'IA.
+  \item \textbf{Jira} : puissant mais complexe à configurer. Coûteux pour les PME.
+        Aucune recommandation ML native.
+  \item \textbf{Asana} : bon équilibre fonctionnel, mais pas de chemin critique, pas
+        d'IA intégrée, coût élevé par siège.
+\end{itemize}
+
+% ============================================================
+\section{Solution proposée : TAC-TIC IntelliPM}
+
+\begin{table}[H]
+  \centering
+  \caption{Apports différenciants de TAC-TIC IntelliPM}
+  \label{tab:apports}
+  \begin{tabularx}{\textwidth}{L{4.5cm}X}
+    \toprule
+    \thead{Fonctionnalité} & \thead{Apport} \\
+    \midrule
+    \rowcolor{lightgray}
+    Recommandation ML       & Suggère le meilleur assigné pour chaque tâche (22 variables, AUC~0,92) \\
+    Estimation LLM          & Durée estimée avec justification en langage naturel \\
+    \rowcolor{lightgray}
+    Détection de risques    & Score de risque tâche/projet + alertes proactives \\
+    Chemin critique (CPM)   & Calcul automatique et visualisation sur le Gantt (barres rouges) \\
+    \rowcolor{lightgray}
+    Temps réel WebSocket    & Mises à jour Kanban et notifications sans rechargement \\
+    RBAC à 2 niveaux        & Rôle système (admin/member/client) + rôle projet (chef/member/client) \\
+    \rowcolor{lightgray}
+    Journal d'audit         & Toutes les actions tracées avec IP, user, horodatage \\
+    Dashboard multi-rôles   & Vue différenciée selon le profil (admin, member, client) \\
+    \rowcolor{lightgray}
+    Internationalisation    & Interface 100\,\% française, extensible \\
+    Architecture ouverte    & Monorepo MIT, hébergeable en auto-managed \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Méthode de travail : Scrum}
+
+\subsection{Pourquoi Scrum ?}
+
+La méthode Scrum a été retenue pour trois raisons principales :
+\begin{enumerate}
+  \item \textbf{Livraisons incrémentales} — chaque sprint livre un incrément fonctionnel
+        démontrable, facilitant les retours du tuteur entreprise ;
+  \item \textbf{Adaptabilité} — les backlogs sont révisés entre sprints pour intégrer
+        les retours utilisateurs ;
+  \item \textbf{Transparence} — les daily stand-ups et rétrospectives assurent une
+        visibilité permanente sur l'avancement.
+\end{enumerate}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/cycle_scrum.png}{%
+    \includegraphics[width=0.80\textwidth]{figures/cycle_scrum.png}%
+  }{%
+    \fbox{\parbox{0.80\textwidth}{\centering\vspace{1.5cm}
+      \textbf{[IMAGE A INSÉRER]}\\[0.4em]
+      \texttt{figures/cycle\_scrum.png}\\[0.3em]
+      \textit{Cycle Scrum : Product Backlog → Sprint Backlog → Sprint → Incrément}
+    \vspace{1.5cm}}}%
+  }
+  \caption{Cycle Scrum appliqué au projet TAC-TIC IntelliPM}
+  \label{fig:cycle_scrum}
+\end{figure}
+
+\subsection{Planification des sprints}
+
+\begin{table}[H]
+  \centering
+  \caption{Planification des 5 sprints du projet}
+  \label{tab:sprints_planning}
+  \begin{tabularx}{\textwidth}{C{1.5cm}L{4cm}X L{2.5cm}}
+    \toprule
+    \thead{Sprint} & \thead{Périmètre} & \thead{Livrables} & \thead{Durée} \\
+    \midrule
+    \rowcolor{lightgray}
+    1 & Gestion des utilisateurs & Auth Sanctum, RBAC, profil, dashboard admin & 2 semaines \\
+    2 & Projets et équipes       & CRUD projets, invitations, sprints, équipes & 2 semaines \\
+    \rowcolor{lightgray}
+    3 & Tâches et Kanban         & Wizard tâche, dépendances, Kanban, temps    & 2 semaines \\
+    4 & Planification visuelle   & Gantt + CPM, calendrier, notifications      & 2 semaines \\
+    \rowcolor{lightgray}
+    5 & Intelligence artificielle & ML recommandation, LLM estimation, chat IA & 2 semaines \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\section*{Conclusion}
+
+Ce premier chapitre a délimité le cadre du projet : une entreprise dynamique, une
+problématique réelle de coordination multi-projets, et une réponse technologique
+ambitieuse articulant agilité, architecture distribuée et intelligence artificielle.
+Le chapitre suivant entre dans le détail de l'étude préliminaire : acteurs, besoins,
+product backlog et conception architecturale.

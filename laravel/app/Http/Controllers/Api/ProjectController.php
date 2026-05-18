@@ -422,7 +422,11 @@ class ProjectController extends Controller
 
     public function addMember(Request $request, Project $project): JsonResponse
     {
-        Gate::authorize('update', $project);
+        if (! AccessControl::canManageProjectMembers($request->user(), $project)) {
+            return response()->json([
+                'message' => 'Seuls l\'administrateur et le chef de projet peuvent ajouter des membres.',
+            ], 403);
+        }
 
         $data = $request->validate([
             'user_id' => 'required|exists:users,id',
@@ -485,6 +489,13 @@ class ProjectController extends Controller
             'email' => 'required|email|max:255',
             'role' => 'required|string|in:member,client',
         ]);
+
+        // Inviter un client : réservé à l'admin système et au chef de projet
+        if ($data['role'] === 'client' && ! AccessControl::canManageProjectMembers($request->user(), $project)) {
+            return response()->json([
+                'message' => 'Seuls l\'administrateur et le chef de projet peuvent inviter un client.',
+            ], 403);
+        }
 
         $inviteRole = AccessControl::normalizePivotRole($data['role']) ?? 'member';
 

@@ -1,10 +1,10 @@
-import { createContext, useContext, useMemo } from ‘react’;
-import { translate } from ‘./translate’;
+import { createContext, useContext, useMemo } from 'react';
+import { translate } from './translate';
 
 const I18nContext = createContext(null);
 
 export function I18nProvider({ children }) {
-  const locale = ‘fr’;
+  const locale = 'fr';
 
   const value = useMemo(() => {
     const t = (key, vars) => translate(locale, key, vars);

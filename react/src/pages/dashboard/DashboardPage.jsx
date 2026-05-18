@@ -12,7 +12,7 @@ import { fetchActivityFeed, fetchAdminDashboard, fetchMemberDashboard } from '..
 import { acceptProjectInvite, declineProjectInvite, fetchMyInvites } from '../../lib/services/invitationsApi';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { DashboardPageSkeleton, SkeletonActivityRow, Skeleton } from '../../components/ui/Skeleton';
+import { DashboardPageSkeleton, Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { formatRelativeTimeFr } from '../../lib/formatRelativeTime';

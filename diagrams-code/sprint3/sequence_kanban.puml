@@ -1,0 +1,35 @@
+@startuml sprint3_sequence_kanban
+!theme plain
+skinparam sequenceArrowThickness 2
+skinparam participantBackgroundColor #F5F3FF
+skinparam participantBorderColor #6D28D9
+
+actor "Member" as M
+participant "WorkflowBoard\n(React)" as WB #EDE9FE
+participant "TaskController" as TC #F5F3FF
+participant "Task Model" as TM #F5F3FF
+participant "Reverb\nWebSocket" as RB #DCFCE7
+participant "Autres clients\n(React)" as OC #EDE9FE
+database "MySQL" as DB #DBEAFE
+
+M  -> WB : Drag carte "À faire"
+M  -> WB : Drop sur colonne "En cours"
+WB -> WB : Mise à jour optimiste\n(React Query)
+
+WB -> TC : PATCH /api/tasks/{id}/move\n{status_id, workflow_status: in_progress}
+TC -> TC : Vérifie CheckProjectAccess
+
+alt Accès refusé
+  TC --> WB : 403 Forbidden
+  WB -> WB  : Rollback optimiste
+else Accès autorisé
+  TM -> DB  : UPDATE tasks SET\nstatus_id, workflow_status
+  DB --> TM : OK
+  TC -> RB  : broadcast(TaskUpdated)\ncanal: projet.{id}
+  RB --> OC : Événement WebSocket\ntask.updated
+  OC -> OC  : Invalide cache React Query
+  TC --> WB : 200 {task}
+  WB -> WB  : Confirme mise à jour
+end
+
+@enduml

@@ -1,0 +1,71 @@
+@startuml sprint4_class
+!theme plain
+skinparam classBackgroundColor #F5F3FF
+skinparam classBorderColor #6D28D9
+skinparam classFontColor #1E1B4B
+skinparam arrowColor #6D28D9
+
+class Notification {
+  +id: bigint
+  +user_id: bigint
+  +type: string
+  +title: string
+  +message: text
+  +data: json
+  +read_at: datetime
+  +created_at: datetime
+}
+
+class ActivityLog {
+  +id: bigint
+  +project_id: bigint
+  +user_id: bigint
+  +action: string
+  +subject_type: string
+  +subject_id: bigint
+  +meta: json
+  +created_at: datetime
+}
+
+class AuditLog {
+  +id: bigint
+  +user_id: bigint
+  +action: string
+  +entity_type: string
+  +entity_id: bigint
+  +ip_address: string
+  +meta: json
+  +created_at: datetime
+}
+
+class CriticalPathService {
+  +calculate(project): array
+  -getForwardPass(tasks): void
+  -getBackwardPass(tasks): void
+  -topologicalSort(tasks): Collection
+}
+
+class GanttService {
+  +getGanttData(projects): array
+  +formatTask(task): array
+  +getProjectData(project): array
+}
+
+class AdminDashboardService {
+  +getGlobalKpis(): array
+  +getActiveAlerts(): array
+  +getUpcomingDeadlines(days): array
+  +getTeamWorkload(): array
+}
+
+class NotificationService {
+  +notify(users, type, data): void
+  +notifyDelay(task, assignees): void
+  +markAllRead(user): void
+}
+
+CriticalPathService ..> GanttService : alimente
+NotificationService --> Notification : crée
+ActivityLog "*" --> "1" AuditLog : complète
+
+@enduml

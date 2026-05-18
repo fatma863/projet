@@ -26,7 +26,14 @@
       "Bash(awk '/^\\\\s+fr:\\\\s*\\\\{/,/^\\\\s+\\\\},\\\\n\\\\s+en:/ {print}' \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\react\\\\src\\\\i18n\\\\messages.js\")",
       "Bash(awk '/^\\\\s+en:\\\\s*\\\\{/,/^\\\\s+\\\\}/ {if\\(/^\\\\s+[a-z]+:/\\) print}' \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\react\\\\src\\\\i18n\\\\messages.js\")",
       "Bash(npm install *)",
-      "Bash(python sonar_report.py)"
+      "Bash(python sonar_report.py)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\react\\\\src\" -Recurse -Include \"*.jsx\", \"*.js\", \"*.ts\", \"*.tsx\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(node -e ' *)",
+      "Bash(grep -v \"••••\\\\|@email\\\\|__\\\\|{}$\\\\|Ex :\\\\|YYYY\\\\|ISO\\\\|URL\\\\|http\\\\|{form\\\\|\\\\${\")",
+      "Bash(grep -v \"^--$\")",
+      "Bash(grep -n \"use App\\\\\\\\Support\\\\\\\\AccessControl\\\\|use Illuminate\\\\\\\\Support\\\\\\\\Facades\\\\\\\\Gate\" c:/Users/rjebf/Downloads/projet/laravel/app/Http/Controllers/Api/ProjectController.php)"
     ]
   }
 }

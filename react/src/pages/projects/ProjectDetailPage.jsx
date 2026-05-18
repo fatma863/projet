@@ -11,7 +11,7 @@ import { Spinner } from '../../components/ui/Spinner';
 import { Card, CardContent } from '../../components/ui/Card';
 import { DueDateRangeFilter } from '../../components/tasks/DueDateRangeFilter';
 import { WORKFLOW_COLUMNS, ISSUE_TYPE_LABELS } from '../../lib/taskConstants';
-import { PROJECT_ROLE_LABELS, formatProjectRole, isGuestViewer } from '../../lib/roles';
+import { isGuestViewer } from '../../lib/roles';
 import {
   ArrowLeft, Plus, GripVertical, Clock, User, AlertTriangle,
   BarChart3, Users, Calendar, Mail, Download, History,

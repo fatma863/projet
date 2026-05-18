@@ -1,0 +1,125 @@
+@startuml class_diagram_global
+!theme plain
+skinparam classBackgroundColor #F5F3FF
+skinparam classBorderColor #6D28D9
+skinparam classFontColor #1E1B4B
+skinparam arrowColor #6D28D9
+skinparam linetype ortho
+
+class User {
+  +id: bigint
+  +name: string
+  +email: string
+  +password: bcrypt
+  +status: active|disabled
+  +locale: string
+  +theme: light|dark|system
+}
+
+class Team {
+  +id: bigint
+  +name: string
+  +leader_id: bigint
+}
+
+class Specialty {
+  +id: bigint
+  +name: string
+  +color: string
+}
+
+class Project {
+  +id: bigint
+  +name: string
+  +code: string
+  +status: planning|active|archived
+  +priority: low|medium|high|urgent
+}
+
+class ProjectInvitation {
+  +token: UUID
+  +email: string
+  +role: string
+  +status: pending|accepted|expired
+  +expires_at: datetime
+}
+
+class Sprint {
+  +id: bigint
+  +name: string
+  +goal: string
+  +status: planned|active|completed
+}
+
+class TaskStatus {
+  +id: bigint
+  +name: string
+  +color: string
+  +order: int
+}
+
+class Task {
+  +id: bigint
+  +title: string
+  +issue_type: task|bug|story
+  +priority: low|medium|high|urgent
+  +workflow_status: todo|in_progress|at_risk|done
+  +progress_percent: int
+  +story_points: int
+}
+
+class TaskAssignment {
+  +allocation_percent: int
+}
+
+class TaskDependency {
+  +type: FS|SS|FF|SF
+}
+
+class TaskComment {
+  +content: text
+  +parent_id: bigint
+}
+
+class Attachment {
+  +type: file|link
+  +name: string
+  +url: string
+}
+
+class TimeEntry {
+  +minutes: int
+  +source: manual|timer
+}
+
+class Notification {
+  +type: string
+  +title: string
+  +data: json
+  +read_at: datetime
+}
+
+class AiRecommendation {
+  +type: assignment|estimation|risk
+  +confidence: float
+  +result_data: json
+}
+
+User "0..*" -- "0..*" Team : membre de
+User "0..*" -- "0..*" Specialty : possède
+Team "1" -- "0..*" Project : gère
+Project "1" -- "0..*" Sprint : contient
+Project "1" -- "0..*" TaskStatus : définit
+Project "1" -- "0..*" Task : comporte
+Sprint "1" -- "0..*" Task : inclut
+Task "0..1" <-- "0..*" Task : parent / sous-tâche
+Task "0..*" -- "0..*" User : TaskAssignment
+Task "0..*" -- "0..*" Task : TaskDependency
+Task "1" -- "0..*" TaskComment : a
+Task "1" -- "0..*" Attachment : joint
+Task "1" -- "0..*" TimeEntry : enregistre
+Task "1" -- "0..*" AiRecommendation : génère
+User "1" -- "0..*" Notification : reçoit
+Project "1" -- "0..*" ProjectInvitation : émet
+
+@enduml

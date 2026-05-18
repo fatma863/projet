@@ -1,0 +1,59 @@
+@startuml sprint1_class
+!theme plain
+skinparam classBackgroundColor #F5F3FF
+skinparam classBorderColor #6D28D9
+skinparam classFontColor #1E1B4B
+skinparam arrowColor #6D28D9
+
+class User {
+  +id: bigint
+  +name: string
+  +email: string
+  +password: string <<bcrypt>>
+  +status: active|disabled
+  +avatar_url: string
+  +timezone: string
+  +locale: fr|en
+  +theme: light|dark|system
+  +notify_in_app: boolean
+  +notify_email: boolean
+  --
+  +createToken(name): PersonalAccessToken
+  +hasRole(role): boolean
+  +assignRole(role): void
+}
+
+class PersonalAccessToken {
+  +id: bigint
+  +tokenable_id: bigint
+  +name: string
+  +token: string <<hashed>>
+  +abilities: json
+  +expires_at: datetime
+}
+
+class Role {
+  +id: bigint
+  +name: admin|member|client
+  +guard_name: string
+}
+
+class Permission {
+  +id: bigint
+  +name: string
+  +guard_name: string
+}
+
+class Specialty {
+  +id: bigint
+  +name: string
+  +color: string
+  +icon: string
+}
+
+User "1" --> "0..*" PersonalAccessToken : possède
+User "0..*" --> "0..*" Role : a
+Role "0..*" --> "0..*" Permission : accorde
+User "0..*" --> "0..*" Specialty : maîtrise
+
+@enduml
