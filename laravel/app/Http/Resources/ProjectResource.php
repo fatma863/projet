@@ -44,6 +44,7 @@ class ProjectResource extends JsonResource
                 'can_invite'       => $user ? AccessControl::canInviteToProject($user, $this->resource) : false,
                 'can_create_tasks' => $user ? AccessControl::canCreateTaskInProject($user, $this->resource) : false,
             ],
+            'progress_percent' => (int) ($this->progress_percent ?? 0),
             'created_by' => $this->created_by,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),

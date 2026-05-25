@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\DailyTaskProgress;
 use App\Models\Specialty;
 use App\Support\AccessControl;
 use App\Support\SqlDateExpressions;
@@ -35,12 +36,12 @@ class Task extends Model
     protected static function booted(): void
     {
         static::saving(function (Task $task) {
+            // Only hard-lock done=100 and todo=0; in_progress is handled by ProgressCalculationService
             if ($task->isDirty('workflow_status')) {
                 $task->progress_percent = match ($task->workflow_status) {
-                    'done'        => 100,
-                    'in_progress' => 50,
-                    'todo'        => 0,
-                    default       => $task->progress_percent,
+                    'done' => 100,
+                    'todo' => 0,
+                    default => $task->progress_percent,
                 };
             }
         });
@@ -69,6 +70,10 @@ class Task extends Model
         'progress_percent',
         'kanban_order',
         'workflow_status',
+        'progress_mode',
+        'manager_validation',
+        'activity_score',
+        'checklist',
         'created_by',
         'updated_by',
         'archived_at',
@@ -87,10 +92,13 @@ class Task extends Model
             'actual_hours' => 'decimal:2',
             'complexity' => 'integer',
             'story_points' => 'integer',
-            'progress_percent' => 'integer',
-            'kanban_order' => 'integer',
-            'position' => 'integer',
-            'archived_at' => 'datetime',
+            'progress_percent'    => 'integer',
+            'manager_validation'  => 'integer',
+            'activity_score'      => 'integer',
+            'checklist'           => 'array',
+            'kanban_order'        => 'integer',
+            'position'            => 'integer',
+            'archived_at'         => 'datetime',
         ];
     }
 
@@ -173,6 +181,16 @@ class Task extends Model
     public function timeEntries(): HasMany
     {
         return $this->hasMany(TimeEntry::class);
+    }
+
+    public function dailyProgress(): HasMany
+    {
+        return $this->hasMany(DailyTaskProgress::class);
+    }
+
+    public function watchers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'task_watchers')->withTimestamps();
     }
 
     public function specialties(): BelongsToMany

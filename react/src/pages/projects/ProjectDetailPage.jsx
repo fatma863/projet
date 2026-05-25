@@ -15,7 +15,7 @@ import { isGuestViewer } from '../../lib/roles';
 import {
   ArrowLeft, Plus, GripVertical, Clock, User, AlertTriangle,
   BarChart3, Users, Calendar, Mail, Download, History,
-  Pencil, Trash2, LayoutGrid, MessageSquare, Link2, FolderKanban, Crown,
+  Pencil, Trash2, LayoutGrid, MessageSquare, Link2, FolderKanban, Crown, TrendingUp,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -32,6 +32,8 @@ import { toast } from 'sonner';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
+import DailyProgressModal from '../../components/tasks/DailyProgressModal';
+import FollowerButton from '../../components/projects/FollowerButton';
 
 const PRIORITY_COLORS = {
   low: 'bg-blue-100 text-blue-800',
@@ -110,6 +112,7 @@ export default function ProjectDetailPage() {
   }));
   const [inviteOpen, setInviteOpen] = useState(false);
   const [tab, setTab] = useState('kanban');
+  const [worklogTask, setWorklogTask] = useState(null);
 
   const { data: project, isLoading, error } = useQuery({
     queryKey: ['project', id],
@@ -221,10 +224,50 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['tasks', id] });
     });
 
+    channel.listen('.task.comment.deleted', () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+    });
+
+    channel.listen('.task.updated', (e) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+      if (e.action === 'moved') {
+        // Kanban move — also refresh dashboard metrics
+        queryClient.invalidateQueries({ queryKey: ['project-dashboard', id] });
+      }
+    });
+
+    channel.listen('.task.deleted', (e) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+      queryClient.invalidateQueries({ queryKey: ['project-dashboard', id] });
+      toast.info(`Tâche "${e.task_title}" supprimée par ${e.actor_name}`);
+    });
+
+    channel.listen('.task.assignment.changed', (e) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+    });
+
+    channel.listen('.activity.logged', () => {
+      queryClient.invalidateQueries({ queryKey: ['project-activity', id] });
+    });
+
+    channel.listen('.sprint.state.changed', () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+    });
+
+    channel.listen('.progress.updated', (e) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      queryClient.invalidateQueries({ queryKey: ['project-dashboard', id] });
+      if (e.source === 'worklog' && e.actor_id !== user?.id) {
+        toast.info(`${e.actor_name} a mis à jour la progression de "${e.task_title}" → ${e.task_progress}%`);
+      }
+    });
+
     return () => {
       echo.leave(`private-project.${id}`);
     };
-  }, [id, queryClient]);
+  }, [id, queryClient, user?.id]);
 
   const workflowMoveMutation = useMutation({
     mutationFn: ({ taskId, workflow_status }) =>
@@ -360,6 +403,7 @@ export default function ProjectDetailPage() {
               <Mail className="mr-2 h-4 w-4" /> Inviter
             </Button>
           )}
+          <FollowerButton projectId={id} />
           {(isAdmin || !isViewer) && (
             <Link
               to={`/projects/${id}/members-performance`}
@@ -367,11 +411,6 @@ export default function ProjectDetailPage() {
             >
               <BarChart3 className="h-4 w-4 text-primary" /> Performance
             </Link>
-          )}
-          {canWriteProject && (
-            <Button onClick={() => openNewTask('todo')}>
-              <Plus className="mr-2 h-4 w-4" /> Nouvelle tâche
-            </Button>
           )}
         </div>
       </div>
@@ -495,7 +534,6 @@ export default function ProjectDetailPage() {
                 <option value="todo">À faire</option>
                 <option value="in_progress">En cours</option>
                 <option value="done">Terminé</option>
-                <option value="at_risk">À risque</option>
               </Select>
             </div>
             <div>
@@ -510,19 +548,6 @@ export default function ProjectDetailPage() {
                 <option value="medium">Moyenne</option>
                 <option value="high">Haute</option>
                 <option value="urgent">Urgente</option>
-              </Select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-muted-foreground">Type</label>
-              <Select
-                value={kanbanFilters.type}
-                onChange={(e) => setKanbanFilters((f) => ({ ...f, type: e.target.value }))}
-                className="min-w-[120px]"
-              >
-                <option value="">Tous</option>
-                <option value="task">Tâche</option>
-                <option value="bug">Anomalie</option>
-                <option value="story">Fonctionnalité</option>
               </Select>
             </div>
             <div className="w-full min-w-0 sm:min-w-[min(100%,22rem)] sm:max-w-md">
@@ -556,6 +581,7 @@ export default function ProjectDetailPage() {
                 deleteTaskMutation.mutate(task.id);
               }
             }}
+            onLogWork={!isViewer ? (task) => setWorklogTask(task) : null}
             canWriteProject={canWriteProject}
             isAdmin={isAdmin}
             movePending={workflowMoveMutation.isPending}
@@ -604,6 +630,13 @@ export default function ProjectDetailPage() {
           queryClient.invalidateQueries({ queryKey: ['project', id] });
           queryClient.invalidateQueries({ queryKey: ['invitations-pending'] });
         }}
+      />
+
+      <DailyProgressModal
+        open={!!worklogTask}
+        onClose={() => setWorklogTask(null)}
+        task={worklogTask}
+        projectId={id}
       />
     </div>
   );
@@ -863,6 +896,7 @@ function KanbanBoard({
   onAddTask,
   onEditTask,
   onDeleteTask,
+  onLogWork,
   canWriteProject,
   isAdmin,
   movePending,
@@ -914,6 +948,7 @@ function KanbanBoard({
                 onDelete={canWriteProject && (isAdmin || task?.access?.can_edit !== false)
                   ? () => onDeleteTask(task)
                   : null}
+                onLogWork={onLogWork ? () => onLogWork(task) : null}
                 canWriteTask={canWriteProject && (isAdmin || task?.access?.can_edit !== false)}
                 columns={columns}
                 currentColumn={col.id}
@@ -929,7 +964,7 @@ function KanbanBoard({
   );
 }
 
-function KanbanCard({ task, onClick, onDelete, canWriteTask, columns, currentColumn, onMoveToColumn }) {
+function KanbanCard({ task, onClick, onDelete, onLogWork, canWriteTask, columns, currentColumn, onMoveToColumn }) {
   const handleDragStart = (e) => {
     e.dataTransfer.setData('taskId', task.id.toString());
   };
@@ -959,6 +994,16 @@ function KanbanCard({ task, onClick, onDelete, canWriteTask, columns, currentCol
       <div className="mb-2 flex items-start justify-between gap-2">
         <h4 className="text-sm font-medium text-foreground leading-snug">{task.title}</h4>
         <div className="flex flex-shrink-0 items-center gap-1">
+          {onLogWork && task.workflow_status !== 'done' && task.workflow_status !== 'todo' && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onLogWork(); }}
+              className="rounded p-0.5 text-indigo-500 opacity-0 transition-opacity group-hover:opacity-100 hover:text-indigo-700"
+              title="Journaliser le travail"
+            >
+              <TrendingUp className="h-3.5 w-3.5" />
+            </button>
+          )}
           {onDelete && (
             <button
               type="button"

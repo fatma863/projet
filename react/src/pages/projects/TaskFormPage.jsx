@@ -19,6 +19,7 @@ import { MemberAssigneePicker } from '../../components/tasks/MemberAssigneePicke
 import { TaskDependencyPicker } from '../../components/tasks/TaskDependencyPicker';
 import { MLRecommendationModal } from '../../components/tasks/MLRecommendationModal';
 import { MembersPerformanceModal } from '../../components/tasks/MembersPerformanceModal';
+import WatcherButton from '../../components/tasks/WatcherButton';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -442,6 +443,7 @@ export default function TaskFormPage() {
             {isEdit ? `Modifier la tâche${taskDetail?.title ? ` · ${taskDetail.title}` : ''}` : 'Nouvelle tâche'}
           </h1>
         </div>
+        {isEdit && <WatcherButton taskId={taskId} />}
         {isEdit && canEdit && (
           <button
             type="button"

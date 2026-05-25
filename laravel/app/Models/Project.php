@@ -28,13 +28,15 @@ class Project extends Model
         'end_date',
         'owner_id',
         'created_by',
+        'progress_percent',
     ];
 
     protected function casts(): array
     {
         return [
-            'start_date' => 'date',
-            'end_date' => 'date',
+            'start_date'       => 'date',
+            'end_date'         => 'date',
+            'progress_percent' => 'integer',
         ];
     }
 
@@ -73,6 +75,11 @@ class Project extends Model
         return $this->belongsToMany(User::class, 'project_members')
             ->withPivot('project_role')
             ->withTimestamps();
+    }
+
+    public function followers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'project_followers')->withTimestamps();
     }
 
     public function users(): BelongsToMany

@@ -22,13 +22,16 @@ export function normalizeAppRole(role) {
 }
 
 /**
- * Profil client (lecture seule) : rôle applicatif `client` (Spatie), y compris legacy guest/viewer.
+ * Profil client (lecture seule) : rôle `client` ou legacy guest/viewer.
+ * Les rôles dynamiques (ex: "scrum master") sont traités comme membre.
  */
+const CLIENT_ROLES = new Set(['client', 'guest', 'viewer']);
+
 export function isGuestViewer(user) {
   if (!user) return false;
   const list = Array.isArray(user.roles) ? user.roles : [];
-  if (list.some((r) => normalizeAppRole(r) === 'client')) return true;
-  return normalizeAppRole(user.role) === 'client';
+  if (list.some((r) => CLIENT_ROLES.has(r))) return true;
+  return CLIENT_ROLES.has(user.role);
 }
 
 /** @param {'fr'|'en'} [locale] */

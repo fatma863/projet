@@ -19,7 +19,9 @@ export const messages = {
         gantt: 'Gantt',
         ai: 'IA et analyses',
         notifications: 'Notifications',
+        auditLog: "Journal d'audit",
         settings: 'Paramètres',
+        roles: 'Rôles & Permissions',
       },
     },
     common: {
@@ -371,7 +373,6 @@ export const messages = {
         task_comment: 'Nouveau commentaire',
         task_overdue: 'Tâche en retard',
         project_invitation: 'Invitation projet',
-        sprint_started: 'Sprint démarré',
         mention: 'Mention',
       },
       empty: 'Vous êtes à jour !',

@@ -51,6 +51,16 @@ class AccessControl
         }
     }
 
+    /**
+     * Returns true if the user has the 'client' role (read-only viewer).
+     * Works with both the canonical 'client' role and any role explicitly
+     * named 'client' in a dynamic RBAC setup.
+     */
+    public static function isClientRole(User $user): bool
+    {
+        return $user->hasRole('client');
+    }
+
     public static function projectRole(User $user, Project $project): ?string
     {
         $cacheKey = $user->id . ':' . $project->id;
@@ -146,7 +156,7 @@ class AccessControl
 
         $projectRole = self::projectRole($user, $project);
 
-        if ($user->hasRole('client') && $projectRole === null && (int) $project->owner_id !== (int) $user->id) {
+        if (self::isClientRole($user) && $projectRole === null && (int) $project->owner_id !== (int) $user->id) {
             return false;
         }
 
@@ -162,7 +172,7 @@ class AccessControl
             return true;
         }
 
-        if (! $user->hasRole('client')) {
+        if (! self::isClientRole($user)) {
             return $project->tasks()
                 ->whereHas('assignees', fn ($q) => $q->where('users.id', $user->id))
                 ->exists();
@@ -177,7 +187,7 @@ class AccessControl
             return true;
         }
 
-        if ($user->hasRole('client')) {
+        if (self::isClientRole($user)) {
             return false;
         }
 
@@ -201,7 +211,7 @@ class AccessControl
             return true;
         }
 
-        if ($user->hasRole('client')) {
+        if (self::isClientRole($user)) {
             return false;
         }
 
@@ -234,7 +244,7 @@ class AccessControl
             return true;
         }
 
-        if ($user->hasRole('client')) {
+        if (self::isClientRole($user)) {
             return false;
         }
 
@@ -253,7 +263,7 @@ class AccessControl
 
         $project = $task->project;
 
-        if ($user->hasRole('client')) {
+        if (self::isClientRole($user)) {
             return false;
         }
 

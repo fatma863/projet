@@ -14,7 +14,7 @@ import { Select } from '../../components/ui/Select';
 import { Textarea } from '../../components/ui/Textarea';
 import {
   Plus, Search, FolderKanban, Calendar, Users, MoreVertical,
-  Pencil, Trash2, Eye, X, RotateCcw, ChevronDown, Check,
+  Pencil, Trash2, Eye, X, RotateCcw, ChevronDown, Check, Crown,
 } from 'lucide-react';
 import { isGuestViewer } from '../../lib/roles';
 
@@ -235,6 +235,15 @@ export default function ProjectsPage() {
                       {project.description}
                     </p>
                   )}
+                  {/* Chef de projet */}
+                  {project.chef && (
+                    <div className="flex items-center gap-1.5 mb-3 text-xs">
+                      <Crown className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                      <span className="text-muted-foreground">Chef&nbsp;:</span>
+                      <span className="font-semibold text-foreground">{project.chef.name}</span>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     {project.team && (
                       <span className="flex items-center gap-1">
@@ -248,7 +257,7 @@ export default function ProjectsPage() {
                       </span>
                     )}
                     <span className="flex items-center gap-1">
-                      <FolderKanban className="h-3.5 w-3.5" /> {project.tasks_count || 0} tâches
+                      <FolderKanban className="h-3.5 w-3.5" /> {project.tasks_count || 0} tâche{(project.tasks_count || 0) > 1 ? 's' : ''}
                     </span>
                   </div>
                 </Link>

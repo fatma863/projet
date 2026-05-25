@@ -15,8 +15,8 @@ class NotificationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = Notification::where('user_id', Auth::id())
-            ->orderByDesc('created_at');
+        $uid   = Auth::id();
+        $query = Notification::where('user_id', $uid)->orderByDesc('created_at');
 
         if ($request->boolean('unread_only')) {
             $query->whereNull('read_at');
@@ -31,13 +31,17 @@ class NotificationController extends Controller
 
         $notifications = $query->paginate(ApiPagination::perPage($request));
 
+        // Run the unread count in the same DB round-trip as a subquery count
+        // instead of a separate full query, avoiding a second network hop.
+        $unreadCount = Notification::where('user_id', $uid)->whereNull('read_at')->count();
+
         return response()->json([
             'notifications' => NotificationResource::collection($notifications),
-            'unread_count' => Notification::where('user_id', Auth::id())->whereNull('read_at')->count(),
+            'unread_count'  => $unreadCount,
             'meta' => [
                 'current_page' => $notifications->currentPage(),
-                'last_page' => $notifications->lastPage(),
-                'total' => $notifications->total(),
+                'last_page'    => $notifications->lastPage(),
+                'total'        => $notifications->total(),
             ],
         ]);
     }
@@ -117,6 +121,50 @@ class NotificationController extends Controller
         broadcast(new NotificationUpdated($notification->fresh()))->toOthers();
 
         return response()->json(['message' => 'Notification lue.']);
+    }
+
+    /**
+     * DELETE /notifications/{notification}
+     */
+    public function destroy(Notification $notification): JsonResponse
+    {
+        if ($notification->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        $notification->delete();
+
+        return response()->json(['message' => 'Notification supprimée.']);
+    }
+
+    /**
+     * DELETE /notifications — delete all read notifications for current user.
+     */
+    public function destroyRead(): JsonResponse
+    {
+        Notification::where('user_id', Auth::id())
+            ->whereNotNull('read_at')
+            ->delete();
+
+        return response()->json(['message' => 'Notifications lues supprimées.']);
+    }
+
+    /**
+     * GET /notifications/stats
+     * Count per type (for the settings/analytics view).
+     */
+    public function stats(): JsonResponse
+    {
+        $uid = Auth::id();
+
+        $counts = Notification::where('user_id', $uid)
+            ->selectRaw('type, count(*) as total, sum(case when read_at is null then 1 else 0 end) as unread')
+            ->groupBy('type')
+            ->orderByDesc('total')
+            ->get()
+            ->keyBy('type');
+
+        return response()->json(['data' => $counts]);
     }
 
     /**

@@ -1,0 +1,652 @@
+\chapter{Étude préliminaire}
+
+\section*{Introduction}
+Ce chapitre pose les fondations analytiques du projet. Nous identifions les acteurs
+du système, formalisons les besoins fonctionnels et non fonctionnels, construisons
+le product backlog avec \textbf{34 user stories} réparties sur \textbf{6 sprints},
+puis décrivons l'architecture globale et la pile technologique retenue.
+
+% ============================================================
+\section{Les acteurs du système}
+
+\subsection{Rôles applicatifs}
+
+\begin{table}[H]
+\centering
+\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{|p{3cm}|p{10cm}|}
+\hline
+\textbf{Rôle} & \textbf{Description} \\ \hline
+
+\textbf{Admin} &
+Accès complet : gestion des utilisateurs, équipes, audit, toutes les fonctionnalités. 
+Supervise l'ensemble des projets. \\ \hline
+
+\textbf{Member} &
+Profil standard : gestion de ses projets, tâches, IA, Gantt, calendrier, notifications. \\ \hline
+
+\textbf{Client} &
+Accès en lecture seule aux projets auxquels il est invité. 
+Peut consulter l'avancement et les livrables. \\ \hline
+
+\end{tabular}
+\caption{Description des rôles utilisateurs}
+\label{tab:roles}
+\end{table}
+
+\subsection{Rôles dans un projet}
+
+\begin{table}[H]
+  \centering
+  \caption{Rôles dans un projet et droits associés}
+  \label{tab:roles_projet}
+  \begin{tabularx}{\textwidth}{L{2.5cm}X}
+    \toprule
+    \thead{Rôle projet} & \thead{Droits} \\
+    \midrule
+    \rowcolor{lightgray}
+    Product Owner & Toutes les actions sur le projet, y compris suppression et archivage \\
+    Manager & Modifier le projet, gérer les membres, créer/supprimer des tâches et statuts \\
+    \rowcolor{lightgray}
+    Développeur & Créer et modifier des tâches, ajouter des commentaires, saisir du temps \\
+    Client & Lecture seule : consulter les tâches, le Gantt, les commentaires \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+
+
+\subsection{Acteurs logiciels}
+
+\begin{table}[H]
+\centering
+\renewcommand{\arraystretch}{1.5}
+\begin{tabular}{|p{4cm}|p{9cm}|}
+\hline
+\textbf{Composant} & \textbf{Description} \\ \hline
+
+\textbf{Service ML} &
+Microservice FastAPI (Python 3.11) exposant les endpoints de recommandation, 
+prédiction de retard et estimation de durée. \\ \hline
+
+\textbf{LLM OpenRouter} &
+API tierce (Llama 3.3 70B Instruct) invoquée pour la génération 
+de justifications en langage naturel. \\ \hline
+
+\end{tabular}
+\caption{Description des composants IA}
+\label{tab:composantsIA}
+\end{table}
+
+\subsection{Matrice des droits}
+
+\begin{table}[H]
+  \centering
+  \caption{Matrice des droits par rôle système}
+  \label{tab:matrice_droits}
+  \small
+  \begin{tabularx}{\textwidth}{L{5cm}C{2.5cm}C{2.5cm}C{2.5cm}}
+    \toprule
+    \thead{Action} & \thead{Admin} & \thead{Member} & \thead{Client} \\
+    \midrule
+    \rowcolor{lightgray}
+    Gérer les utilisateurs          & \cmark & \xmark & \xmark \\
+    Gérer les équipes               & \cmark & \xmark & \xmark \\
+    \rowcolor{lightgray}
+    Créer un projet                 & \cmark & \cmark & \xmark \\
+    Accéder au Gantt                & \cmark & \cmark & \xmark \\
+    \rowcolor{lightgray}
+    Accéder au calendrier           & \cmark & \cmark & \xmark \\
+    Accéder aux fonctionnalités IA  & \cmark & \cmark & \xmark \\
+    \rowcolor{lightgray}
+    Consulter ses projets           & \cmark & \cmark & \cmark \\
+    Consulter le journal d'audit    & \cmark & \cmark & \xmark \\
+    \rowcolor{lightgray}
+    Gérer les rôles et permissions  & \cmark & \xmark & \xmark \\
+    Exporter rapport PDF d'audit    & \cmark & \xmark & \xmark \\
+    \rowcolor{lightgray}
+    Recevoir des notifications      & \cmark & \cmark & \cmark \\
+    Modifier son profil             & \cmark & \cmark & \cmark \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Besoins fonctionnels}
+
+\begin{itemize}
+
+    \item \textbf{Authentification et gestion des utilisateurs}
+    \begin{itemize}
+        \item \textbf{BF-AUTH-01 :} S'inscrire et se connecter
+        \item \textbf{BF-AUTH-02 :} Réinitialiser le mot de passe par email
+        \item \textbf{BF-AUTH-03 :} Gérer son profil et ses préférences
+    \end{itemize}
+
+    \item \textbf{Gestion des projets}
+    \begin{itemize}
+        \item \textbf{BF-PROJ-01 :} Créer et configurer un projet
+        \item \textbf{BF-PROJ-02 :} Inviter des membres par email
+        \item \textbf{BF-PROJ-03 :} Gérer les statuts Kanban personnalisés
+    \end{itemize}
+
+    \item \textbf{Gestion des sprints}
+    \begin{itemize}
+        \item \textbf{BF-SPRINT-01 :} Créer et planifier un sprint
+        \item \textbf{BF-SPRINT-02 :} Démarrer et clôturer un sprint avec report automatique du backlog
+    \end{itemize}
+
+    \item \textbf{Gestion des tâches}
+    \begin{itemize}
+        \item \textbf{BF-TASK-01 :} Créer des tâches hiérarchiques
+        \item \textbf{BF-TASK-02 :} Définir des dépendances FS/SS/FF/SF
+        \item \textbf{BF-TASK-03 :} Affecter des membres avec allocation en pourcentage
+        \item \textbf{BF-TASK-04 :} Déplacer les tâches en Kanban par drag-and-drop
+    \end{itemize}
+
+    \item \textbf{Planification}
+    \begin{itemize}
+        \item \textbf{BF-PLAN-01 :} Visualiser le Gantt avec chemin critique
+        \item \textbf{BF-PLAN-02 :} Consulter le calendrier mensuel
+    \end{itemize}
+
+    \item \textbf{Notifications}
+    \begin{itemize}
+        \item \textbf{BF-NOTIF-01 :} Recevoir des notifications temps réel in-app
+        \item \textbf{BF-NOTIF-02 :} Configurer les préférences de notification
+    \end{itemize}
+
+    \item \textbf{Dashboard et audit}
+    \begin{itemize}
+        \item \textbf{BF-DASH-01 :} Consulter un dashboard personnalisé selon le rôle
+        \item \textbf{BF-DASH-02 :} Accéder au journal d'audit
+    \end{itemize}
+
+    \item \textbf{Fonctionnalités IA}
+    \begin{itemize}
+        \item \textbf{BF-IA-01 :} Obtenir une recommandation ML d'assignation
+        \item \textbf{BF-IA-02 :} Estimer la durée d'une tâche par LLM
+        \item \textbf{BF-IA-03 :} Détecter les risques
+        \item \textbf{BF-IA-04 :} Utiliser le chat assistant IA
+    \end{itemize}
+
+    \item \textbf{Sécurité enterprise et RBAC}
+    \begin{itemize}
+        \item \textbf{BF-SEC-01 :} Créer et gérer des rôles personnalisés
+        \item \textbf{BF-SEC-02 :} Affecter des permissions atomiques aux rôles
+        \item \textbf{BF-SEC-03 :} Consulter la matrice globale des permissions
+        \item \textbf{BF-SEC-04 :} Consulter le journal d'audit enrichi (valeurs avant/après, IP, sévérité)
+        \item \textbf{BF-SEC-05 :} Analyser l'activité projet via le dashboard analytics (KPIs, anomalies)
+        \item \textbf{BF-SEC-06 :} Exporter le journal d'audit en rapport PDF
+    \end{itemize}
+
+\end{itemize}% ============================================================
+\section{Besoins non fonctionnels}
+
+\begin{table}[H]
+  \centering
+  \caption{Besoins non fonctionnels}
+  \label{tab:bnf}
+  \begin{tabularx}{\textwidth}{L{3cm}L{5cm}X}
+    \toprule
+    \thead{Catégorie} & \thead{Exigence} & \thead{Valeur cible} \\
+    \midrule
+    \rowcolor{lightgray}
+    Sécurité     & Auth stateless Bearer Token         & Sanctum ; expiration configurable \\
+    Sécurité     & RBAC à 3 niveaux                   & Spatie (système) + ProjectPolicy (projet) + permissions atomiques \\
+    \rowcolor{lightgray}
+    Sécurité     & Journal d'audit enterprise         & Traçabilité IP, sévérité auto, valeurs avant/après \\
+    \rowcolor{lightgray}
+    Performance  & Latence P95 API                    & $\leq$ 500 ms \\
+    Performance  & Inférence ML (P50)                 & $\leq$ 45 ms \\
+    \rowcolor{lightgray}
+    Ergonomie    & Responsive (breakpoints)           & Mobile, tablette, desktop \\
+    Ergonomie    & Accessibilité                      & WCAG 2.1 niveau AA \\
+    \rowcolor{lightgray}
+    Fiabilité    & Disponibilité cible                & 99,5\,\% \\
+    Fiabilité    & Détection cycle dépendances        & BFS avant toute insertion \\
+    \rowcolor{lightgray}
+    Maintenabilité & Duplication code (SonarCloud)    & $\leq$ 3\,\% \\
+    Maintenabilité & Couverture tests (backend)       & $\geq$ 80\,\% \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Product Backlog — User Stories}
+
+\begin{longtable}{C{1.2cm}L{2cm}L{6.5cm}C{2cm}C{1.5cm}C{1.5cm}}
+  \caption{Product Backlog — 34 User Stories}
+  \label{tab:product_backlog}\\
+  \toprule
+  \thead{ID} & \thead{Acteur} & \thead{User Story} & \thead{MoSCoW} & \thead{Pts} & \thead{Sprint} \\
+  \midrule
+  \endfirsthead
+  \multicolumn{6}{c}{\small\textit{(suite du tableau \ref{tab:product_backlog})}} \\
+  \toprule
+  \thead{ID} & \thead{Acteur} & \thead{User Story} & \thead{MoSCoW} & \thead{Pts} & \thead{Sprint} \\
+  \midrule
+  \endhead
+  \bottomrule
+  \endfoot
+
+  \rowcolor{lightgray}
+  US-01 & Tous    & S'inscrire et se connecter en sécurité              & Must    & 5  & S1 \\
+  US-02 & Admin   & Gérer les comptes utilisateurs                      & Must    & 8  & S1 \\
+  \rowcolor{lightgray}
+  US-03 & Admin   & Définir rôles et permissions Spatie                  & Must    & 5  & S1 \\
+  US-04 & Tous    & Modifier profil et préférences                      & Should  & 5  & S1 \\
+  \rowcolor{lightgray}
+  US-05 & Tous    & Réinitialiser mot de passe par email                & Should  & 3  & S1 \\
+  US-06 & Member  & Créer et configurer un projet                       & Must    & 5  & S2 \\
+  \rowcolor{lightgray}
+  US-07 & Chef    & Inviter des membres par email (7 jours)              & Must    & 8  & S2 \\
+  US-08 & Chef    & Définir des statuts Kanban personnalisés             & Should  & 5  & S2 \\
+  \rowcolor{lightgray}
+  US-09 & Chef    & Créer et démarrer un sprint                         & Must    & 8  & S2 \\
+  US-10 & Chef    & Clôturer un sprint avec report du backlog           & Should  & 5  & S2 \\
+  \rowcolor{lightgray}
+  US-11 & Member  & Créer des tâches hiérarchiques (sous-tâches)        & Must    & 8  & S3 \\
+  US-12 & Member  & Définir des dépendances FS/SS/FF/SF                 & Must    & 8  & S3 \\
+  \rowcolor{lightgray}
+  US-13 & Member  & Affecter des membres avec allocation \%             & Must    & 5  & S3 \\
+  US-14 & Member  & Déplacer une tâche en Kanban (drag-and-drop)        & Must    & 5  & S3 \\
+  \rowcolor{lightgray}
+  US-15 & Member  & Saisir le temps passé sur une tâche                 & Should  & 3  & S3 \\
+  US-16 & Member  & Commenter une tâche et mentionner (@)               & Should  & 5  & S3 \\
+  \rowcolor{lightgray}
+  US-17 & Member  & Visualiser le Gantt avec chemin critique            & Must    & 13 & S4 \\
+  US-18 & Member  & Consulter le calendrier mensuel                     & Should  & 5  & S4 \\
+  \rowcolor{lightgray}
+  US-19 & Tous    & Recevoir des notifications temps réel               & Must    & 8  & S4 \\
+  US-20 & Tous    & Configurer ses préférences de notification          & Should  & 3  & S4 \\
+  \rowcolor{lightgray}
+  US-21 & Member  & Accéder à un dashboard personnel                   & Should  & 8  & S4 \\
+  US-22 & Admin   & Accéder au dashboard administrateur                 & Should  & 5  & S4 \\
+  \rowcolor{lightgray}
+  US-23 & Member  & Obtenir une recommandation ML d'assignation         & Must    & 13 & S5 \\
+  US-24 & Member  & Estimer la durée d'une tâche par IA                 & Must    & 8  & S5 \\
+  \rowcolor{lightgray}
+  US-25 & Member  & Discuter avec l'assistant IA                        & Should  & 8  & S5 \\
+  US-26 & Admin   & Relancer l'entraînement du modèle ML                & Could   & 5  & S5 \\
+  \rowcolor{lightgray}
+  US-27 & Client  & Consulter le rapport d'avancement de son projet     & Should  & 5  & S4 \\
+  US-28 & Tous    & Utiliser la recherche globale                       & Should  & 5  & S4 \\
+  \rowcolor{lightgray}
+  US-29 & Admin   & Créer et gérer des rôles personnalisés              & Must    & 8  & S6 \\
+  US-30 & Admin   & Affecter des permissions atomiques aux rôles         & Must    & 8  & S6 \\
+  \rowcolor{lightgray}
+  US-31 & Admin   & Consulter la matrice globale des permissions         & Should  & 5  & S6 \\
+  US-32 & Admin/Member & Consulter le journal d'audit enrichi (avant/après) & Must & 8 & S6 \\
+  \rowcolor{lightgray}
+  US-33 & Admin   & Analyser l'activité via le dashboard analytics      & Should  & 8  & S6 \\
+  US-34 & Admin   & Exporter le journal d'audit en PDF                  & Could   & 5  & S6 \\
+  \midrule
+  \multicolumn{4}{r}{\textbf{Total}} & \textbf{228} & \textbf{6 sprints} \\
+\end{longtable}
+
+% ============================================================
+\section{Diagramme global des cas d'utilisation}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/ch2_global_use_case.png}{%
+    \includegraphics[width=0.92\textwidth]{figures/ch2_global_use_case.png}%
+  }{%
+    \fbox{\parbox{0.92\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE A INSÉRER]}\\[0.4em]
+      \texttt{figures/ch2\_global\_use\_case.png}\\[0.3em]
+      \textit{Diagramme global des cas d'utilisation — 3 acteurs humains, 2 acteurs logiciels,
+      5 packages fonctionnels}
+    \vspace{2cm}}}%
+  }
+  \caption{Diagramme global des cas d'utilisation — TAC-TIC IntelliPM}
+  \label{fig:global_use_case}
+\end{figure}
+
+Le diagramme regroupe les 34 cas d'utilisation en six packages :
+\textbf{Authentification}, \textbf{Projets \& Équipes}, \textbf{Tâches},
+\textbf{Planification}, \textbf{Intelligence Artificielle} et
+\textbf{Sécurité enterprise \& Audit}. Les acteurs logiciels
+(Service ML FastAPI, LLM OpenRouter, Système WebSocket) interviennent en tant
+qu'acteurs secondaires dans leurs packages respectifs.
+
+% ============================================================
+\section{Conception architecturale}
+
+\subsection{Architecture en couches}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/ch2_architecture_couches.png}{%
+    \includegraphics[width=0.85\textwidth]{figures/ch2_architecture_couches.png}%
+  }{%
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{1.5cm}
+      \textbf{[IMAGE A INSÉRER]}\\[0.4em]
+      \texttt{figures/ch2\_architecture\_couches.png}\\[0.3em]
+      \textit{Architecture en 5 couches : Présentation, Services applicatifs, Métier,
+      Persistance, IA}
+    \vspace{1.5cm}}}%
+  }
+  \caption{Architecture en couches de TAC-TIC IntelliPM}
+  \label{fig:archi_couches}
+\end{figure}
+
+\subsection{Architecture distribuée}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/ch2_architecture_distribuee.png}{%
+    \includegraphics[width=0.90\textwidth]{figures/ch2_architecture_distribuee.png}%
+  }{%
+    \fbox{\parbox{0.90\textwidth}{\centering\vspace{1.5cm}
+      \textbf{[IMAGE A INSÉRER]}\\[0.4em]
+      \texttt{figures/ch2\_architecture\_distribuee.png}\\[0.3em]
+      \textit{Architecture distribuée : React SPA $\leftrightarrow$ Laravel API $\leftrightarrow$ MySQL + FastAPI ML}
+    \vspace{1.5cm}}}%
+  }
+  \caption{Architecture distribuée — Vue déploiement}
+  \label{fig:archi_distribuee}
+\end{figure}
+
+\subsection{Pile technologique}
+
+\begin{table}[H]
+  \centering
+  \caption{Pile technologique complète}
+  \label{tab:techstack}
+  \small
+  \begin{tabularx}{\textwidth}{L{3cm}L{3.5cm}C{1.8cm}X}
+    \toprule
+    \thead{Catégorie} & \thead{Outil} & \thead{Version} & \thead{Rôle} \\
+    \midrule
+    \rowcolor{lightgray}
+    Frontend      & React                  & 19       & SPA, composants UI \\
+    Frontend      & Vite                   & 7        & Bundler, HMR \\
+    \rowcolor{lightgray}
+    Frontend      & TailwindCSS            & 4        & Styles utilitaires \\
+    Frontend      & TanStack React Query   & v5       & Cache et état serveur \\
+    \rowcolor{lightgray}
+    Frontend      & React Router DOM       & 6        & Routing SPA \\
+    Frontend      & Framer Motion          & --       & Animations \\
+    \rowcolor{lightgray}
+    Backend       & Laravel                & 12       & Framework API REST \\
+    Backend       & PHP                    & 8.2      & Langage serveur \\
+    \rowcolor{lightgray}
+    Backend       & Laravel Sanctum        & --       & Auth Bearer Token \\
+    Backend       & Spatie Permission      & --       & RBAC système \\
+    \rowcolor{lightgray}
+    Backend       & Laravel Reverb         & --       & WebSocket server \\
+    Backend       & Eloquent ORM           & --       & Mapping objet-relationnel \\
+    \rowcolor{lightgray}
+    Base de données & MySQL                & 8        & Persistance principale \\
+    IA/ML         & FastAPI                & --       & Microservice ML \\
+    \rowcolor{lightgray}
+    IA/ML         & Scikit-learn           & 1.4      & GBM, RF, LogReg \\
+    IA/ML         & OpenRouter (LLM)       & --       & Llama 3.3 70B Instruct \\
+    \rowcolor{lightgray}
+    Qualité       & SonarCloud             & --       & Analyse statique \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Diagramme de classes global}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/ch2_class_diagram.png}{%
+    \includegraphics[width=0.95\textwidth]{figures/ch2_class_diagram.png}%
+  }{%
+    \fbox{\parbox{0.95\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE A INSÉRER]}\\[0.4em]
+      \texttt{figures/ch2\_class\_diagram.png}\\[0.3em]
+      \textit{Diagramme de classes global — 20 entités avec relations et cardinalités}
+    \vspace{2cm}}}%
+  }
+  \caption{Diagramme de classes global de TAC-TIC IntelliPM — 20 entités}
+  \label{fig:class_global}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{Les 20 entités du modèle de données}
+  \label{tab:entites}
+  \begin{tabularx}{\textwidth}{L{4cm}X}
+    \toprule
+    \thead{Classe} & \thead{Rôle} \\
+    \midrule
+    \rowcolor{lightgray}
+    User            & Utilisateur du système (profil, auth, préférences) \\
+    Team            & Équipe de développement (leader, membres) \\
+    \rowcolor{lightgray}
+    Specialty       & Compétence/technologie associée à un utilisateur \\
+    Project         & Projet avec code, statut, dates, équipe \\
+    \rowcolor{lightgray}
+    ProjectInvitation & Invitation email (token UUID, expiration 7 jours) \\
+    Sprint          & Sprint Scrum avec objectif, dates, statut \\
+    \rowcolor{lightgray}
+    TaskStatus      & Colonne Kanban (nom, couleur, ordre) \\
+    Task            & Tâche avec hiérarchie, priorité, workflow, IA \\
+    \rowcolor{lightgray}
+    TaskAssignment  & Assignation avec pourcentage d'allocation \\
+    TaskDependency  & Dépendance FS/SS/FF/SF entre tâches \\
+    \rowcolor{lightgray}
+    TaskComment     & Commentaire (threaded) avec mentions @ \\
+    Attachment      & Pièce jointe (fichier ou lien) \\
+    \rowcolor{lightgray}
+    TimeEntry       & Temps passé (manuel ou timer) \\
+    Notification    & Notification in-app avec type et données JSON \\
+    \rowcolor{lightgray}
+    ActivityLog     & Journal d'audit enterprise (13 champs : old/new values, IP, sévérité, actor\_role…) \\
+    Role            & Rôle RBAC personnalisable (Spatie) avec permissions atomiques \\
+    \rowcolor{lightgray}
+    Permission      & Permission atomique (35 permissions granulaires) \\
+    AiRecommendation & Résultat d'une requête IA (ML ou LLM) \\
+    \rowcolor{lightgray}
+    PersonalAccessToken & Token Sanctum pour l'authentification \\
+    ProjectMember   & Pivot projet-utilisateur avec rôle projet (Owner/Manager/Dev/Client) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+
+% ============================================================
+\section{Environnement de travail et choix techniques}
+
+\subsection{Environnement matériel}
+
+Le développement de TAC-TIC IntelliPM a été réalisé sur les postes de travail
+suivants :
+
+\begin{table}[H]
+  \centering
+  \caption{Environnement matériel utilisé}
+  \label{tab:env_materiel}
+  \begin{tabularx}{\textwidth}{L{3.5cm}X}
+    \toprule
+    \thead{Composant} & \thead{Spécification} \\
+    \midrule
+    \rowcolor{lightgray}
+    Processeur     & Intel Core i7-12\textsuperscript{e} génération / AMD Ryzen 7 5800H \\
+    Mémoire RAM    & 16\,Go DDR4 \\
+    \rowcolor{lightgray}
+    Stockage       & SSD NVMe 512\,Go \\
+    Système d'exploitation & Windows 11 Pro / Ubuntu 22.04 LTS \\
+    \rowcolor{lightgray}
+    Navigateur     & Google Chrome 124+ / Firefox 125+ \\
+    Résolution     & 1920 × 1080 (Full HD) minimum \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Environnement logiciel}
+
+\begin{table}[H]
+  \centering
+  \caption{Environnement logiciel de développement}
+  \label{tab:env_logiciel}
+  \begin{tabularx}{\textwidth}{L{4.5cm}L{3cm}X}
+    \toprule
+    \thead{Outil} & \thead{Version} & \thead{Usage} \\
+    \midrule
+    \rowcolor{lightgray}
+    Visual Studio Code    & 1.89+     & Éditeur principal (backend, frontend, ML) \\
+    PHP Storm             & 2024.1    & Débogage avancé Laravel \\
+    \rowcolor{lightgray}
+    Docker Desktop        & 4.30+     & Conteneurisation locale \\
+    Postman               & 11+       & Tests API REST manuels \\
+    \rowcolor{lightgray}
+    TablePlus             & 5.x       & Administration base de données MySQL \\
+    Git                   & 2.44+     & Contrôle de version local \\
+    \rowcolor{lightgray}
+    Node.js               & 22 LTS    & Runtime JavaScript / outillage Vite \\
+    Composer              & 2.7+      & Gestionnaire de dépendances PHP \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Frameworks et technologies}
+
+\subsubsection{Backend : Laravel 12}
+
+\textbf{Laravel~12} (PHP~8.2) a été retenu pour le backend API REST pour plusieurs
+raisons : son écosystème mature (Sanctum, Reverb, Horizon, Spatie), son ORM Eloquent
+hautement expressif, et sa gestion native des queues et événements. L'architecture
+suit le pattern \textbf{Repositories + Services} pour séparer la logique métier des
+contrôleurs.
+
+\subsubsection{Frontend : React 19}
+
+\textbf{React~19} avec \textbf{Vite~7} constitue le cœur du frontend SPA. L'état
+serveur est géré par \textbf{TanStack React Query v5} (cache, invalidation, pagination),
+le routing par \textbf{React Router DOM v6}, les animations par \textbf{Framer Motion},
+et le drag-and-drop Kanban par \textbf{@dnd-kit}. L'ensemble de l'interface est
+stylisé avec \textbf{TailwindCSS~v4}.
+
+\subsubsection{Microservice IA : FastAPI / Python}
+
+Le microservice d'intelligence artificielle est développé en \textbf{Python~3.11}
+avec le framework \textbf{FastAPI}. Les modèles de Machine Learning utilisent
+\textbf{Scikit-learn~1.4} (Random Forest, Gradient Boosting, régression logistique).
+Le serveur ASGI est \textbf{Uvicorn} (2 workers en production). Les modèles entraînés
+sont sérialisés au format \textbf{Joblib} pour un chargement rapide en mémoire.
+
+\subsubsection{Base de données : MySQL 8}
+
+\textbf{MySQL~8} a été préféré aux solutions NoSQL pour la cohérence transactionnelle
+requise par les relations complexes du modèle (18 entités avec clés étrangères,
+contraintes d'intégrité pour les dépendances de tâches). Les migrations sont gérées
+par Eloquent et les requêtes optimisées par des index sur les colonnes critiques.
+
+\subsubsection{Qualité et analyse du code : SonarCloud}
+
+\textbf{SonarCloud} (édition cloud de SonarQube) assure l'analyse statique continue
+du code source. Il est intégré au pipeline GitHub Actions et évalue quatre dimensions :
+\textbf{Reliability} (bugs), \textbf{Security} (vulnérabilités), \textbf{Maintainability}
+(code smells) et \textbf{Duplication}. Le Quality Gate personnalisé exige : 0 bug critique,
+0 vulnérabilité de sévérité haute, duplication $\leq$ 3\,\%, couverture $\geq$ 80\,\%.
+
+
+\subsubsection{Versionnage et tests}
+
+Le code source est hébergé sur \textbf{GitHub} (monorepo). Le workflow Git adopté est
+\textbf{GitHub Flow} : branches de fonctionnalités courtes, pull requests avec review
+obligatoire, merge sur \texttt{main} déclenche le pipeline CI/CD. Les tests sont
+exécutés automatiquement sur chaque pull request avant toute fusion.
+
+\subsection{Langages de programmation}
+
+\begin{table}[H]
+  \centering
+  \caption{Langages de programmation utilisés}
+  \label{tab:langages}
+  \begin{tabularx}{\textwidth}{L{3.5cm}L{2.5cm}X}
+    \toprule
+    \thead{Langage} & \thead{Version} & \thead{Domaine d'utilisation} \\
+    \midrule
+    \rowcolor{lightgray}
+    PHP           & 8.2       & Backend Laravel (contrôleurs, services, modèles) \\
+    JavaScript    & ES2024    & Frontend React, hooks, composants, utilitaires \\
+    \rowcolor{lightgray}
+    TypeScript    & 5.x       & Typage strict des interfaces React et API \\
+    Python        & 3.11      & Microservice ML (FastAPI, Scikit-learn, Pandas) \\
+    \rowcolor{lightgray}
+    SQL           & MySQL 8   & Requêtes Eloquent, migrations, seeders \\
+    YAML          & --        & Configuration Docker Compose, GitHub Actions \\
+    \rowcolor{lightgray}
+    Bash          & --        & Scripts de déploiement, entrypoints Docker \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Base de données / SGBD}
+
+\textbf{MySQL~8} avec le moteur \textbf{InnoDB} est le SGBD relationnel utilisé.
+Les choix de configuration retenus : jeu de caractères \texttt{utf8mb4} (support
+Unicode complet), niveau d'isolation \texttt{REPEATABLE READ}, et index composites
+sur les colonnes les plus filtrées (\texttt{project\_id + status\_id},
+\texttt{assignee\_id + due\_date}). Un cache de requêtes Redis est interposé pour
+les endpoints à forte charge (dashboard, Gantt).
+
+\subsection{Outils de conception UML}
+
+\begin{table}[H]
+  \centering
+  \caption{Outils de modélisation et conception}
+  \label{tab:outils_uml}
+  \begin{tabularx}{\textwidth}{L{3.5cm}X}
+    \toprule
+    \thead{Outil} & \thead{Usage dans le projet} \\
+    \midrule
+    \rowcolor{lightgray}
+    \textbf{Miro}         & Diagrammes UML collaboratifs : cas d'utilisation, séquence,
+                            classes — tableau blanc en ligne partagé avec l'encadrant \\
+    \textbf{PlantUML}     & Génération automatique de diagrammes UML depuis le code
+                            (intégration VS Code) \\
+    \rowcolor{lightgray}
+    \textbf{Draw.io}      & Architecture distribuée, flux de déploiement, schémas réseau \\
+    \textbf{Figma}        & Maquettes haute fidélité des interfaces (wireframes → UI finale) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+
+\subsection{Outils de test}
+
+\begin{table}[H]
+  \centering
+  \caption{Outils de test utilisés par couche}
+  \label{tab:outils_test}
+  \begin{tabularx}{\textwidth}{L{4cm}L{3cm}X}
+    \toprule
+    \thead{Outil} & \thead{Couche} & \thead{Usage} \\
+    \midrule
+    \rowcolor{lightgray}
+    \textbf{PestPHP}       & Backend       & Tests unitaires et d'intégration Laravel \\
+    \textbf{Vitest}        & Frontend      & Tests unitaires composants React \\
+    \rowcolor{lightgray}
+    \textbf{@testing-library/react} & Frontend & Simulation d'interactions utilisateur \\
+    \textbf{MSW}           & Frontend      & Mock des appels API dans les tests React \\
+    \rowcolor{lightgray}
+    \textbf{Postman}       & API REST      & Tests manuels et collections automatisées \\
+    \textbf{Newman}        & API REST      & Exécution des collections Postman en CI \\
+    \rowcolor{lightgray}
+    \textbf{SonarCloud}    & Global        & Analyse statique, couverture, Quality Gate \\
+    \textbf{Locust}        & ML / Charge   & Tests de performance du microservice FastAPI \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ============================================================
+
+\begin{chapconclusion}
+L'étude préliminaire a permis de formaliser l'ensemble des exigences du système :
+\textbf{34 user stories} priorisées en MoSCoW, réparties sur \textbf{6 sprints}
+pour un total de \textbf{228 story points}. Le périmètre couvre six domaines
+fonctionnels : authentification, gestion de projets et équipes, tâches et Kanban,
+planification visuelle, intelligence artificielle, et sécurité enterprise avec
+journal d'audit analytique. L'architecture distribuée en trois couches
+(React~SPA, Laravel~API, FastAPI~ML) garantit l'indépendance de déploiement
+et la scalabilité de chaque composant. Les chapitres suivants détaillent
+la réalisation sprint par sprint.
+\end{chapconclusion}

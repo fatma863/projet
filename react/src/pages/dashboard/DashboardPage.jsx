@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { PROJECT_ROLE_LABELS, isGuestViewer } from '../../lib/roles';
 import api from '../../lib/api';
+import { getEcho } from '../../lib/echo';
 import { POLL_INTERVAL_MS, unwrapCollection } from '../../lib/unwrapApi';
 import { fetchActivityFeed, fetchAdminDashboard, fetchMemberDashboard } from '../../lib/services/dashboardApi';
 import { acceptProjectInvite, declineProjectInvite, fetchMyInvites } from '../../lib/services/invitationsApi';
@@ -552,6 +553,44 @@ function InternalDashboard() {
     },
     onError: (err) => toast.error(err?.response?.data?.message || err?.message || 'Action impossible.'),
   });
+
+  // Listen to task events across all user projects for live dashboard refresh
+  const projectIds = useRef([]);
+  useEffect(() => {
+    projectIds.current = projects.map((p) => p.id);
+  }, [projects]);
+
+  useEffect(() => {
+    if (!user?.id || projects.length === 0) return;
+
+    const echo = (() => { try { return getEcho(); } catch { return null; } })();
+    if (!echo) return;
+
+    const channels = projects.map((p) => {
+      const ch = echo.private(`project.${p.id}`);
+      const refresh = () => {
+        queryClient.invalidateQueries({ queryKey: ['dashboard-tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['member-dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['activity-feed'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard-project-metrics'] });
+      };
+      ch.listen('.task.updated', refresh);
+      ch.listen('.task.deleted', refresh);
+      ch.listen('.sprint.state.changed', refresh);
+      ch.listen('.progress.updated', refresh);
+      ch.listen('.activity.logged', () => {
+        queryClient.invalidateQueries({ queryKey: ['activity-feed'] });
+      });
+      return { id: p.id, ch };
+    });
+
+    return () => {
+      channels.forEach(({ id }) => {
+        try { echo.leave(`project.${id}`); } catch { /* ignore */ }
+      });
+    };
+  }, [user?.id, projects.length, queryClient]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: projectTasks = [], isLoading: loadingProjectTasks } = useQuery({
     queryKey: ['dashboard-tasks'],

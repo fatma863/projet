@@ -234,7 +234,6 @@ function MemberRow({ member, rank }) {
                       <thead>
                         <tr className="border-b border-border/60 bg-muted/40">
                           <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Tâche</th>
-                          <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Type</th>
                           <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Priorité</th>
                           <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Début prévu</th>
                           <th className="px-3 py-2 text-left font-semibold text-muted-foreground">Fin prévue</th>
@@ -251,7 +250,6 @@ function MemberRow({ member, rank }) {
                           return (
                             <tr key={t.id} className="border-b border-border/30 hover:bg-muted/20">
                               <td className="px-3 py-2 font-medium text-foreground max-w-[200px] truncate">{t.title}</td>
-                              <td className="px-3 py-2 text-muted-foreground">{t.issue_type}</td>
                               <td className="px-3 py-2">
                                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${PRIORITY_COLORS[t.priority] ?? ''}`}>
                                   {PRIORITY_LABELS[t.priority] ?? t.priority}

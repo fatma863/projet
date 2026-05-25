@@ -141,38 +141,54 @@ class GanttController extends Controller
 
     private function propagateDelayToDependents(Project $project, array $updatedTaskIds): void
     {
-        $queue = collect($updatedTaskIds)->unique()->values();
+        // Pre-load ALL project tasks with their dependents in 2 queries total (no N+1).
+        $allTasks = $project->tasks()
+            ->with(['dependents' => fn ($q) => $q->where('project_id', $project->id)])
+            ->get()
+            ->keyBy('id');
+
+        $queue    = collect($updatedTaskIds)->unique()->values();
+        $visited  = [];
 
         while ($queue->isNotEmpty()) {
             $taskId = $queue->shift();
+
+            if (isset($visited[$taskId])) {
+                continue;
+            }
+            $visited[$taskId] = true;
+
             /** @var Task|null $source */
-            $source = $project->tasks()->with('dependents')->find($taskId);
+            $source = $allTasks->get($taskId);
             if (! $source || ! $source->planned_end) {
                 continue;
             }
 
             $requiredStart = Carbon::parse($source->planned_end)->addDay();
-            $dependents = $source->dependents()->where('project_id', $project->id)->get();
 
-            foreach ($dependents as $dependent) {
+            foreach ($source->dependents as $dependent) {
                 if (! $dependent->planned_start) {
                     continue;
                 }
+
                 $currentStart = Carbon::parse($dependent->planned_start);
                 if ($currentStart->greaterThanOrEqualTo($requiredStart)) {
                     continue;
                 }
 
-                $currentEnd = Carbon::parse($dependent->planned_end ?? $dependent->planned_start);
+                $currentEnd   = Carbon::parse($dependent->planned_end ?? $dependent->planned_start);
                 $durationDays = max(0, $currentStart->diffInDays($currentEnd));
-
-                $newStart = $requiredStart->copy();
-                $newEnd = $requiredStart->copy()->addDays($durationDays);
+                $newStart     = $requiredStart->copy();
+                $newEnd       = $requiredStart->copy()->addDays($durationDays);
 
                 $dependent->update([
                     'planned_start' => $newStart->toDateString(),
-                    'planned_end' => $newEnd->toDateString(),
+                    'planned_end'   => $newEnd->toDateString(),
                 ]);
+
+                // Update in-memory cache so cascading dependents see the new dates.
+                $dependent->planned_start = $newStart->toDateString();
+                $dependent->planned_end   = $newEnd->toDateString();
 
                 $queue->push($dependent->id);
             }

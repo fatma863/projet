@@ -100,4 +100,28 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Specialty::class, 'user_specialty')->withTimestamps();
     }
+
+    public function projectUserRoles()
+    {
+        return $this->hasMany(ProjectUserRole::class);
+    }
+
+    /**
+     * Resolve the effective permissions for this user in a given project context.
+     * Uses PermissionResolver so the result is cached per request.
+     */
+    public function hasProjectPermission(int $projectId, string $permission): bool
+    {
+        return app(\App\Services\PermissionResolver::class)
+            ->userCan($this, $permission, $projectId);
+    }
+
+    /**
+     * Return all effective permission slugs for the user (optionally scoped to project).
+     */
+    public function effectivePermissions(?int $projectId = null): array
+    {
+        return app(\App\Services\PermissionResolver::class)
+            ->resolvePermissions($this, $projectId);
+    }
 }

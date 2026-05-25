@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\PermissionChanged;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
@@ -20,6 +21,7 @@ class UserController extends Controller
         $users = $this->userManagementService->paginateUsers(
             (string) $request->input('search', ''),
             $request->filled('status') ? (string) $request->input('status') : null,
+            $request->filled('role')   ? (string) $request->input('role')   : null,
             $request->integer('per_page', 25),
         );
 
@@ -29,12 +31,12 @@ class UserController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
-            'password' => 'required|string|min:6|confirmed',
+            'name'                  => 'required|string|max:255',
+            'email'                 => 'required|email|max:255|unique:users,email',
+            'password'              => 'required|string|min:6|confirmed',
             'password_confirmation' => 'required|string|min:6',
-            'status' => 'sometimes|string|in:active,disabled',
-            'role' => 'sometimes|string|in:admin,member,client',
+            'status'                => 'sometimes|string|in:active,disabled',
+            'role'                  => 'sometimes|string|exists:roles,name',
         ]);
 
         $user = $this->userManagementService->createUser($data);
@@ -48,15 +50,19 @@ class UserController extends Controller
     public function update(Request $request, User $user): JsonResponse
     {
         $data = $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'email' => 'sometimes|required|email|max:255|unique:users,email,'.$user->id,
-            'password' => 'sometimes|nullable|string|min:6|confirmed',
+            'name'                  => 'sometimes|required|string|max:255',
+            'email'                 => 'sometimes|required|email|max:255|unique:users,email,'.$user->id,
+            'password'              => 'sometimes|nullable|string|min:6|confirmed',
             'password_confirmation' => 'sometimes|nullable|string|min:6',
-            'status' => 'sometimes|string|in:active,disabled',
-            'role' => 'sometimes|string|in:admin,member,client',
+            'status'                => 'sometimes|string|in:active,disabled',
+            'role'                  => 'sometimes|string|exists:roles,name',
         ]);
 
+        $hadRoleChange = isset($data['role']);
         $user = $this->userManagementService->updateUser($request->user(), $user, $data);
+        if ($hadRoleChange) {
+            event(new PermissionChanged($user, 'role_changed', ['role' => $data['role']]));
+        }
 
         return response()->json([
             'message' => 'Utilisateur mis à jour.',

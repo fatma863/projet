@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\SprintStateChanged;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\SprintResource;
 use App\Http\Resources\TaskResource;
@@ -11,6 +12,7 @@ use App\Models\Task;
 use App\Services\SprintService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 
 class SprintController extends Controller
@@ -97,6 +99,7 @@ class SprintController extends Controller
     {
         Gate::authorize('update', $project);
         $sprint = $this->sprintService->startSprint($project, $sprint);
+        event(new SprintStateChanged($sprint, 'started', Auth::user()));
 
         return response()->json([
             'message' => 'Sprint démarré.',
@@ -113,6 +116,7 @@ class SprintController extends Controller
     {
         Gate::authorize('update', $project);
         $sprint = $this->sprintService->completeSprint($project, $sprint);
+        event(new SprintStateChanged($sprint, 'completed', Auth::user()));
 
         return response()->json([
             'message' => 'Sprint terminé.',

@@ -1,0 +1,114 @@
+@startuml sprint6_class
+!theme plain
+skinparam classBackgroundColor #F0FDF4
+skinparam classBorderColor #059669
+skinparam classFontColor #064E3B
+skinparam arrowColor #059669
+
+class ActivityLog {
+  +id: bigint
+  +project_id: bigint
+  +actor_id: bigint
+  +entity_type: string
+  +entity_id: bigint
+  +action: string
+  +meta: json
+  +old_values: json
+  +new_values: json
+  +changed_fields: json
+  +ip_address: varchar(45)
+  +user_agent: varchar(500)
+  +severity: info|warning|critical
+  +source: web|api
+  +actor_role: string
+  +created_at: datetime
+}
+
+class ActivityLogService {
+  -CRITICAL_PATTERNS: array
+  -WARNING_PATTERNS: array
+  +log(project, actor, action, entity,\n     meta, oldValues, newValues): ActivityLog
+  -detectSeverity(action): string
+  -captureRequestContext(): array
+}
+
+class ActivityFeedController {
+  +index(request): JsonResponse
+  +export(request): Response
+  -buildQuery(request, user): Builder
+  -buildStats(request, user): array
+}
+
+class ActivityAnalyticsController {
+  +index(request): JsonResponse
+  -topUsers(ids): array
+  -byModule(ids): array
+  -bySeverity(ids): array
+  -trend28Days(ids): array
+  -unstableTasks(ids): array
+  -inactiveProjectMembers(ids): array
+  -detectSpikes(ids): array
+  -collaborationScore(ids): int
+  -kpis(ids): array
+}
+
+class ActivityLogResource {
+  +toArray(request): array
+  ' ip_address visible admins only
+}
+
+class ActivityLogged <<Event>> {
+  +activity: ActivityLog
+  +broadcastOn(): PrivateChannel
+  +broadcastAs(): string
+}
+
+class Role {
+  +id: bigint
+  +name: string
+  +guard_name: string
+}
+
+class Permission {
+  +id: bigint
+  +name: string
+  +guard_name: string
+}
+
+class RoleController {
+  +index(): JsonResponse
+  +store(request): JsonResponse
+  +update(role, request): JsonResponse
+  +destroy(role): JsonResponse
+  +assignPermissions(role, request): JsonResponse
+}
+
+class PermissionController {
+  +index(): JsonResponse
+  +matrix(): JsonResponse
+}
+
+ActivityLogService --> ActivityLog : crée
+ActivityLogService --> ActivityLogged : broadcast
+ActivityFeedController --> ActivityLogService : <<use>>
+ActivityFeedController --> ActivityLog : interroge
+ActivityAnalyticsController --> ActivityLog : agrège
+ActivityLogResource --> ActivityLog : transforme
+ActivityLogged --> ActivityLog : encapsule
+
+Role "0..*" -- "0..*" Permission : possède
+RoleController --> Role : gère
+PermissionController --> Permission : liste
+PermissionController --> Role : matrice
+
+note bottom of ActivityAnalyticsController
+  Cache 5 minutes
+  (Cache::remember)
+end note
+
+note right of ActivityFeedController
+  stats calculées seulement
+  si ?with_stats=1
+end note
+
+@enduml

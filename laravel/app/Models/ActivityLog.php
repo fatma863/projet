@@ -15,12 +15,23 @@ class ActivityLog extends Model
         'entity_id',
         'action',
         'meta',
+        'old_values',
+        'new_values',
+        'changed_fields',
+        'ip_address',
+        'user_agent',
+        'severity',
+        'source',
+        'actor_role',
     ];
 
     protected function casts(): array
     {
         return [
-            'meta' => 'array',
+            'meta'           => 'array',
+            'old_values'     => 'array',
+            'new_values'     => 'array',
+            'changed_fields' => 'array',
         ];
     }
 

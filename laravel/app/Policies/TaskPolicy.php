@@ -29,11 +29,8 @@ class TaskPolicy
 
     public function create(User $user): bool
     {
-        if ($user->hasRole('client')) {
-            return false;
-        }
-
-        return $user->hasRole('admin') || $user->hasRole('member');
+        // Any non-client role can create tasks (supports dynamic roles like "scrum master")
+        return ! $user->hasRole('client');
     }
 
     public function update(User $user, Task $task): bool

@@ -10,11 +10,12 @@ use Illuminate\Validation\ValidationException;
 
 class UserManagementService
 {
-    /** @var list<string> */
-    public const APP_ROLES = ['admin', 'member', 'client'];
-
-    public function paginateUsers(string $search = '', ?string $status = null, int $perPage = 25): LengthAwarePaginator
-    {
+    public function paginateUsers(
+        string $search   = '',
+        ?string $status  = null,
+        ?string $role    = null,
+        int $perPage     = 25,
+    ): LengthAwarePaginator {
         $query = User::query()
             ->with('specialties')
             ->when($search !== '', fn ($q) => $q->where(function ($sub) use ($search): void {
@@ -33,6 +34,11 @@ class UserManagementService
             $query->where('status', 'disabled');
         }
 
+        // Filter by role (dynamic — any Spatie role name)
+        if ($role !== null && $role !== '') {
+            $query->role($role);
+        }
+
         return $query->orderBy('name')->paginate($perPage);
     }
 
@@ -41,15 +47,15 @@ class UserManagementService
      */
     public function createUser(array $data): User
     {
-        $role = $this->normalizeAppRole($data['role'] ?? 'member');
+        $roleName = $data['role'] ?? 'member';
 
         $user = User::create([
-            'name' => $data['name'],
-            'email' => $data['email'],
+            'name'     => $data['name'],
+            'email'    => $data['email'],
             'password' => Hash::make($data['password']),
-            'status' => $data['status'] ?? 'active',
+            'status'   => $data['status'] ?? 'active',
         ]);
-        $user->syncRoles([$role]);
+        $user->syncRoles([$roleName]);
 
         return $user->fresh();
     }
@@ -78,35 +84,23 @@ class UserManagementService
         }
 
         if (array_key_exists('role', $data)) {
-            $role = $this->normalizeAppRole($data['role']);
-            $this->assertCanChangeAppRole($actor, $user->fresh(), $role);
-            $user->syncRoles([$role]);
+            $this->assertCanChangeAppRole($actor, $user->fresh(), $data['role']);
+            $user->syncRoles([$data['role']]);
         }
 
         return $user->fresh();
     }
 
-    private function normalizeAppRole(?string $role): string
-    {
-        $r = $role ?? 'member';
-
-        return in_array($r, self::APP_ROLES, true) ? $r : 'member';
-    }
-
     private function assertCanChangeAppRole(User $actor, User $target, string $newRole): void
     {
-        if (! in_array($newRole, self::APP_ROLES, true)) {
-            throw ValidationException::withMessages([
-                'role' => ['Rôle invalide.'],
-            ]);
-        }
-
+        // Prevent self-demotion from admin
         if ((int) $actor->id === (int) $target->id && $target->hasRole('admin') && $newRole !== 'admin') {
             throw ValidationException::withMessages([
                 'role' => ['Vous ne pouvez pas retirer votre propre rôle administrateur.'],
             ]);
         }
 
+        // Prevent removing the last active admin
         if ($target->hasRole('admin') && $newRole !== 'admin') {
             $activeAdmins = User::role('admin')
                 ->where(function ($q): void {

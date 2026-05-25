@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
-import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
@@ -16,13 +15,49 @@ import {
   Search, UserCog, UserPlus, Pencil, UserMinus, UserCheck,
   Trash2, Users, ShieldCheck, UserX, ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import { formatAppRole, normalizeAppRole } from '../../lib/roles';
 
-const ROLE_OPTIONS = [
-  { value: 'admin', label: 'Administrateur' },
-  { value: 'member', label: 'Membre' },
-  { value: 'client', label: 'Client' },
-];
+const fetchRoles = () => api.get('/roles').then((r) => r.data.data);
+
+function RolePreview({ role }) {
+  if (!role) return null;
+  return (
+    <div
+      className="mt-2 flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold"
+      style={{
+        backgroundColor: (role.color ?? '#6366f1') + '15',
+        borderColor:     (role.color ?? '#6366f1') + '40',
+        color:           role.color ?? '#6366f1',
+      }}
+    >
+      <span
+        className="h-2 w-2 rounded-full shrink-0"
+        style={{ backgroundColor: role.color ?? '#6366f1' }}
+      />
+      {role.name}
+      {role.description && (
+        <span className="font-normal text-gray-500 ml-1 truncate">— {role.description}</span>
+      )}
+    </div>
+  );
+}
+
+function roleBadge(roleName, allRoles = []) {
+  const found = allRoles.find((r) => r.name === roleName);
+  const color = found?.color ?? '#6366f1';
+  const label = found?.name ?? roleName ?? 'Membre';
+  return (
+    <span
+      className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+      style={{
+        backgroundColor: color + '18',
+        borderColor:     color + '50',
+        color:           color,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
 
 function StatCard({ icon: Icon, label, value, color }) {
   return (
@@ -48,12 +83,20 @@ export default function UserManagement({ variant = 'page' }) {
   const queryClient = useQueryClient();
   const isAdmin = user?.roles?.includes('admin');
 
+  const { data: allRoles = [] } = useQuery({
+    queryKey: ['roles'],
+    queryFn: fetchRoles,
+    enabled: isAdmin,
+    staleTime: 60000,
+  });
+  const activeRoles = allRoles.filter((r) => !r.is_archived);
+
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [userForm, setUserForm] = useState({
-    name: '', email: '', password: '', password_confirmation: '', status: 'active', role: 'member',
+    name: '', email: '', password: '', password_confirmation: '', status: 'active', role: '',
   });
   const [statusFilter, setStatusFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -148,25 +191,13 @@ export default function UserManagement({ variant = 'page' }) {
 
   if (!isAdmin) return null;
 
-  const appRoleBadge = (roleKey) => {
-    const key = normalizeAppRole(roleKey);
-    const label = formatAppRole(roleKey);
-    const cls =
-      key === 'admin'
-        ? 'border-violet-500/30 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300'
-        : key === 'client'
-          ? 'border-amber-500/30 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-          : 'border-emerald-500/30 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300';
-    return (
-      <Badge variant="outline" className={`font-medium text-xs ${cls}`}>
-        {label}
-      </Badge>
-    );
-  };
+  const defaultRole = activeRoles.find((r) => r.name === 'member')?.name
+    ?? activeRoles[0]?.name
+    ?? 'member';
 
   const openCreate = () => {
     setEditingUser(null);
-    setUserForm({ name: '', email: '', password: '', password_confirmation: '', status: 'active', role: 'member' });
+    setUserForm({ name: '', email: '', password: '', password_confirmation: '', status: 'active', role: defaultRole });
     setModalError(null);
     setUserFormKey((k) => k + 1);
     setShowUserModal(true);
@@ -175,12 +206,12 @@ export default function UserManagement({ variant = 'page' }) {
   const openEdit = (u) => {
     setEditingUser(u);
     setUserForm({
-      name: u.name || '',
-      email: u.email || '',
-      password: '',
+      name:                  u.name  || '',
+      email:                 u.email || '',
+      password:              '',
       password_confirmation: '',
-      status: u.status || 'active',
-      role: normalizeAppRole(u.role) || 'member',
+      status:                u.status || 'active',
+      role:                  u.role  || defaultRole,
     });
     setModalError(null);
     setUserFormKey((k) => k + 1);
@@ -214,11 +245,11 @@ export default function UserManagement({ variant = 'page' }) {
         <Select
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
-          className="sm:w-40"
+          className="sm:w-44"
         >
           <option value="">Tous les rôles</option>
-          {ROLE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+          {activeRoles.map((r) => (
+            <option key={r.id} value={r.name}>{r.name}</option>
           ))}
         </Select>
         <Select
@@ -275,7 +306,7 @@ export default function UserManagement({ variant = 'page' }) {
             <tbody className="divide-y divide-border">
               {users.map((u) => {
                 const isCurrentUser = u.id === user?.id;
-                const isUserAdmin = normalizeAppRole(u.role) === 'admin';
+                const isUserAdmin = u.role === 'admin';
                 const isDisabled = u.status === 'disabled';
                 return (
                   <tr key={u.id} className="group bg-card transition-colors hover:bg-accent/30">
@@ -305,7 +336,7 @@ export default function UserManagement({ variant = 'page' }) {
                       </div>
                     </td>
                     {/* Role */}
-                    <td className="px-4 py-3">{appRoleBadge(u.role)}</td>
+                    <td className="px-4 py-3">{roleBadge(u.role, allRoles)}</td>
                     {/* Status */}
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${isDisabled ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'}`}>
@@ -317,53 +348,52 @@ export default function UserManagement({ variant = 'page' }) {
                     <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(u.created_at)}</td>
                     {/* Actions */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-2">
+                        {/* Edit — always visible */}
                         <button
-                          title="Modifier"
                           onClick={() => openEdit(u)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 hover:border-gray-300"
                         >
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Pencil className="h-3 w-3" /> Modifier
                         </button>
 
+                        {/* Activate / Deactivate — not for admin or self */}
                         {!isUserAdmin && !isCurrentUser && (
-                          <>
-                            {isDisabled ? (
-                              <button
-                                title="Réactiver"
-                                disabled={enableMutation.isPending}
-                                onClick={() => {
-                                  if (window.confirm(`Réactiver "${u.name}" ?`)) enableMutation.mutate(u.id);
-                                }}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 transition-colors hover:bg-emerald-50 disabled:opacity-50 dark:hover:bg-emerald-950/40"
-                              >
-                                <UserCheck className="h-3.5 w-3.5" />
-                              </button>
-                            ) : (
-                              <button
-                                title="Désactiver"
-                                disabled={disableMutation.isPending}
-                                onClick={() => {
-                                  if (window.confirm(`Désactiver "${u.name}" ?`)) disableMutation.mutate(u.id);
-                                }}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-amber-600 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:hover:bg-amber-950/40"
-                              >
-                                <UserMinus className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-
+                          isDisabled ? (
                             <button
-                              title="Supprimer définitivement"
-                              disabled={permanentDeleteMutation.isPending}
+                              disabled={enableMutation.isPending}
                               onClick={() => {
-                                if (window.confirm(`Supprimer définitivement "${u.name}" ? Cette action est irréversible.`))
-                                  permanentDeleteMutation.mutate(u.id);
+                                if (window.confirm(`Réactiver "${u.name}" ?`)) enableMutation.mutate(u.id);
                               }}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition-colors hover:bg-rose-50 disabled:opacity-50 dark:hover:bg-rose-950/40"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <UserCheck className="h-3 w-3" /> Réactiver
                             </button>
-                          </>
+                          ) : (
+                            <button
+                              disabled={disableMutation.isPending}
+                              onClick={() => {
+                                if (window.confirm(`Désactiver "${u.name}" ?`)) disableMutation.mutate(u.id);
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                            >
+                              <UserMinus className="h-3 w-3" /> Désactiver
+                            </button>
+                          )
+                        )}
+
+                        {/* Delete — not for admin or self */}
+                        {!isUserAdmin && !isCurrentUser && (
+                          <button
+                            disabled={permanentDeleteMutation.isPending}
+                            onClick={() => {
+                              if (window.confirm(`Supprimer définitivement "${u.name}" ?\nCette action est irréversible.`))
+                                permanentDeleteMutation.mutate(u.id);
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
+                          >
+                            <Trash2 className="h-3 w-3" /> Supprimer
+                          </button>
                         )}
                       </div>
                     </td>
@@ -509,7 +539,7 @@ export default function UserManagement({ variant = 'page' }) {
             </div>
           </div>
 
-          <div className={`grid gap-4 ${userForm.role !== 'admin' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <div className="grid gap-4 grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">Rôle</label>
               <Select
@@ -519,28 +549,34 @@ export default function UserManagement({ variant = 'page' }) {
                 onChange={(e) => setUserForm((s) => ({ ...s, role: e.target.value }))}
                 disabled={Boolean(editingUser && editingUser.id === user?.id)}
               >
-                {ROLE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                {activeRoles.length === 0 && (
+                  <option value="">Chargement…</option>
+                )}
+                {activeRoles.map((r) => (
+                  <option key={r.id} value={r.name}>
+                    {r.name}{r.is_system ? ' ★' : ''}
+                  </option>
                 ))}
               </Select>
               {editingUser?.id === user?.id && (
                 <p className="mt-1 text-xs text-muted-foreground">Vous ne pouvez pas modifier votre propre rôle.</p>
               )}
+              {userForm.role && activeRoles.length > 0 && (
+                <RolePreview role={activeRoles.find((r) => r.name === userForm.role)} />
+              )}
             </div>
-            {userForm.role !== 'admin' && (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">Statut</label>
-                <Select
-                  name="admin_user_status"
-                  autoComplete="off"
-                  value={userForm.status}
-                  onChange={(e) => setUserForm((s) => ({ ...s, status: e.target.value }))}
-                >
-                  <option value="active">Actif</option>
-                  <option value="disabled">Désactivé</option>
-                </Select>
-              </div>
-            )}
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Statut</label>
+              <Select
+                name="admin_user_status"
+                autoComplete="off"
+                value={userForm.status}
+                onChange={(e) => setUserForm((s) => ({ ...s, status: e.target.value }))}
+              >
+                <option value="active">Actif</option>
+                <option value="disabled">Désactivé</option>
+              </Select>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 border-t border-border pt-4">

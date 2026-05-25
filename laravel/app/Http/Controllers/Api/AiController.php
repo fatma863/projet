@@ -105,16 +105,8 @@ class AiController extends Controller
 
         $user = $request->user();
 
-        // Collect all project IDs the user can access (owner + both pivot tables)
-        $projectIds = collect()
-            ->merge($user->projects()->pluck('projects.id'))
-            ->merge($user->accessibleProjects()->pluck('projects.id'))
-            ->merge($user->ownedProjects()->pluck('id'))
-            ->unique()
-            ->values();
-
         // Load all projects with tasks and members (compact fields only)
-        $allProjects = Project::whereIn('id', $projectIds)
+        $allProjects = Project::accessibleToUser($user)
             ->with([
                 'tasks:id,project_id,title,priority,workflow_status,due_date,progress_percent',
                 'members:id,name',

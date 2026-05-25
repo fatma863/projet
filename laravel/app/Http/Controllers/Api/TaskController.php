@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\TaskAssignmentChanged;
 use App\Events\TaskCommentCreated;
 use App\Events\TaskCommentDeleted;
+use App\Events\TaskDeleted as TaskDeletedEvent;
+use App\Events\TaskUpdated as TaskUpdatedEvent;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\AttachmentResource;
 use App\Http\Resources\CommentResource;
@@ -21,6 +24,8 @@ use App\Models\User;
 use App\Services\ActivityLogService;
 use App\Services\ActivityService;
 use App\Services\AIService;
+use App\Services\ProgressCalculationService;
+use App\Services\ProjectProgressAggregator;
 use App\Services\SprintService;
 use App\Services\MemberDashboardService;
 use App\Services\MentionService;
@@ -41,12 +46,14 @@ use Illuminate\Validation\ValidationException;
 class TaskController extends Controller
 {
     public function __construct(
-        private readonly ActivityLogService $activityLogService,
-        private readonly MentionService $mentionService,
-        private readonly NotificationService $notificationService,
-        private readonly AIService $aiService,
-        private readonly ActivityService $activityService,
-        private readonly SprintService $sprintService,
+        private readonly ActivityLogService        $activityLogService,
+        private readonly MentionService            $mentionService,
+        private readonly NotificationService       $notificationService,
+        private readonly AIService                 $aiService,
+        private readonly ActivityService           $activityService,
+        private readonly SprintService             $sprintService,
+        private readonly ProgressCalculationService $progressService,
+        private readonly ProjectProgressAggregator  $progressAggregator,
     ) {}
 
     // ─── CRUD ────────────────────────────────────────────
@@ -427,6 +434,16 @@ class TaskController extends Controller
 
         $oldSprintId = $task->sprint_id;
 
+        // Capture old values for audit trail before the update
+        $watchFields  = ['title', 'description', 'priority', 'workflow_status', 'status_id', 'progress_percent', 'planned_start', 'planned_end', 'due_date', 'issue_type', 'story_points'];
+        $capturedOld  = [];
+        foreach ($watchFields as $k) {
+            if ($request->has($k)) {
+                $v = $task->{$k};
+                $capturedOld[$k] = $v instanceof \Carbon\CarbonInterface ? $v->toDateString() : $v;
+            }
+        }
+
         $data['updated_by'] = Auth::id();
         $task->update($data);
 
@@ -494,19 +511,38 @@ class TaskController extends Controller
             $changed['assignee_id'] = $assigneeIdUpdate ? (int) $assigneeIdUpdate : null;
         }
 
+        // Build new values parallel to the old values captured before update
+        $capturedNew = [];
+        foreach (array_keys($capturedOld) as $k) {
+            $v = $task->{$k};
+            $capturedNew[$k] = $v instanceof \Carbon\CarbonInterface ? $v->toDateString() : $v;
+        }
+        if ($syncAssignee) {
+            $capturedOld['assignee_id'] = null;
+            $capturedNew['assignee_id'] = $assigneeIdUpdate ? (int) $assigneeIdUpdate : null;
+        }
+
         $this->activityLogService->log($task->project, Auth::user(), 'task.updated', $task, [
-            'status_id' => $task->status_id,
+            'task_title'       => $task->title,
+            'status_id'        => $task->status_id,
             'progress_percent' => $task->progress_percent,
-            'task_title' => $task->title,
-            'changed' => $changed,
-        ]);
+            'changed'          => $changed,
+        ], $capturedOld, $capturedNew);
         $this->notifyDelayIfNeeded($task);
         ProjectController::forgetDashboardCache($task->project_id);
         self::forgetProjectTasksCache($task->project_id);
 
+        // Recalculate progress when auto mode and workflow_status is in an intermediate state
+        if (($task->progress_mode ?? 'auto') === 'auto' && !in_array($task->workflow_status, ['done', 'todo'])) {
+            $this->progressService->recalculateAndSave($task->fresh());
+            $this->progressAggregator->recalculateAndSave($task->project);
+        }
+
+        event(new TaskUpdatedEvent($task, Auth::user(), 'updated', $changed));
+
         return response()->json([
             'message' => 'Tâche mise à jour.',
-            'task' => new TaskResource($task),
+            'task' => new TaskResource($task->fresh()),
         ]);
     }
 
@@ -516,12 +552,14 @@ class TaskController extends Controller
         $this->invalidateMemberDashboardCaches($task);
         $project = $task->project;
         $title = $task->title;
+        $taskId = $task->id;
         self::forgetProjectTasksCache($project->id);
         $task->delete();
         $this->activityLogService->log($project, Auth::user(), 'task.deleted', $task, [
             'task_title' => $title,
         ]);
         ProjectController::forgetDashboardCache($project->id);
+        event(new TaskDeletedEvent($taskId, $project->id, $title, Auth::user()));
 
         return response()->json(['message' => 'Tâche supprimée.']);
     }
@@ -568,6 +606,10 @@ class TaskController extends Controller
         if ($moved) {
             $moved->refreshWorkflowStatus();
         }
+        event(new TaskUpdatedEvent($task, Auth::user(), 'moved', [
+            'status_id'    => $task->status_id,
+            'kanban_order' => $task->kanban_order,
+        ]));
 
         return response()->json([
             'message' => 'Tâche déplacée.',
@@ -624,6 +666,7 @@ class TaskController extends Controller
         } catch (\Throwable) {
             // Risk refresh is non-critical
         }
+        event(new TaskAssignmentChanged($task, (int) $data['user_id'], 'assigned', Auth::user()));
 
         return response()->json([
             'message' => 'Assignation effectuée.',
@@ -648,6 +691,7 @@ class TaskController extends Controller
         } catch (\Throwable) {
             // Risk refresh is non-critical
         }
+        event(new TaskAssignmentChanged($task, $userId, 'unassigned', Auth::user()));
 
         return response()->json(['message' => 'Désassignation effectuée.']);
     }

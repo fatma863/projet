@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import api from '../lib/api';
-import { disconnectEcho } from '../lib/echo';
+import { disconnectEcho, getEcho } from '../lib/echo';
 import { applyAppTheme, applyPublicTheme, resolveThemeForUser } from '../lib/theme';
 
 const AuthContext = createContext(null);
@@ -44,6 +44,16 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get('/me');
       const userData = data.user || data;
+
+      // Enrich user with resolved permissions from the RBAC endpoint
+      try {
+        const { data: permData } = await api.get('/me/permissions');
+        userData.permissions = permData.permissions ?? [];
+      } catch {
+        // Fallback: keep whatever permissions came with /me
+        userData.permissions = userData.permissions ?? [];
+      }
+
       setUser(userData);
       applyUserSession(userData);
     } catch {
@@ -70,11 +80,44 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
+  // Real-time permission change detection via WebSocket
+  useEffect(() => {
+    if (!user?.id) return;
+
+    let channel;
+    try {
+      const echo = getEcho();
+      channel = echo.private(`user.${user.id}`);
+      channel.listen('.permission.changed', () => {
+        // Re-fetch user + permissions silently so the UI adapts without full logout
+        fetchUser();
+      });
+    } catch {
+      // Echo not available (unauthenticated or not configured)
+    }
+
+    return () => {
+      if (channel && user?.id) {
+        try { getEcho().leave(`user.${user.id}`); } catch { /* ignore */ }
+      }
+    };
+  }, [user?.id, fetchUser]);
+
+  const enrichWithPermissions = async (userData) => {
+    try {
+      const { data: permData } = await api.get('/me/permissions');
+      userData.permissions = permData.permissions ?? [];
+    } catch {
+      userData.permissions = userData.permissions ?? [];
+    }
+    return userData;
+  };
+
   const login = async (email, password) => {
     disconnectEcho();
     const { data } = await api.post('/auth/login', { email, password });
     localStorage.setItem('token', data.token);
-    const userData = data.user;
+    const userData = await enrichWithPermissions(data.user);
     setUser(userData);
     applyUserSession(userData);
     return data;
@@ -86,7 +129,7 @@ export function AuthProvider({ children }) {
       name, email, password, password_confirmation,
     });
     localStorage.setItem('token', data.token);
-    const userData = data.user;
+    const userData = await enrichWithPermissions(data.user);
     setUser(userData);
     applyUserSession(userData);
     return data;

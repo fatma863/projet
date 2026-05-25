@@ -1,0 +1,226 @@
+% ============================================================
+%  PREAMBLE — TAC-TIC IntelliPM — Rapport PFE 2025-2026
+% ============================================================
+
+%% ── Encodage & langue ──────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+
+%% ── Typographie : Palatino (corps) ─────────────────────────
+\usepackage{mathpazo}
+\usepackage{microtype}
+\linespread{1.08}
+
+%% ── Mise en page ───────────────────────────────────────────
+\usepackage[a4paper,
+            top=2.8cm, bottom=2.8cm,
+            left=3cm,  right=2.5cm,
+            headheight=15pt]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+
+%% ── Supprimer les pages blanches ───────────────────────────
+\let\cleardoublepage\clearpage
+
+%% ── Couleurs ───────────────────────────────────────────────
+\usepackage[dvipsnames,table]{xcolor}
+\definecolor{primary}{RGB}{109,40,217}
+\definecolor{secondary}{RGB}{139,92,246}
+\definecolor{accent}{RGB}{236,72,153}
+\definecolor{dark}{RGB}{30,27,75}
+\definecolor{lightgray}{RGB}{248,248,252}
+\definecolor{codebg}{RGB}{245,245,250}
+\definecolor{chaptercolor}{RGB}{109,40,217}
+
+%% ── Cadre décoratif de page ────────────────────────────────
+\usepackage{tikz}
+\usepackage{eso-pic}
+\AddToShipoutPictureBG{%
+  \put(0,0){%
+    \begin{tikzpicture}[overlay]
+      \draw[primary!30, line width=1.4pt]
+        (1.1cm, 1.1cm) rectangle (\paperwidth-1.1cm, \paperheight-1.1cm);
+      \draw[secondary!20, line width=0.5pt]
+        (0.8cm, 0.8cm) rectangle (\paperwidth-0.8cm, \paperheight-0.8cm);
+    \end{tikzpicture}%
+  }%
+}
+
+%% ── En-tête & pied de page ─────────────────────────────────
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE,RO]{\small\bfseries\color{primary}\thepage}
+\fancyhead[LO]{\small\color{dark}\textit{\nouppercase{\rightmark}}}
+\fancyhead[RE]{\small\color{dark}\textit{TAC-TIC IntelliPM}}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[C]{%
+  {\color{primary!40}\rule{\linewidth}{0.5pt}}\\[3pt]
+  \footnotesize\color{gray}\textit{Institut Supérieur des Études Technologiques de Sfax
+    — Rapport PFE 2025--2026}%
+}
+\renewcommand{\footrulewidth}{0pt}
+
+%% ── Titres de chapitres ────────────────────────────────────
+\usepackage{titlesec}
+
+% Chapitres numérotés
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\color{dark}}
+  {%
+    \colorbox{primary}{%
+      \hspace*{6pt}\color{white}\normalfont\large\bfseries
+      \chaptertitlename\ \thechapter\hspace*{6pt}%
+    }%
+  }
+  {6pt}
+  {\huge\color{primary}}
+  [\vspace{4pt}{\color{secondary}\rule{\textwidth}{2pt}}\vspace{6pt}]
+\titlespacing*{\chapter}{0pt}{-10pt}{20pt}
+
+% Chapitres non numérotés (Introduction, Conclusion…)
+\titleformat{name=\chapter,numberless}[display]
+  {\normalfont\bfseries\color{dark}}
+  {}
+  {0pt}
+  {\huge\color{primary}}
+  [\vspace{4pt}{\color{secondary}\rule{\textwidth}{2pt}}\vspace{6pt}]
+\titlespacing*{name=\chapter,numberless}{0pt}{-10pt}{20pt}
+
+% Sections
+\titleformat{\section}
+  {\large\bfseries\color{dark}}
+  {\textcolor{primary}{\thesection}}
+  {0.9em}{}
+  [\vspace{-2pt}{\color{primary!35}\rule{\linewidth}{0.6pt}}\vspace{2pt}]
+
+% Sous-sections
+\titleformat{\subsection}
+  {\normalsize\bfseries\color{dark}}
+  {\textcolor{secondary}{\thesubsection}}
+  {0.8em}{}
+
+% Sous-sous-sections
+\titleformat{\subsubsection}
+  {\normalsize\itshape\color{dark}}
+  {\textcolor{secondary}{\thesubsubsection}}
+  {0.8em}{}
+
+%% ── tcolorbox : environnements décoratifs ──────────────────
+\usepackage[most]{tcolorbox}
+\tcbuselibrary{skins,breakable}
+
+% Encadré introduction de chapitre
+\newtcolorbox{chapintro}{
+  enhanced, breakable,
+  colback=primary!4, colframe=primary!60,
+  arc=4pt, boxrule=0.8pt,
+  left=10pt, right=10pt, top=7pt, bottom=7pt,
+  before upper={\setlength{\parskip}{4pt}}
+}
+
+% Encadré conclusion de chapitre
+\newtcolorbox{chapconclusion}{
+  enhanced, breakable,
+  colback=secondary!6, colframe=secondary!70,
+  arc=4pt, boxrule=0.8pt,
+  left=10pt, right=10pt, top=7pt, bottom=7pt,
+  title={\color{white}\bfseries Conclusion},
+  fonttitle=\small\bfseries,
+  attach boxed title to top left={yshift=-2mm, xshift=6mm},
+  boxed title style={colback=secondary!80, colframe=secondary!80, arc=3pt, boxrule=0pt}
+}
+
+% Encadré information / remarque
+\newtcolorbox{remarque}[1][Remarque]{
+  enhanced,
+  colback=blue!4, colframe=blue!45,
+  arc=3pt, boxrule=0.7pt,
+  fonttitle=\small\bfseries\color{white},
+  title={#1},
+  attach boxed title to top left={yshift=-2mm, xshift=6mm},
+  boxed title style={colback=blue!50, arc=3pt, boxrule=0pt},
+  left=8pt, right=8pt, top=6pt, bottom=6pt
+}
+
+%% ── Table des matières ─────────────────────────────────────
+\usepackage{tocloft}
+\setlength{\cftbeforechapskip}{4pt}
+\renewcommand{\cftchapfont}{\bfseries\color{primary}}
+\renewcommand{\cftchappagefont}{\bfseries\color{primary}}
+\renewcommand{\cftsecfont}{\color{dark}}
+\renewcommand{\cftsecpagefont}{\color{dark}}
+
+%% ── Tables ─────────────────────────────────────────────────
+\usepackage{booktabs,tabularx,longtable,multirow,array,colortbl}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcommand{\thead}[1]{\cellcolor{primary}\color{white}\textbf{#1}}
+
+%% ── Figures ────────────────────────────────────────────────
+\usepackage{graphicx,float,caption,subcaption}
+\graphicspath{{figures/}}
+\captionsetup{
+  font=small,
+  labelfont={bf,color=primary},
+  textfont=it,
+  margin=10pt,
+  skip=5pt
+}
+
+%% ── Code source ────────────────────────────────────────────
+\usepackage{listings,lstautogobble}
+\lstdefinestyle{phpstyle}{language=PHP,
+  backgroundcolor=\color{codebg}, basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{primary}\bfseries, stringstyle=\color{ForestGreen},
+  commentstyle=\color{gray}\itshape, numberstyle=\tiny\color{gray},
+  numbers=left, frame=single, rulecolor=\color{secondary},
+  breaklines=true, autogobble=true, showstringspaces=false}
+\lstdefinestyle{jsstyle}{language=Java,
+  backgroundcolor=\color{codebg}, basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{secondary}\bfseries, stringstyle=\color{ForestGreen},
+  commentstyle=\color{gray}\itshape, numberstyle=\tiny\color{gray},
+  numbers=left, frame=single,
+  breaklines=true, autogobble=true, showstringspaces=false}
+\lstdefinestyle{pythonstyle}{language=Python,
+  backgroundcolor=\color{codebg}, basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{primary}\bfseries, stringstyle=\color{ForestGreen},
+  commentstyle=\color{gray}\itshape, numberstyle=\tiny\color{gray},
+  numbers=left, frame=single,
+  breaklines=true, autogobble=true, showstringspaces=false}
+\lstdefinestyle{sqlstyle}{language=SQL,
+  backgroundcolor=\color{codebg}, basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{dark}\bfseries, commentstyle=\color{gray}\itshape,
+  numberstyle=\tiny\color{gray}, numbers=left, frame=single,
+  breaklines=true, autogobble=true, showstringspaces=false}
+\lstdefinestyle{yamlstyle}{language=bash,
+  backgroundcolor=\color{codebg}, basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{secondary}\bfseries, commentstyle=\color{gray}\itshape,
+  numberstyle=\tiny\color{gray}, numbers=left, frame=single,
+  breaklines=true, autogobble=true, showstringspaces=false}
+\lstdefinestyle{bashstyle}{language=bash,
+  backgroundcolor=\color{codebg}, basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{dark}\bfseries, commentstyle=\color{gray}\itshape,
+  numberstyle=\tiny\color{gray}, numbers=left, frame=single,
+  breaklines=true, autogobble=true, showstringspaces=false}
+
+%% ── Liens hypertexte ───────────────────────────────────────
+\usepackage[colorlinks=true,
+            linkcolor=primary,
+            citecolor=secondary,
+            urlcolor=secondary,
+            bookmarks=true,
+            breaklinks=true]{hyperref}
+
+%% ── Divers ─────────────────────────────────────────────────
+\usepackage{enumitem,amsmath,amssymb,pifont,etoolbox,mdframed}
+\newcommand{\cmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
+
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+
+%% ── Bibliographie ──────────────────────────────────────────
+\usepackage[backend=biber,style=numeric,sorting=none]{biblatex}
+\addbibresource{bibliography.bib}

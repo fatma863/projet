@@ -2,8 +2,10 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Button } from '../components/ui/Button';
 import { Home, ArrowLeft } from 'lucide-react';
+import { useI18n } from '../i18n/I18nContext';
 
 export default function NotFoundPage() {
+  const { t } = useI18n();
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-6">
       {/* Decorative orbs */}
@@ -25,7 +27,7 @@ export default function NotFoundPage() {
           transition={{ duration: 0.5, delay: 0.1 }}
           className="mt-4 font-display text-2xl font-bold text-foreground sm:text-3xl"
         >
-          Page introuvable
+          {t('notFound.title')}
         </motion.h1>
         <motion.p
           initial={{ opacity: 0, y: 20 }}
@@ -33,7 +35,7 @@ export default function NotFoundPage() {
           transition={{ duration: 0.5, delay: 0.2 }}
           className="mt-3 text-muted-foreground"
         >
-          Désolé, la page que vous recherchez n&apos;existe pas ou a été déplacée.
+          {t('notFound.message')}
         </motion.p>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -43,11 +45,11 @@ export default function NotFoundPage() {
         >
           <Link to="/dashboard">
             <Button variant="gradient">
-              <Home className="mr-2 h-4 w-4" /> Tableau de bord
+              <Home className="mr-2 h-4 w-4" /> {t('notFound.goHome')}
             </Button>
           </Link>
           <Button variant="outline" onClick={() => window.history.back()}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Retour
+            <ArrowLeft className="mr-2 h-4 w-4" /> {t('notFound.goBack')}
           </Button>
         </motion.div>
       </div>

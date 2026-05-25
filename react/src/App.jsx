@@ -4,7 +4,7 @@ import { Toaster } from 'sonner';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
 import { I18nProvider } from './i18n/I18nContext';
-import { ProtectedRoute, GuestRoute, RoleRoute } from './routes/guards';
+import { ProtectedRoute, GuestRoute, RoleRoute, PermissionRoute } from './routes/guards';
 import AppLayout from './components/layout/AppLayout';
 
 // Pages chargées uniquement à la demande (code splitting)
@@ -25,11 +25,16 @@ const GanttPage          = lazy(() => import('./pages/gantt/GanttPage'));
 const TasksHubPage       = lazy(() => import('./pages/tasks/TasksHubPage'));
 const CalendarPage       = lazy(() => import('./pages/calendar/CalendarPage'));
 const AiPage             = lazy(() => import('./pages/ai/AiPage'));
-const NotificationsPage  = lazy(() => import('./pages/notifications/NotificationsPage'));
+const NotificationsPage         = lazy(() => import('./pages/notifications/NotificationsPage'));
+const NotificationSettingsPage  = lazy(() => import('./pages/notifications/NotificationSettingsPage'));
 const SettingsPage       = lazy(() => import('./pages/settings/SettingsPage'));
 const UsersAdminPage     = lazy(() => import('./pages/users/UsersAdminPage'));
 const AcceptInvitePage   = lazy(() => import('./pages/invites/AcceptInvitePage'));
-const AuditLogPage       = lazy(() => import('./pages/audit/AuditLogPage'));
+const AuditLogPage            = lazy(() => import('./pages/audit/AuditLogPage'));
+const AuditReportPage         = lazy(() => import('./pages/audit/AuditReportPage'));
+const RolesPage               = lazy(() => import('./pages/admin/RolesPage'));
+const RoleDetailPage          = lazy(() => import('./pages/admin/RoleDetailPage'));
+const PermissionMatrixPage    = lazy(() => import('./pages/admin/PermissionMatrixPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -63,6 +68,9 @@ function App() {
             {/* Invitation (connecté ou non) */}
             <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
+            {/* Standalone print pages — no AppLayout */}
+            <Route path="/audit-log/report" element={<ProtectedRoute><AuditReportPage /></ProtectedRoute>} />
+
             {/* Protected routes */}
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route index path="/dashboard" element={<DashboardPage />} />
@@ -79,8 +87,35 @@ function App() {
               <Route path="/gantt" element={<RoleRoute allow={['admin', 'member']}><GanttPage /></RoleRoute>} />
               <Route path="/ai" element={<RoleRoute allow={['admin', 'member']}><AiPage /></RoleRoute>} />
               <Route path="/notifications" element={<NotificationsPage />} />
+              <Route path="/notifications/settings" element={<NotificationSettingsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/audit-log" element={<RoleRoute allow={['admin', 'member']}><AuditLogPage /></RoleRoute>} />
+
+              {/* ── Enterprise RBAC admin pages ──────────────────────── */}
+              <Route
+                path="/admin/roles"
+                element={
+                  <PermissionRoute permission="role.view">
+                    <RolesPage />
+                  </PermissionRoute>
+                }
+              />
+              <Route
+                path="/admin/roles/:id"
+                element={
+                  <PermissionRoute permission="role.view">
+                    <RoleDetailPage />
+                  </PermissionRoute>
+                }
+              />
+              <Route
+                path="/admin/permissions"
+                element={
+                  <PermissionRoute permission="role.view">
+                    <PermissionMatrixPage />
+                  </PermissionRoute>
+                }
+              />
             </Route>
 
             {/* 404 */}

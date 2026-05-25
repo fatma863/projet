@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ActivityFeedController;
+use App\Http\Controllers\Api\ActivityAnalyticsController;
 use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AiController;
 use App\Http\Controllers\Api\MLController;
@@ -15,13 +16,19 @@ use App\Http\Controllers\Api\InvitationController;
 use App\Http\Controllers\Api\InviteController;
 use App\Http\Controllers\Api\MemberDashboardController;
 use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\ProjectRoleController;
+use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SprintController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TaskStatusController;
 use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\GlobalSearchController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\WorklogController;
+use App\Http\Controllers\Api\WatcherController;
+use App\Http\Controllers\Api\FollowerController;
 use App\Http\Controllers\Api\NotificationPreferencesController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
@@ -91,8 +98,8 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
         Route::delete('users/{user}/permanent', [UserController::class, 'forceDestroy']);
     });
 
-    // Projects / Clients
-    Route::middleware('check.role:admin,member')->group(function () {
+    // Projects / Clients (tout rôle sauf client)
+    Route::middleware('check.role:!client')->group(function () {
         Route::apiResource('clients', ClientController::class);
     });
     Route::apiResource('projects', ProjectController::class);
@@ -138,10 +145,13 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::put('statuses/{status}', [TaskStatusController::class, 'update']);
     Route::delete('statuses/{status}', [TaskStatusController::class, 'destroy']);
 
-    Route::middleware('check.role:admin,member')->group(function () {
+    // Accessible à tout utilisateur authentifié sauf les clients (lecture seule)
+    Route::middleware('check.role:!client')->group(function () {
         Route::get('calendar', [CalendarController::class, 'index']);
         Route::get('gantt', [GanttController::class, 'globalIndex']);
         Route::get('activity/feed', [ActivityFeedController::class, 'index']);
+        Route::get('activity/export', [ActivityFeedController::class, 'export']);
+        Route::get('activity/analytics', [ActivityAnalyticsController::class, 'index']);
     });
 
     // Tasks (scoped to project)
@@ -184,6 +194,12 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::post('tasks/{task}/time-entries', [TaskController::class, 'addTimeEntry']);
     Route::delete('tasks/{task}/time-entries/{timeEntry}', [TaskController::class, 'deleteTimeEntry']);
 
+    // Task Worklog (dynamic progress)
+    Route::get('tasks/{task}/worklog', [WorklogController::class, 'index']);
+    Route::post('tasks/{task}/worklog', [WorklogController::class, 'store']);
+    Route::get('tasks/{task}/worklog/users', [WorklogController::class, 'userProgress']);
+    Route::put('tasks/{task}/worklog/validate', [WorklogController::class, 'validate']);
+
     // Gantt
     Route::middleware('check.project:view')->group(function () {
         Route::get('projects/{project}/gantt', [GanttController::class, 'show']);
@@ -210,12 +226,25 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     // Notifications
     Route::get('notifications', [NotificationController::class, 'index']);
     Route::get('notifications/summary', [NotificationController::class, 'summary']);
+    Route::get('notifications/stats', [NotificationController::class, 'stats']);
     Route::post('notifications/read', [NotificationController::class, 'markReadFromBody']);
     Route::patch('notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::post('notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('notifications/read', [NotificationController::class, 'destroyRead']);
+    Route::delete('notifications/{notification}', [NotificationController::class, 'destroy']);
 
-    // ML Recommendation Engine (members & admins)
-    Route::middleware('check.role:admin,member')->group(function () {
+    // Task Watchers
+    Route::get('tasks/{task}/watchers', [WatcherController::class, 'index']);
+    Route::post('tasks/{task}/watch', [WatcherController::class, 'watch']);
+    Route::delete('tasks/{task}/watch', [WatcherController::class, 'unwatch']);
+
+    // Project Followers
+    Route::get('projects/{project}/followers', [FollowerController::class, 'index']);
+    Route::post('projects/{project}/follow', [FollowerController::class, 'follow']);
+    Route::delete('projects/{project}/follow', [FollowerController::class, 'unfollow']);
+
+    // ML Recommendation Engine (tout rôle sauf client)
+    Route::middleware('check.role:!client')->group(function () {
         Route::prefix('ml')->group(function () {
             Route::post('recommend',             [MLController::class, 'recommendForNewTask']);
             Route::get('recommend/{task}',       [MLController::class, 'recommend']);
@@ -227,8 +256,8 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
         });
     });
 
-    // IA Services (membres & admins — pas les clients)
-    Route::middleware('check.role:admin,member')->group(function () {
+    // IA Services (tout rôle sauf client)
+    Route::middleware('check.role:!client')->group(function () {
         Route::prefix('ai')->group(function () {
             Route::get('estimate/{task}', [AiController::class, 'estimateTask']);
             Route::get('delay-risk/task/{task}', [AiController::class, 'delayRiskTask']);
@@ -247,5 +276,63 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
         // AI en lecture seule pour le client (risques projet + recommandations)
         Route::get('client/projects/{project}/ai/risk', [AiController::class, 'delayRiskProject']);
         Route::get('client/projects/{project}/ai/recommendations', [AiController::class, 'projectRecommendations']);
+    });
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ENTERPRISE RBAC — Roles & Permissions Management
+    // ══════════════════════════════════════════════════════════════════════════
+
+    // Current user permissions (consumed by the React frontend)
+    Route::get('me/permissions', [PermissionController::class, 'myPermissions']);
+
+    // All permissions grouped by module (for building the permission matrix UI)
+    Route::get('permissions', [PermissionController::class, 'index']);
+
+    // Roles (admin only for write operations, all authenticated for reads)
+    Route::get('roles', [RoleController::class, 'index']);
+    Route::get('roles/audit-log', [RoleController::class, 'auditLog']);
+    Route::get('roles/{role}', [RoleController::class, 'show']);
+    Route::get('roles/{role}/users', [RoleController::class, 'users']);
+
+    Route::middleware('check.permission:role.create')->group(function () {
+        Route::post('roles', [RoleController::class, 'store']);
+        Route::post('roles/{role}/duplicate', [RoleController::class, 'duplicate']);
+    });
+    Route::middleware('check.permission:role.edit')->group(function () {
+        Route::put('roles/{role}', [RoleController::class, 'update']);
+        Route::put('roles/{role}/permissions', [RoleController::class, 'syncPermissions']);
+        Route::post('roles/{role}/permissions/{permission}', [RoleController::class, 'grantPermission']);
+        Route::delete('roles/{role}/permissions/{permission}', [RoleController::class, 'revokePermission']);
+        Route::post('roles/{role}/archive', [RoleController::class, 'toggleArchive']);
+        Route::post('roles/{role}/users/{user}', [RoleController::class, 'assignUser']);
+    });
+    Route::middleware('check.permission:role.delete')->group(function () {
+        Route::delete('roles/{role}', [RoleController::class, 'destroy']);
+    });
+
+    // User-level direct permissions (admin only)
+    Route::middleware('check.permission:user.manage_permissions')->group(function () {
+        Route::get('users/{user}/permissions', [PermissionController::class, 'userPermissions']);
+        Route::get('users/{user}/permissions/project/{project}', [PermissionController::class, 'userProjectPermissions']);
+        Route::post('users/{user}/permissions/grant', [PermissionController::class, 'grantDirect']);
+        Route::post('users/{user}/permissions/revoke', [PermissionController::class, 'revokeDirect']);
+        Route::post('users/{user}/role', [RoleController::class, 'assignUser']);
+    });
+
+    // Role assignment (requires role.assign permission)
+    Route::middleware('check.permission:user.assign_role')->group(function () {
+        Route::post('users/{user}/assign-role', [RoleController::class, 'assignUser']);
+    });
+
+    // Project-scoped role overrides
+    Route::middleware('check.project:view')->group(function () {
+        Route::get('projects/{project}/roles', [ProjectRoleController::class, 'index']);
+        Route::get('projects/{project}/roles/{user}/permissions', [ProjectRoleController::class, 'userEffectivePermissions']);
+    });
+    Route::middleware('check.project:edit')->group(function () {
+        Route::put('projects/{project}/roles/{user}', [ProjectRoleController::class, 'setUserRole']);
+        Route::delete('projects/{project}/roles/{user}', [ProjectRoleController::class, 'removeUserRole']);
+        Route::post('projects/{project}/roles/{user}/grant', [ProjectRoleController::class, 'grantPermission']);
+        Route::post('projects/{project}/roles/{user}/deny', [ProjectRoleController::class, 'denyPermission']);
     });
 });

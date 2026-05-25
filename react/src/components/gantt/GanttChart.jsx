@@ -353,45 +353,15 @@ export function GanttChart({ tasks = [], showProject = false, variant = 'default
                     />
                   )}
                   {metrics ? (
-                    <div
-                      className={cn(
-                        'absolute top-1/2 z-20 h-7 -translate-y-1/2 overflow-hidden rounded-full shadow-lg transition-transform duration-200 group-hover/gantt:scale-[1.01]',
-                        ringClass,
-                      )}
-                      style={{
-                        left: `${metrics.left}%`,
-                        width: `${Math.max(metrics.width, 0.35)}%`,
-                        background: styles.gradient,
-                        boxShadow: `0 2px 12px -2px ${styles.glow}, inset 0 1px 0 rgba(255,255,255,0.2)`,
-                      }}
-                      title={
-                        task.is_critical
-                          ? task.is_delayed
-                            ? 'Tâche critique en retard'
-                            : 'Chemin critique'
-                          : task.is_delayed
-                            ? 'Attention échéance'
-                            : `${task.name ?? 'Sans titre'}`
-                      }
-                    >
-                      {styles.overlay && (
-                        <div
-                          className="pointer-events-none absolute inset-0 rounded-full"
-                          style={{ background: styles.overlay }}
-                        />
-                      )}
-                      {(task.progress ?? task.progress_percent ?? 0) > 0 && (
-                        <div
-                          className="absolute inset-y-0 left-0 rounded-full bg-white/25 dark:bg-black/20"
-                          style={{ width: `${task.progress ?? task.progress_percent ?? 0}%` }}
-                        />
-                      )}
-                      <div className="absolute inset-0 flex items-center justify-end pr-2">
-                        <span className="text-[10px] font-bold tabular-nums text-white drop-shadow-sm">
-                          {task.progress ?? task.progress_percent ?? 0}%
-                        </span>
-                      </div>
-                    </div>
+                    <GanttBar
+                      metrics={metrics}
+                      task={task}
+                      styles={styles}
+                      ringClass={ringClass}
+                      todayPercent={todayPercent}
+                      minDate={minDate}
+                      totalDays={totalDays}
+                    />
                   ) : (
                     <div className="flex h-7 items-center px-2">
                       <span className="text-xs italic text-muted-foreground">Pas de dates</span>
@@ -424,6 +394,108 @@ GanttChart.propTypes = {
   rowLabel: PropTypes.string,
 };
 
+/**
+ * Renders a single Gantt bar with:
+ *   - Expected-progress ghost (time elapsed vs duration)
+ *   - Actual progress fill (from hybrid formula)
+ *   - Label: actual% / expected%
+ */
+function GanttBar({ metrics, task, styles, ringClass, todayPercent, minDate, totalDays }) {
+  const actualProgress = Math.min(100, Math.max(0, task.progress ?? task.progress_percent ?? 0));
+
+  // Expected progress = % of scheduled duration that has elapsed today
+  let expectedProgress = 0;
+  if (task.start && task.end && todayPercent != null) {
+    const ts = new Date(task.start).getTime();
+    const te = new Date(task.end).getTime();
+    if (Number.isFinite(ts) && Number.isFinite(te) && te > ts) {
+      const barStartPct = ((ts - minDate) / 86400000 / totalDays) * 100;
+      const barEndPct   = ((te - minDate) / 86400000 / totalDays) * 100;
+      const todayInBar  = Math.min(Math.max(todayPercent, barStartPct), barEndPct);
+      expectedProgress = Math.round(((todayInBar - barStartPct) / (barEndPct - barStartPct)) * 100);
+      expectedProgress = Math.min(100, Math.max(0, expectedProgress));
+    }
+  }
+
+  const isAhead  = actualProgress > expectedProgress;
+  const isBehind = actualProgress < expectedProgress - 10;
+
+  const statusTitle =
+    task.is_critical && task.is_delayed ? 'Tâche critique en retard' :
+    task.is_critical                    ? 'Chemin critique' :
+    task.is_delayed                     ? 'Attention : délai dépassé' :
+    isBehind                            ? `En retard — attendu ${expectedProgress}%, réel ${actualProgress}%` :
+    isAhead                             ? `En avance — attendu ${expectedProgress}%, réel ${actualProgress}%` :
+    `${task.name ?? 'Sans titre'} — ${actualProgress}%`;
+
+  return (
+    <div
+      className={cn(
+        'absolute top-1/2 z-20 h-7 -translate-y-1/2 overflow-hidden rounded-full shadow-lg transition-transform duration-200 group-hover/gantt:scale-[1.01]',
+        ringClass,
+        isBehind && !task.is_critical ? 'ring-1 ring-amber-500/60 ring-offset-1 ring-offset-card' : '',
+      )}
+      style={{
+        left: `${metrics.left}%`,
+        width: `${Math.max(metrics.width, 0.35)}%`,
+        background: styles.gradient,
+        boxShadow: `0 2px 12px -2px ${styles.glow}, inset 0 1px 0 rgba(255,255,255,0.2)`,
+      }}
+      title={statusTitle}
+    >
+      {/* Expected-progress ghost layer */}
+      {expectedProgress > 0 && (
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 rounded-l-full bg-black/10 dark:bg-white/10"
+          style={{ width: `${expectedProgress}%` }}
+        />
+      )}
+
+      {/* Delayed overlay */}
+      {styles.overlay && (
+        <div
+          className="pointer-events-none absolute inset-0 rounded-full"
+          style={{ background: styles.overlay }}
+        />
+      )}
+
+      {/* Actual progress fill */}
+      {actualProgress > 0 && (
+        <div
+          className={cn(
+            'absolute inset-y-0 left-0 rounded-l-full transition-all duration-500',
+            actualProgress >= 100
+              ? 'bg-emerald-400/50 dark:bg-emerald-300/40'
+              : isAhead
+                ? 'bg-white/35 dark:bg-white/25'
+                : isBehind
+                  ? 'bg-amber-400/40 dark:bg-amber-300/30'
+                  : 'bg-white/25 dark:bg-black/20',
+          )}
+          style={{ width: `${actualProgress}%` }}
+        />
+      )}
+
+      {/* Label */}
+      <div className="absolute inset-0 flex items-center justify-end pr-2 gap-1">
+        {expectedProgress > 0 && Math.abs(actualProgress - expectedProgress) > 5 && (
+          <span
+            className={cn(
+              'text-[8px] font-bold tabular-nums drop-shadow-sm',
+              isBehind ? 'text-amber-200' : 'text-emerald-200',
+            )}
+          >
+            {isAhead ? '▲' : '▼'}{Math.abs(actualProgress - expectedProgress)}%
+          </span>
+        )}
+        <span className="text-[10px] font-bold tabular-nums text-white drop-shadow-sm">
+          {actualProgress}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function GanttLegend() {
   const items = [
     { key: 'low', label: 'Priorité basse', swatch: PRIORITY_STYLES.low.bar },
@@ -454,6 +526,18 @@ function GanttLegend() {
       <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-800 dark:text-emerald-300">
         <span className="h-2 w-px bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
         Ligne verticale = aujourd’hui
+      </span>
+      <span className="inline-flex items-center gap-2 rounded-full border border-border/50 bg-card/80 px-2.5 py-1 text-[11px] font-medium text-foreground dark:bg-slate-800/80">
+        <span className="h-2.5 w-6 rounded-full bg-white/25 ring-1 ring-inset ring-white/30" />
+        Progression réelle
+      </span>
+      <span className="inline-flex items-center gap-2 rounded-full border border-border/50 bg-card/80 px-2.5 py-1 text-[11px] font-medium text-foreground dark:bg-slate-800/80">
+        <span className="h-2.5 w-6 rounded-full bg-black/10 ring-1 ring-inset ring-black/10" />
+        Progression attendue
+      </span>
+      <span className="inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+        <span className="h-2.5 w-6 rounded-full bg-amber-400/40" />
+        En retard (&gt;10% d’écart)
       </span>
     </div>
   );

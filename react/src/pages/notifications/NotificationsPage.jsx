@@ -1,321 +1,350 @@
-import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Button } from '../../components/ui/Button';
-import { Card, CardContent } from '../../components/ui/Card';
-import { Bell, Check, CheckCheck, ListTodo, FolderKanban, Mail, AlertTriangle, MessageSquare } from 'lucide-react';
-import { POLL_INTERVAL_MS } from '../../lib/unwrapApi';
+import { useEffect, useRef, useState } from 'react';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
-  fetchNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
-} from '../../lib/services/notificationsApi';
-import { SkeletonNotificationRow } from '../../components/ui/Skeleton';
-import { EmptyState } from '../../components/ui/EmptyState';
-import { UserAvatar } from '../../components/ui/UserAvatar';
+  Bell, Check, CheckCheck, Settings, Search, Trash2,
+  AlertTriangle, Info, AlertCircle, X, RefreshCw,
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import api from '../../lib/api';
+import { useAuth } from '../../contexts/AuthContext';
+import { getEcho } from '../../lib/echo';
 import { getNotificationLink } from '../../lib/notificationNav';
 import { formatRelativeTimeFr, groupNotificationsByDate } from '../../lib/formatRelativeTime';
+import { UserAvatar } from '../../components/ui/UserAvatar';
+import { cn } from '../../lib/utils';
 
-function actorLabelForNotification(n) {
-  const d = n.data || {};
-  if (d.inviter_name) return d.inviter_name;
-  if (d.actor_name) return d.actor_name;
-  if (d.assigned_by_name) return d.assigned_by_name;
-  if (n.type === 'project_invitation') return 'Invitation';
-  if (n.type === 'task_assigned') return 'Assignation';
-  return 'Équipe';
-}
+// ── Constants ────────────────────────────────────────────────────────────────
 
-function actorAvatarForNotification(n) {
-  const d = n.data || {};
-  return d.inviter_avatar_url || d.actor_avatar_url || null;
-}
+const TYPE_GROUPS = [
+  { key: '',                                                                label: 'Toutes' },
+  { key: 'task_assigned,task_updated,task_completed',                       label: 'Tâches' },
+  { key: 'task_comment,comment_added,task_mentioned,mention',               label: 'Commentaires' },
+  { key: 'task_delayed,workload_alert',                                      label: 'Alertes' },
+  { key: 'project_created,project_updated,project_at_risk',                 label: 'Projets' },
+  { key: 'invitation_received,project_invitation,project_invitation_accepted', label: 'Invitations' },
+  { key: 'ai_alert',                                                         label: 'IA' },
+  { key: 'permission_updated',                                               label: 'Permissions' },
+];
 
-const TYPE_CATEGORIES = {
-  task: {
-    label: 'Tâches',
-    icon: ListTodo,
-    color: 'text-blue-600',
-    match: (t) => /task|tache/.test(t) && !/delay|overdue|retard/.test(t),
-  },
-  project: {
-    label: 'Projets',
-    icon: FolderKanban,
-    color: 'text-indigo-600',
-    match: (t) => /project|projet/.test(t) && !/(invitation|invite)/.test(t),
-  },
-  invitation: {
-    label: 'Invitations',
-    icon: Mail,
-    color: 'text-violet-600',
-    match: (t) => /invitation|invite/.test(t),
-  },
-  delay: {
-    label: 'Retards',
-    icon: AlertTriangle,
-    color: 'text-amber-600',
-    match: (t) => /delay|overdue|retard/.test(t),
-  },
-  comment: {
-    label: 'Commentaires',
-    icon: MessageSquare,
-    color: 'text-teal-600',
-    match: (t) => /comment/.test(t),
-  },
+const TYPE_LABELS = {
+  task_assigned:               'Assignation',
+  task_updated:                'Modification',
+  task_completed:              'Terminée',
+  task_delayed:                'Retard',
+  task_comment:                'Commentaire',
+  comment_added:               'Commentaire',
+  task_mentioned:              'Mention',
+  mention:                     'Mention',
+  project_created:             'Projet créé',
+  project_updated:             'Projet modifié',
+  project_at_risk:             'Projet à risque',
+  gantt_updated:               'Gantt',
+  ai_alert:                    'Alerte IA',
+  permission_updated:          'Permission',
+  invitation_received:         'Invitation',
+  project_invitation:          'Invitation',
+  project_invitation_accepted: 'Invitation acceptée',
+  workload_alert:              'Surcharge',
 };
 
-function getNotifCategory(type) {
-  const t = String(type || '').toLowerCase();
-  for (const [key, cfg] of Object.entries(TYPE_CATEGORIES)) {
-    if (cfg.match(t)) return key;
-  }
-  return 'other';
+const TYPE_COLORS = {
+  task_assigned:               'bg-indigo-100 text-indigo-700',
+  task_updated:                'bg-slate-100 text-slate-700',
+  task_completed:              'bg-green-100 text-green-700',
+  task_delayed:                'bg-amber-100 text-amber-700',
+  task_comment:                'bg-purple-100 text-purple-700',
+  comment_added:               'bg-purple-100 text-purple-700',
+  task_mentioned:              'bg-pink-100 text-pink-700',
+  mention:                     'bg-pink-100 text-pink-700',
+  project_at_risk:             'bg-red-100 text-red-700',
+  ai_alert:                    'bg-violet-100 text-violet-700',
+  permission_updated:          'bg-orange-100 text-orange-700',
+  invitation_received:         'bg-blue-100 text-blue-700',
+  project_invitation:          'bg-blue-100 text-blue-700',
+  workload_alert:              'bg-red-100 text-red-700',
+};
+
+// ── Small helpers ────────────────────────────────────────────────────────────
+
+function SeverityIcon({ severity }) {
+  if (severity === 'alert')   return <AlertCircle   size={12} className="text-red-500" />;
+  if (severity === 'warning') return <AlertTriangle size={12} className="text-amber-500" />;
+  return <Info size={12} className="text-blue-400" />;
 }
 
+function TypeBadge({ type }) {
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${TYPE_COLORS[type] ?? 'bg-gray-100 text-gray-600'}`}>
+      {TYPE_LABELS[type] ?? type}
+    </span>
+  );
+}
+
+// ── Data fetching ────────────────────────────────────────────────────────────
+
+const fetchPage = ({ pageParam = 1, type = '', unread_only = false, search = '' }) =>
+  api.get('/notifications', {
+    params: { page: pageParam, per_page: 20, type: type || undefined, unread_only: unread_only || undefined, search: search || undefined },
+  }).then((r) => r.data);
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
 export default function NotificationsPage() {
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [activeType, setActiveType] = useState('all');
+  const { user }  = useAuth();
+  const navigate  = useNavigate();
+  const qc        = useQueryClient();
 
-  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => fetchNotifications({ per_page: 100 }),
-    staleTime: 10000,
-    refetchInterval: POLL_INTERVAL_MS,
+  const [typeFilter,   setTypeFilter]   = useState('');
+  const [unreadOnly,   setUnreadOnly]   = useState(false);
+  const [searchInput,  setSearchInput]  = useState('');
+  const [search,       setSearch]       = useState('');
+  const loaderRef = useRef(null);
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: ['notifications-page', typeFilter, unreadOnly, search],
+    queryFn: ({ pageParam }) => fetchPage({ pageParam, type: typeFilter, unread_only: unreadOnly, search }),
+    getNextPageParam: (last) =>
+      last.meta?.current_page < last.meta?.last_page ? last.meta.current_page + 1 : undefined,
+    initialPageParam: 1,
   });
 
-  const markReadMutation = useMutation({
-    mutationFn: (id) => markNotificationRead(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
-  });
+  const markReadMut   = useMutation({ mutationFn: (id) => api.patch(`/notifications/${id}/read`),      onSuccess: () => { qc.invalidateQueries({ queryKey: ['notifications'] }); refetch(); } });
+  const markAllMut    = useMutation({ mutationFn: () => api.post('/notifications/read-all'),             onSuccess: () => { toast.success('Toutes les notifications ont été lues.'); qc.invalidateQueries({ queryKey: ['notifications'] }); refetch(); } });
+  const deleteMut     = useMutation({ mutationFn: (id) => api.delete(`/notifications/${id}`),           onSuccess: () => { refetch(); qc.invalidateQueries({ queryKey: ['notifications'] }); } });
+  const deleteReadMut = useMutation({ mutationFn: () => api.delete('/notifications/read'),              onSuccess: () => { toast.success('Notifications lues supprimées.'); refetch(); qc.invalidateQueries({ queryKey: ['notifications'] }); } });
 
-  const markAllMutation = useMutation({
-    mutationFn: () => markAllNotificationsRead(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
-  });
+  // Real-time
+  useEffect(() => {
+    if (!user?.id) return;
+    let ch;
+    try {
+      const echo = getEcho();
+      ch = echo.private(`user.${user.id}`);
+      ch.listen('.notification.created', () => { refetch(); qc.invalidateQueries({ queryKey: ['notifications'] }); });
+      ch.listen('.notification.updated', () => { refetch(); qc.invalidateQueries({ queryKey: ['notifications'] }); });
+    } catch { /* echo not ready */ }
+    return () => {
+      try { getEcho().leave(`user.${user.id}`); } catch { /* */ }
+    };
+  }, [user?.id, refetch, qc]);
 
-  const allNotifications = data?.notifications ?? [];
-  const unreadCount =
-    data?.unread_count ?? allNotifications.filter((n) => !(n.read ?? n.read_at)).length;
+  // Infinite scroll
+  useEffect(() => {
+    if (!loaderRef.current || !hasNextPage) return;
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) fetchNextPage(); },
+      { threshold: 0.1 },
+    );
+    obs.observe(loaderRef.current);
+    return () => obs.disconnect();
+  }, [hasNextPage, fetchNextPage]);
 
-  // Which categories are actually present
-  const presentCategories = useMemo(() => {
-    const cats = new Set();
-    allNotifications.forEach((n) => cats.add(getNotifCategory(n.type)));
-    return cats;
-  }, [allNotifications]);
+  // Search debounce
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 380);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  // Filter by active type
-  const notifications = useMemo(() => {
-    if (activeType === 'all') return allNotifications;
-    return allNotifications.filter((n) => getNotifCategory(n.type) === activeType);
-  }, [allNotifications, activeType]);
+  const allNotifications = (data?.pages ?? []).flatMap((p) => p.notifications ?? []);
+  const unreadCount      = data?.pages?.[0]?.unread_count ?? 0;
+  const grouped          = groupNotificationsByDate(allNotifications);
 
-  const grouped = groupNotificationsByDate(notifications);
-  const showSkeleton = (isLoading || isFetching) && allNotifications.length === 0;
-
-  const filteredUnread = notifications.filter((n) => !(n.read ?? n.read_at)).length;
-
-  const handleOpen = (n) => {
+  const handleRowClick = (n) => {
+    if (!n.read && !n.read_at) markReadMut.mutate(n.id);
     const link = getNotificationLink(n);
-    if (!(n.read ?? n.read_at)) {
-      markReadMutation.mutate(n.id);
-    }
-    if (link?.to) {
-      navigate(link.to);
-    }
+    if (link?.to) navigate(link.to);
   };
 
-  const typeTabs = [
-    { key: 'all', label: 'Tout', icon: Bell, count: allNotifications.length },
-    ...Object.entries(TYPE_CATEGORIES)
-      .filter(([key]) => presentCategories.has(key))
-      .map(([key, cfg]) => ({
-        key,
-        label: cfg.label,
-        icon: cfg.icon,
-        count: allNotifications.filter((n) => getNotifCategory(n.type) === key).length,
-        color: cfg.color,
-      })),
-  ];
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
-          <p className="text-muted-foreground">
-            {unreadCount > 0 ? `${unreadCount} non lue(s)` : 'Toutes lues'}
-          </p>
-          {isError && (
-            <p className="mt-2 text-sm text-red-600">
-              {error?.response?.data?.message || error?.message || 'Impossible de charger les notifications.'}
-              <Button variant="link" className="ml-2 h-auto p-0 text-sm" type="button" onClick={() => refetch()}>
-                Réessayer
-              </Button>
-            </p>
-          )}
-        </div>
-        {unreadCount > 0 && (
-          <Button variant="outline" onClick={() => markAllMutation.mutate()} disabled={markAllMutation.isPending}>
-            <CheckCheck className="mr-2 h-4 w-4" /> Tout marquer comme lu
-          </Button>
-        )}
-      </div>
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+      <div className="mx-auto max-w-3xl space-y-4">
 
-      {/* Type filter tabs */}
-      {allNotifications.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {typeTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeType === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveType(tab.key)}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
-                  isActive
-                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                    : 'border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" aria-hidden />
-                {tab.label}
-                <span
-                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                    isActive ? 'bg-white/25 text-inherit' : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {tab.count}
-                </span>
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100">
+              <Bell size={20} className="text-indigo-600" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Notifications</h1>
+              {unreadCount > 0 && (
+                <p className="text-xs text-gray-500">{unreadCount} non lue{unreadCount > 1 ? 's' : ''}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => refetch()} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 transition-colors" title="Rafraîchir">
+              <RefreshCw size={15} />
+            </button>
+            <button
+              onClick={() => markAllMut.mutate()}
+              disabled={markAllMut.isPending || unreadCount === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+            >
+              <CheckCheck size={14} /> Tout lire
+            </button>
+            <button
+              onClick={() => deleteReadMut.mutate()}
+              disabled={deleteReadMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 disabled:opacity-40 transition-colors"
+            >
+              <Trash2 size={14} /> Vider les lues
+            </button>
+            <Link to="/notifications/settings" className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 transition-colors" title="Paramètres">
+              <Settings size={15} />
+            </Link>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm space-y-3">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Rechercher…"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-8 pr-8 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            {searchInput && (
+              <button onClick={() => { setSearchInput(''); setSearch(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X size={13} />
               </button>
-            );
-          })}
-        </div>
-      )}
+            )}
+          </div>
 
-      {/* Content */}
-      {showSkeleton ? (
-        <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm">
-          <CardContent className="p-2">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <SkeletonNotificationRow key={i} />
+          <div className="flex flex-wrap gap-1.5">
+            {TYPE_GROUPS.map((g) => (
+              <button
+                key={g.key}
+                onClick={() => setTypeFilter(g.key)}
+                className={cn(
+                  'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+                  typeFilter === g.key ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+                )}
+              >
+                {g.label}
+              </button>
             ))}
-          </CardContent>
-        </Card>
-      ) : notifications.length === 0 ? (
-        <EmptyState
-          icon={Bell}
-          title={activeType === 'all' ? 'Aucune notification' : `Aucune notification de type « ${TYPE_CATEGORIES[activeType]?.label ?? activeType} »`}
-          description={activeType === 'all' ? 'Vous serez informé des assignations, invitations et alertes ici.' : 'Essayez un autre filtre ou revenez plus tard.'}
-        >
-          {activeType !== 'all' ? (
-            <Button variant="outline" type="button" onClick={() => setActiveType('all')}>
-              Voir toutes les notifications
-            </Button>
-          ) : (
-            <Button variant="default" type="button" onClick={() => navigate('/projects')}>
-              Ouvrir les projets
-            </Button>
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer w-fit" onClick={() => setUnreadOnly((v) => !v)}>
+            <div className={cn('relative h-5 w-9 rounded-full transition-colors', unreadOnly ? 'bg-indigo-600' : 'bg-gray-200')}>
+              <span className={cn('absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform', unreadOnly ? 'translate-x-4' : 'translate-x-0.5')} />
+            </div>
+            <span className="text-xs font-semibold text-gray-700 select-none">Non lues seulement</span>
+          </label>
+        </div>
+
+        {/* List */}
+        <div className="space-y-3">
+          {isLoading && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-400 shadow-sm">Chargement…</div>
           )}
-        </EmptyState>
-      ) : (
-        <div className="space-y-6">
-          {filteredUnread > 0 && activeType !== 'all' && (
-            <p className="text-xs text-muted-foreground">{filteredUnread} non lue(s) dans ce filtre</p>
+
+          {!isLoading && allNotifications.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center shadow-sm">
+              <Bell size={32} className="mx-auto mb-3 text-gray-300" />
+              <p className="text-sm font-semibold text-gray-500">Aucune notification</p>
+              <p className="text-xs text-gray-400 mt-1">{unreadOnly ? 'Toutes vos notifications ont été lues.' : 'Vous êtes à jour !'}</p>
+            </div>
           )}
+
           {grouped.map((section) => (
-            <div key={section.key}>
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <div key={section.key} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <p className="border-b border-gray-100 bg-gray-50/80 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-500">
                 {section.label}
-              </h2>
-              <Card className="overflow-hidden rounded-2xl border-border/80 shadow-sm">
-                <CardContent className="p-0">
-                  <ul className="divide-y divide-border/60">
-                    {section.items.map((notif, idx) => {
-                      const read = notif.read_at || notif.read;
-                      const link = getNotificationLink(notif);
-                      const actorName = actorLabelForNotification(notif);
-                      const actorAvatar = actorAvatarForNotification(notif);
-                      const category = getNotifCategory(notif.type);
-                      const catCfg = TYPE_CATEGORIES[category];
-                      return (
-                        <motion.li
-                          key={notif.id}
-                          initial={{ opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: idx * 0.02, duration: 0.2 }}
-                          className={`flex items-stretch gap-0 ${read ? 'bg-card' : 'bg-primary/[0.03]'}`}
+              </p>
+              <ul>
+                <AnimatePresence initial={false}>
+                  {section.items.map((n) => {
+                    const isRead      = n.read ?? !!n.read_at;
+                    const msg         = n.message || n.data?.message || n.data?.title || n.type;
+                    const actorName   = n.data?.actor_name || n.data?.inviter_name || 'Équipe';
+                    const actorAvatar = n.data?.actor_avatar_url || n.data?.inviter_avatar_url || null;
+                    const link        = getNotificationLink(n);
+
+                    return (
+                      <motion.li
+                        key={n.id}
+                        layout
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className={cn('group border-b border-gray-100 last:border-0 transition-colors', !isRead && 'bg-indigo-50/30')}
+                      >
+                        <div
+                          role={link ? 'button' : undefined}
+                          tabIndex={link ? 0 : undefined}
+                          onClick={() => handleRowClick(n)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleRowClick(n); }}
+                          className={cn('flex items-start gap-3 px-4 py-3.5', link && 'cursor-pointer hover:bg-gray-50/60')}
                         >
-                          {/* Category accent bar */}
-                          {catCfg && (
-                            <div
-                              className="w-1 shrink-0 rounded-l-[inherit]"
-                              style={{
-                                background: category === 'task' ? '#3b82f6'
-                                  : category === 'project' ? '#6366f1'
-                                  : category === 'invitation' ? '#8b5cf6'
-                                  : category === 'delay' ? '#f59e0b'
-                                  : category === 'comment' ? '#14b8a6'
-                                  : '#94a3b8',
-                                opacity: read ? 0.25 : 0.7,
-                              }}
-                            />
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleOpen(notif)}
-                            className={`flex min-w-0 flex-1 items-start gap-3 px-4 py-4 text-left transition-colors hover:bg-accent/50 ${
-                              link ? 'cursor-pointer' : 'cursor-default'
-                            }`}
-                          >
-                            <UserAvatar name={actorName} src={actorAvatar} size="md" className="mt-0.5 shrink-0" />
-                            <div className="min-w-0 flex-1">
-                              <p className={`text-sm ${read ? 'text-muted-foreground' : 'font-medium text-foreground'}`}>
-                                {notif.message || notif.data?.message || notif.data?.title || notif.type}
-                              </p>
-                              {notif.data?.body && (
-                                <p className="mt-0.5 text-sm text-muted-foreground">{notif.data.body}</p>
-                              )}
-                              <div className="mt-1 flex items-center gap-2">
-                                <p className="text-xs text-muted-foreground">
-                                  {formatRelativeTimeFr(notif.created_at)}
-                                </p>
-                                {catCfg && (
-                                  <span className={`text-[10px] font-medium ${catCfg.color}`}>
-                                    · {catCfg.label}
-                                  </span>
-                                )}
-                              </div>
+                          {/* Unread indicator */}
+                          <div className="mt-2 shrink-0 w-2.5">
+                            {!isRead && <span className="block h-2 w-2 rounded-full bg-indigo-500" />}
+                          </div>
+
+                          <UserAvatar name={actorName} src={actorAvatar} size="md" className="shrink-0 mt-0.5" />
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                              <TypeBadge type={n.type} />
+                              <SeverityIcon severity={n.severity} />
                             </div>
-                          </button>
-                          {!read && (
-                            <div className="flex shrink-0 items-start border-l border-border/40 py-2 pr-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-9 w-9 p-0"
-                                onClick={() => markReadMutation.mutate(notif.id)}
-                                disabled={markReadMutation.isPending}
+                            <p className={cn('text-sm leading-snug', isRead ? 'text-gray-500' : 'font-semibold text-gray-900')}>
+                              {msg}
+                            </p>
+                            <p className="mt-0.5 text-xs text-gray-400">{formatRelativeTimeFr(n.created_at)}</p>
+                          </div>
+
+                          {/* Actions (visible on hover) */}
+                          <div className="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {!isRead && (
+                              <button
+                                type="button"
                                 title="Marquer comme lu"
+                                onClick={(e) => { e.stopPropagation(); markReadMut.mutate(n.id); }}
+                                className="rounded-lg p-1.5 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
                               >
-                                <Check className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          )}
-                        </motion.li>
-                      );
-                    })}
-                  </ul>
-                </CardContent>
-              </Card>
+                                <Check size={14} />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              title="Supprimer"
+                              onClick={(e) => { e.stopPropagation(); deleteMut.mutate(n.id); }}
+                              className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      </motion.li>
+                    );
+                  })}
+                </AnimatePresence>
+              </ul>
             </div>
           ))}
+
+          {/* Infinite scroll sentinel */}
+          <div ref={loaderRef} className="py-2 text-center text-xs text-gray-400">
+            {isFetchingNextPage && 'Chargement…'}
+            {!hasNextPage && allNotifications.length > 0 && 'Toutes les notifications ont été chargées.'}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
