@@ -29,6 +29,11 @@ class Project extends Model
         'owner_id',
         'created_by',
         'progress_percent',
+        // Pause / Resume fields
+        'paused_at',
+        'paused_by',
+        'pause_reason',
+        'previous_status',
     ];
 
     protected function casts(): array
@@ -37,7 +42,25 @@ class Project extends Model
             'start_date'       => 'date',
             'end_date'         => 'date',
             'progress_percent' => 'integer',
+            'paused_at'        => 'datetime',
         ];
+    }
+
+    // ─── Pause helpers ──────────────────────────────────────────────────────
+
+    public function isPaused(): bool
+    {
+        return $this->status === 'on_hold';
+    }
+
+    public function isModifiable(): bool
+    {
+        return ! $this->isPaused();
+    }
+
+    public function pausedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'paused_by');
     }
 
     public function team(): BelongsTo

@@ -18,10 +18,11 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'check.role'       => \App\Http\Middleware\CheckRole::class,
-            'check.project'    => \App\Http\Middleware\CheckProjectAccess::class,
-            'active.user'      => \App\Http\Middleware\EnsureUserIsActive::class,
-            'check.permission' => \App\Http\Middleware\CheckPermission::class,
+            'check.role'         => \App\Http\Middleware\CheckRole::class,
+            'check.project'      => \App\Http\Middleware\CheckProjectAccess::class,
+            'active.user'        => \App\Http\Middleware\EnsureUserIsActive::class,
+            'check.permission'   => \App\Http\Middleware\CheckPermission::class,
+            'project.not_paused' => \App\Http\Middleware\CheckProjectNotPaused::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

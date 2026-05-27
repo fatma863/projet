@@ -168,6 +168,14 @@ export function getActivityHeadline(action, meta = {}, actorName = null) {
       return meta.email
         ? `${actor} a invité ${meta.email} à rejoindre le projet`
         : `${actor} a envoyé une invitation`;
+    case 'project.paused':
+      return meta.pause_reason
+        ? `${actor} a mis le projet en pause — ${meta.pause_reason}`
+        : `${actor} a mis le projet en pause`;
+    case 'project.resumed':
+      return meta.resumed_to
+        ? `${actor} a repris le projet (statut → ${meta.resumed_to})`
+        : `${actor} a repris le projet`;
 
     default:
       return action.replace(/\./g, ' › ');
@@ -260,6 +268,15 @@ export function getActivityContextRows(action, meta = {}) {
     case 'project.created':
       if (meta.project_code) rows.push({ key: 'code', label: 'Code', value: meta.project_code, kind: 'text' });
       break;
+    case 'project.paused':
+      if (meta.pause_reason)    rows.push({ key: 'reason',   label: 'Raison',          value: meta.pause_reason,    kind: 'text' });
+      if (meta.previous_status) rows.push({ key: 'prev',     label: 'Statut précédent', value: meta.previous_status, kind: 'text' });
+      if (meta.actor_name)      rows.push({ key: 'pausedBy', label: 'Mis en pause par', value: meta.actor_name,      kind: 'text' });
+      break;
+    case 'project.resumed':
+      if (meta.resumed_to)  rows.push({ key: 'resumedTo', label: 'Repris avec statut', value: meta.resumed_to,  kind: 'text' });
+      if (meta.actor_name)  rows.push({ key: 'resumedBy', label: 'Repris par',         value: meta.actor_name,  kind: 'text' });
+      break;
     default:
       break;
   }
@@ -294,6 +311,8 @@ export function getActivityIconName(action) {
   if (action === 'task.moved') return 'layout';
   if (action === 'task.assigned' || action === 'task.unassigned') return 'user';
   if (action.startsWith('project.member') || action === 'project.user_invited') return 'users';
+  if (action === 'project.paused') return 'pause';
+  if (action === 'project.resumed') return 'play';
   if (action.startsWith('project.')) return 'folder';
   return 'activity';
 }

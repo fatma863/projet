@@ -183,7 +183,14 @@ export default function ProjectsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {data?.map((project) => (
-            <Card key={project.id} className="group relative transition-shadow hover:shadow-md">
+            <Card
+              key={project.id}
+              className={`group relative transition-shadow hover:shadow-md ${
+                project.is_paused || project.status === 'on_hold'
+                  ? 'border-amber-300 bg-amber-50/40 dark:border-amber-700/60 dark:bg-amber-950/20'
+                  : ''
+              }`}
+            >
               <CardContent className="p-5">
                 <div className="absolute right-3 top-3">
                   <button
@@ -228,12 +235,24 @@ export default function ProjectsPage() {
                         {PRIORITY_OPTIONS.find((p) => p.value === project.priority)?.label || project.priority}
                       </Badge>
                     )}
+                    {(project.is_paused || project.status === 'on_hold') && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 ring-1 ring-amber-300 dark:bg-amber-900/40 dark:text-amber-300">
+                        ⏸️ PAUSE
+                      </span>
+                    )}
                   </div>
                   <h3 className="mb-1 font-semibold text-foreground">{project.name}</h3>
                   {project.description && (
                     <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">
                       {project.description}
                     </p>
+                  )}
+                  {/* Pause reason */}
+                  {(project.is_paused || project.status === 'on_hold') && project.pause_reason && (
+                    <div className="mb-2 flex items-start gap-1.5 rounded-md bg-amber-100 px-2.5 py-1.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                      <span className="shrink-0">⏸️</span>
+                      <span className="line-clamp-2">{project.pause_reason}</span>
+                    </div>
                   )}
                   {/* Chef de projet */}
                   {project.chef && (

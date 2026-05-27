@@ -48,6 +48,23 @@ class ProjectResource extends JsonResource
             'created_by' => $this->created_by,
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
+            // Pause / Resume fields
+            'is_paused'       => $this->isPaused(),
+            'paused_at'       => $this->paused_at?->toISOString(),
+            'paused_by'       => $this->paused_by,
+            'pause_reason'    => $this->pause_reason,
+            'previous_status' => $this->previous_status,
+            'paused_by_user'  => $this->when(
+                $this->relationLoaded('pausedBy'),
+                fn () => $this->pausedBy ? [
+                    'id'     => $this->pausedBy->id,
+                    'name'   => $this->pausedBy->name,
+                    'avatar' => $this->pausedBy->avatar_url,
+                ] : null,
+            ),
+            // Pause permissions for the requesting user
+            'can_pause'  => $user ? app(\App\Policies\ProjectPolicy::class)->pause($user, $this->resource) : false,
+            'can_resume' => $user ? app(\App\Policies\ProjectPolicy::class)->resume($user, $this->resource) : false,
         ];
     }
 }

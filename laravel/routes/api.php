@@ -33,6 +33,9 @@ use App\Http\Controllers\Api\NotificationPreferencesController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
+// Middleware alias defined in bootstrap/app.php:
+// 'project.not_paused' => \App\Http\Middleware\CheckProjectNotPaused::class
+
 // Public routes
 Route::get('/', function () {
     return response()->json([
@@ -103,6 +106,13 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
         Route::apiResource('clients', ClientController::class);
     });
     Route::apiResource('projects', ProjectController::class);
+
+    // ── Pause / Resume (bypass the paused-lock guard intentionally) ──────────
+    Route::post('projects/{project}/pause',  [ProjectController::class, 'pause']);
+    Route::post('projects/{project}/resume', [ProjectController::class, 'resume']);
+    Route::get('projects/paused-stats',      [ProjectController::class, 'pausedStats'])
+        ->middleware('check.role:admin');
+
     Route::middleware('check.project:view')->group(function () {
         Route::get('projects/{project}/dashboard', [ProjectController::class, 'dashboard']);
         Route::get('projects/{project}/activity', [ProjectController::class, 'activity']);
@@ -111,7 +121,8 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
         Route::post('projects/{project}/invite', [ProjectController::class, 'invite']);
         Route::get('projects/{project}/export/tasks', [ProjectController::class, 'exportTasks']);
     });
-    Route::middleware('check.project:edit')->group(function () {
+    // Project write operations are guarded by the paused-lock middleware
+    Route::middleware(['check.project:edit', 'project.not_paused'])->group(function () {
         Route::get('projects/{project}/user-search', [ProjectController::class, 'searchUsers']);
         Route::post('projects/{project}/members', [ProjectController::class, 'addMember']);
         Route::delete('projects/{project}/members/{user}', [ProjectController::class, 'removeMember']);
@@ -159,34 +170,47 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::middleware('check.project:view')->group(function () {
         Route::get('projects/{project}/tasks', [TaskController::class, 'index']);
     });
-    Route::middleware('check.project:edit')->group(function () {
+    // Task creation is guarded by the paused-lock middleware
+    Route::middleware(['check.project:edit', 'project.not_paused'])->group(function () {
         Route::post('projects/{project}/tasks', [TaskController::class, 'store']);
     });
     Route::get('tasks/{task}', [TaskController::class, 'show']);
-    Route::put('tasks/{task}', [TaskController::class, 'update'])->middleware('can:update,task');
-    Route::delete('tasks/{task}', [TaskController::class, 'destroy'])->middleware('can:delete,task');
-    Route::patch('tasks/{task}/move', [TaskController::class, 'move'])->middleware('can:update,task');
+    // Task write ops — guarded by paused-lock (resolves project via task)
+    Route::put('tasks/{task}', [TaskController::class, 'update'])
+        ->middleware(['can:update,task', 'project.not_paused']);
+    Route::delete('tasks/{task}', [TaskController::class, 'destroy'])
+        ->middleware(['can:delete,task', 'project.not_paused']);
+    Route::patch('tasks/{task}/move', [TaskController::class, 'move'])
+        ->middleware(['can:update,task', 'project.not_paused']);
 
     // Task Assignees
     Route::get('tasks/{task}/assignees', [TaskController::class, 'assignees']);
-    Route::post('tasks/{task}/assign', [TaskController::class, 'assign'])->middleware('can:update,task');
-    Route::delete('tasks/{task}/unassign/{user}', [TaskController::class, 'unassign'])->middleware('can:update,task');
+    Route::post('tasks/{task}/assign', [TaskController::class, 'assign'])
+        ->middleware(['can:update,task', 'project.not_paused']);
+    Route::delete('tasks/{task}/unassign/{user}', [TaskController::class, 'unassign'])
+        ->middleware(['can:update,task', 'project.not_paused']);
 
     // Task Dependencies
     Route::get('tasks/{task}/dependencies', [TaskController::class, 'dependencies']);
-    Route::post('tasks/{task}/dependencies', [TaskController::class, 'addDependency']);
-    Route::delete('tasks/{task}/dependencies/{dependency}', [TaskController::class, 'removeDependency']);
+    Route::post('tasks/{task}/dependencies', [TaskController::class, 'addDependency'])
+        ->middleware('project.not_paused');
+    Route::delete('tasks/{task}/dependencies/{dependency}', [TaskController::class, 'removeDependency'])
+        ->middleware('project.not_paused');
 
     // Task Comments
     Route::get('tasks/{task}/comments', [TaskController::class, 'comments']);
-    Route::post('tasks/{task}/comments', [TaskController::class, 'addComment']);
-    Route::put('tasks/{task}/comments/{comment}', [TaskController::class, 'updateComment']);
-    Route::delete('tasks/{task}/comments/{comment}', [TaskController::class, 'deleteComment']);
+    Route::post('tasks/{task}/comments', [TaskController::class, 'addComment'])
+        ->middleware('project.not_paused');
+    Route::put('tasks/{task}/comments/{comment}', [TaskController::class, 'updateComment'])
+        ->middleware('project.not_paused');
+    Route::delete('tasks/{task}/comments/{comment}', [TaskController::class, 'deleteComment'])
+        ->middleware('project.not_paused');
 
     // Task Attachments
     Route::get('tasks/{task}/attachments', [TaskController::class, 'attachments']);
     Route::get('tasks/{task}/attachments/{attachment}/download', [TaskController::class, 'downloadAttachment']);
-    Route::post('tasks/{task}/attachments', [TaskController::class, 'addAttachment']);
+    Route::post('tasks/{task}/attachments', [TaskController::class, 'addAttachment'])
+        ->middleware('project.not_paused');
     Route::delete('tasks/{task}/attachments/{attachment}', [TaskController::class, 'deleteAttachment']);
 
     // Task Time Entries

@@ -61,4 +61,71 @@ class ProjectPolicy
             return false;
         }
     }
+
+    /**
+     * Who can pause a project:
+     * ✅ Application admin
+     * ✅ Project owner / chef (project-level manager)
+     * ✅ Any user with the explicit `project.pause` Spatie permission
+     * ❌ Regular members / clients
+     */
+    public function pause(User $user, Project $project): bool
+    {
+        if (AccessControl::isAdmin($user)) {
+            return true;
+        }
+
+        // Project cannot be paused if already locked or finished.
+        if (in_array($project->status, ['on_hold', 'completed', 'cancelled'], true)) {
+            return false;
+        }
+
+        // Project-level leads (owner / chef / manager)
+        if ((int) $project->owner_id === (int) $user->id) {
+            return true;
+        }
+        if ($project->chef_id && (int) $project->chef_id === (int) $user->id) {
+            return true;
+        }
+        if ($project->project_manager_id && (int) $project->project_manager_id === (int) $user->id) {
+            return true;
+        }
+
+        try {
+            return $user->hasPermissionTo('project.pause');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Who can resume a project:
+     * Same rules as `pause` — but the project must currently be on_hold.
+     */
+    public function resume(User $user, Project $project): bool
+    {
+        if ($project->status !== 'on_hold') {
+            return false;
+        }
+
+        if (AccessControl::isAdmin($user)) {
+            return true;
+        }
+
+        if ((int) $project->owner_id === (int) $user->id) {
+            return true;
+        }
+        if ($project->chef_id && (int) $project->chef_id === (int) $user->id) {
+            return true;
+        }
+        if ($project->project_manager_id && (int) $project->project_manager_id === (int) $user->id) {
+            return true;
+        }
+
+        try {
+            return $user->hasPermissionTo('project.resume');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
 }

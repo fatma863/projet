@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\ProjectStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ActivityLogResource;
 use App\Http\Resources\ProjectResource;
@@ -20,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProjectController extends Controller
@@ -230,6 +232,217 @@ class ProjectController extends Controller
             'members' => $this->mergedProjectMembers($project),
         ]);
     }
+
+    // ─── Pause / Resume ──────────────────────────────────────────────────────
+
+    /**
+     * POST /api/projects/{project}/pause
+     *
+     * Transitions a project to "on_hold" (read-only) mode.
+     * Requires:  pause_reason (string, required)
+     * Guard:     project.pause permission or project owner/chef
+     * Blocks:    already on_hold, completed, cancelled
+     */
+    public function pause(Request $request, Project $project): JsonResponse
+    {
+        Gate::authorize('pause', $project);
+
+        // Business-rule validation
+        if (in_array($project->status, ['on_hold', 'completed', 'cancelled'], true)) {
+            return response()->json([
+                'message' => match ($project->status) {
+                    'on_hold'    => 'Ce projet est déjà en pause.',
+                    'completed'  => 'Impossible de mettre en pause un projet terminé.',
+                    'cancelled'  => 'Impossible de mettre en pause un projet annulé.',
+                },
+                'code'    => 'INVALID_STATUS_FOR_PAUSE',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $data = $request->validate([
+            'pause_reason' => 'required|string|min:5|max:1000',
+        ]);
+
+        $previousStatus = $project->status;
+        $actor          = $request->user();
+
+        $project->update([
+            'status'          => 'on_hold',
+            'paused_at'       => now(),
+            'paused_by'       => $actor->id,
+            'pause_reason'    => $data['pause_reason'],
+            'previous_status' => $previousStatus,
+        ]);
+
+        // Audit log
+        $this->activityLogService->log(
+            project:    $project,
+            actor:      $actor,
+            action:     'project.paused',
+            entity:     $project,
+            meta:       [
+                'pause_reason'    => $data['pause_reason'],
+                'previous_status' => $previousStatus,
+                'actor_name'      => $actor->name,
+            ],
+            oldValues:  ['status' => $previousStatus],
+            newValues:  ['status' => 'on_hold'],
+        );
+
+        // Real-time broadcast to all project members
+        broadcast(new ProjectStatusChanged($project, $actor, 'paused', $previousStatus))->toOthers();
+
+        // Notify project members
+        $this->notifyProjectMembers($project, $actor, 'paused');
+
+        $project->load('owner', 'team', 'chef', 'pausedBy');
+
+        return response()->json([
+            'message' => '⏸️ Projet mis en pause avec succès.',
+            'project' => new ProjectResource($project),
+        ]);
+    }
+
+    /**
+     * POST /api/projects/{project}/resume
+     *
+     * Resumes a paused project, restoring its previous status.
+     * Guard:  project.resume permission or project owner/chef
+     * Blocks: project must be on_hold
+     */
+    public function resume(Request $request, Project $project): JsonResponse
+    {
+        Gate::authorize('resume', $project);
+
+        if ($project->status !== 'on_hold') {
+            return response()->json([
+                'message' => 'Seuls les projets en pause peuvent être repris.',
+                'code'    => 'PROJECT_NOT_PAUSED',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $actor         = $request->user();
+        $resumeStatus  = $project->previous_status ?? 'active';
+
+        $project->update([
+            'status'          => $resumeStatus,
+            'paused_at'       => null,
+            'paused_by'       => null,
+            'pause_reason'    => null,
+            'previous_status' => null,
+        ]);
+
+        // Audit log
+        $this->activityLogService->log(
+            project:   $project,
+            actor:     $actor,
+            action:    'project.resumed',
+            entity:    $project,
+            meta:      [
+                'resumed_to' => $resumeStatus,
+                'actor_name' => $actor->name,
+            ],
+            oldValues: ['status' => 'on_hold'],
+            newValues: ['status' => $resumeStatus],
+        );
+
+        // Real-time broadcast
+        broadcast(new ProjectStatusChanged($project, $actor, 'resumed', 'on_hold'))->toOthers();
+
+        // Notify project members
+        $this->notifyProjectMembers($project, $actor, 'resumed');
+
+        $project->load('owner', 'team', 'chef');
+
+        return response()->json([
+            'message' => '▶️ Projet repris avec succès.',
+            'project' => new ProjectResource($project),
+        ]);
+    }
+
+    /**
+     * GET /api/projects/paused-stats
+     *
+     * Returns analytics for paused projects (admin-only).
+     */
+    public function pausedStats(Request $request): JsonResponse
+    {
+        if (! AccessControl::isAdmin($request->user())) {
+            return response()->json(['message' => 'Unauthorized.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $stats = DB::table('projects')
+            ->selectRaw("
+                COUNT(*) FILTER (WHERE status = 'on_hold')                                             AS paused_count,
+                COUNT(*) FILTER (WHERE status = 'active')                                              AS active_count,
+                COUNT(*) FILTER (WHERE status = 'completed')                                           AS completed_count,
+                COUNT(*) FILTER (WHERE status = 'cancelled')                                           AS cancelled_count,
+                AVG(
+                    EXTRACT(EPOCH FROM (NOW() - paused_at)) / 3600
+                ) FILTER (WHERE status = 'on_hold' AND paused_at IS NOT NULL)                          AS avg_pause_duration_hours,
+                MAX(
+                    EXTRACT(EPOCH FROM (NOW() - paused_at)) / 3600
+                ) FILTER (WHERE status = 'on_hold' AND paused_at IS NOT NULL)                          AS max_pause_duration_hours
+            ")
+            ->whereNull('deleted_at')
+            ->first();
+
+        $pausedProjects = Project::with(['owner', 'pausedBy'])
+            ->where('status', 'on_hold')
+            ->whereNotNull('paused_at')
+            ->orderByDesc('paused_at')
+            ->get()
+            ->map(fn ($p) => [
+                'id'           => $p->id,
+                'name'         => $p->name,
+                'code'         => $p->code,
+                'paused_at'    => $p->paused_at?->toISOString(),
+                'pause_reason' => $p->pause_reason,
+                'paused_by'    => $p->pausedBy ? ['id' => $p->pausedBy->id, 'name' => $p->pausedBy->name] : null,
+                'duration_hours' => $p->paused_at
+                    ? round(now()->diffInMinutes($p->paused_at) / 60, 1)
+                    : null,
+            ]);
+
+        return response()->json([
+            'stats'           => $stats,
+            'paused_projects' => $pausedProjects,
+        ]);
+    }
+
+    /** Notify all project members about a pause/resume event. */
+    private function notifyProjectMembers(Project $project, User $actor, string $action): void
+    {
+        try {
+            $message = $action === 'paused'
+                ? "⏸️ {$actor->name} a mis le projet \"{$project->name}\" en pause."
+                : "▶️ {$actor->name} a repris le projet \"{$project->name}\".";
+
+            $recipients = $this->notificationService->projectNotificationRecipients($project, $actor);
+
+            foreach ($recipients as $recipient) {
+                $this->notificationService->createNotification(
+                    user:      $recipient,
+                    type:      "project.{$action}",
+                    message:   $message,
+                    severity:  $action === 'paused' ? 'warning' : 'info',
+                    data:      [
+                        'project_id'   => $project->id,
+                        'project_name' => $project->name,
+                        'actor_id'     => $actor->id,
+                        'actor_name'   => $actor->name,
+                        'action'       => $action,
+                    ],
+                    projectId: $project->id,
+                    actor:     $actor,
+                );
+            }
+        } catch (\Throwable) {
+            // Non-fatal: notifications must never block the main flow
+        }
+    }
+
+    // ─── End Pause / Resume ───────────────────────────────────────────────
 
     public function destroy(Request $request, Project $project): JsonResponse
     {

@@ -16,6 +16,7 @@ class ActivityLogService
         'task.assigned', 'task.unassigned',
         'project.member_added', 'project.member_removed', 'project.member_role_changed',
         'project.user_invited',
+        'project.paused', 'project.resumed',
         'sprint.started', 'sprint.completed',
     ];
 

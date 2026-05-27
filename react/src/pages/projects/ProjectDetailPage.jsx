@@ -34,6 +34,9 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import DailyProgressModal from '../../components/tasks/DailyProgressModal';
 import FollowerButton from '../../components/projects/FollowerButton';
+import ProjectPauseButton from '../../components/projects/ProjectPauseButton';
+import ProjectPauseBanner from '../../components/projects/ProjectPauseBanner';
+import { useProjectPause } from '../../hooks/useProjectPause';
 
 const PRIORITY_COLORS = {
   low: 'bg-blue-100 text-blue-800',
@@ -216,6 +219,12 @@ export default function ProjectDetailPage() {
   /** Invitation par e-mail (admin projet ou admin app). */
   const canInvite = isAdmin || Boolean(access.can_invite);
 
+  // ── Pause / Resume ──────────────────────────────────────────────────────
+  const isPaused   = project?.is_paused || project?.status === 'on_hold';
+  /** When paused, ALL write actions are blocked regardless of role */
+  const isReadOnly = isPaused;
+  const { resume, isResuming } = useProjectPause(id);
+
   useEffect(() => {
     const echo = getEcho();
     const channel = echo.private(`project.${id}`);
@@ -253,6 +262,20 @@ export default function ProjectDetailPage() {
     channel.listen('.sprint.state.changed', () => {
       queryClient.invalidateQueries({ queryKey: ['tasks', id] });
       queryClient.invalidateQueries({ queryKey: ['project', id] });
+    });
+
+    // Project pause / resume — broadcast by ProjectStatusChanged event
+    channel.listen('.project.status.changed', (e) => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      if (e.action === 'paused') {
+        toast.warning(`⏸️ Projet mis en pause par ${e.actor_name}`, {
+          description: e.pause_reason || '',
+          duration: 6000,
+        });
+      } else if (e.action === 'resumed') {
+        toast.success(`▶️ Projet repris par ${e.actor_name}`, { duration: 5000 });
+      }
     });
 
     channel.listen('.progress.updated', (e) => {
@@ -367,12 +390,19 @@ export default function ProjectDetailPage() {
 
   const handleDrop = (e, workflow) => {
     e.preventDefault();
+    if (isReadOnly) {
+      toast.warning('⏸️ Ce projet est en pause. Les modifications sont désactivées.');
+      return;
+    }
     const taskId = parseInt(e.dataTransfer.getData('taskId'), 10);
     if (!taskId) return;
     workflowMoveMutation.mutate({ taskId, workflow_status: workflow });
   };
 
-  const handleDragOver = (e) => e.preventDefault();
+  const handleDragOver = (e) => {
+    if (isReadOnly) return; // disable hover feedback when paused
+    e.preventDefault();
+  };
 
   return (
     <div className="space-y-6">
@@ -387,9 +417,14 @@ export default function ProjectDetailPage() {
               <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-mono font-semibold text-primary">
                 {project.code}
               </span>
-              <Badge variant={project.status === 'active' ? 'success' : 'secondary'}>
+              <Badge variant={project.status === 'active' ? 'success' : project.status === 'on_hold' ? 'warning' : 'secondary'}>
                 {STATUS_LABELS[project.status] || project.status}
               </Badge>
+              {isPaused && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-700">
+                  ⏸️ En pause
+                </span>
+              )}
             </div>
             <h1 className="text-2xl font-bold text-foreground">{project.name}</h1>
             {project.description && (
@@ -398,7 +433,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canInvite && (
+          {canInvite && !isReadOnly && (
             <Button variant="outline" onClick={() => setInviteOpen(true)}>
               <Mail className="mr-2 h-4 w-4" /> Inviter
             </Button>
@@ -412,10 +447,21 @@ export default function ProjectDetailPage() {
               <BarChart3 className="h-4 w-4 text-primary" /> Performance
             </Link>
           )}
+          {/* Pause / Resume button — visible to users with the right permission */}
+          <ProjectPauseButton project={project} projectId={id} />
         </div>
       </div>
 
-      {!canWriteProject && (
+      {/* ── Project Pause Banner (highest priority) ───────────────────────── */}
+      {isPaused && (
+        <ProjectPauseBanner
+          project={project}
+          onResume={project?.can_resume ? resume : undefined}
+          isResuming={isResuming}
+        />
+      )}
+
+      {!isPaused && !canWriteProject && (
         <div className="rounded-lg border border-amber-200/90 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <strong className="font-semibold">Lecture seule.</strong>{' '}
           {access.is_client
@@ -574,17 +620,18 @@ export default function ProjectDetailPage() {
             tasksByWorkflow={tasksByWorkflow}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
-            onAddTask={(wf) => openNewTask(wf)}
-            onEditTask={(task) => openEditTask(task)}
-            onDeleteTask={(task) => {
+            onAddTask={isReadOnly ? null : (wf) => openNewTask(wf)}
+            onEditTask={isReadOnly ? null : (task) => openEditTask(task)}
+            onDeleteTask={isReadOnly ? null : (task) => {
               if (window.confirm(`Supprimer "${task.title}" ? Cette action est irréversible.`)) {
                 deleteTaskMutation.mutate(task.id);
               }
             }}
-            onLogWork={!isViewer ? (task) => setWorklogTask(task) : null}
-            canWriteProject={canWriteProject}
+            onLogWork={!isViewer && !isReadOnly ? (task) => setWorklogTask(task) : null}
+            canWriteProject={canWriteProject && !isReadOnly}
             isAdmin={isAdmin}
             movePending={workflowMoveMutation.isPending}
+            isReadOnly={isReadOnly}
           />
         </div>
       )}

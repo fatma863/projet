@@ -48,6 +48,8 @@ class RoleAndPermissionSeeder extends Seeder
             ['project.export',         'projects', 'export',         'project', 'Exporter les données d\'un projet',         'projects', true],
             ['project.manage_members', 'projects', 'manage_members', 'project', 'Gérer les membres d\'un projet',            'projects', true],
             ['project.manage_settings','projects', 'manage_settings','project', 'Modifier les paramètres d\'un projet',      'projects', true],
+            ['project.pause',          'projects', 'pause',          'project', 'Mettre un projet en pause (lecture seule)', 'projects', true],
+            ['project.resume',         'projects', 'resume',         'project', 'Reprendre un projet en pause',             'projects', true],
 
             // Tasks
             ['task.view',              'tasks', 'view',              'project', 'Voir les tâches',                           'tasks', true],
@@ -146,6 +148,7 @@ class RoleAndPermissionSeeder extends Seeder
 
         $member = Role::firstOrCreate(['name' => 'member', 'guard_name' => 'web']);
         $member->syncPermissions([
+            // project.pause and project.resume are intentionally NOT included for members
             'project.view', 'project.create', 'project.edit', 'project.archive',
             'project.export', 'project.manage_members', 'project.manage_settings',
 
