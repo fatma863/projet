@@ -100,7 +100,9 @@ class ProjectPolicy
 
     /**
      * Who can resume a project:
-     * Same rules as `pause` — but the project must currently be on_hold.
+     * ✅ Application admin
+     * ✅ Chef du projet (chef_id) only
+     * ❌ Everyone else (owner, members, project_manager, clients…)
      */
     public function resume(User $user, Project $project): bool
     {
@@ -108,24 +110,16 @@ class ProjectPolicy
             return false;
         }
 
+        // Admin can always resume
         if (AccessControl::isAdmin($user)) {
             return true;
         }
 
-        if ((int) $project->owner_id === (int) $user->id) {
-            return true;
-        }
+        // Only the designated chef du projet can resume
         if ($project->chef_id && (int) $project->chef_id === (int) $user->id) {
             return true;
         }
-        if ($project->project_manager_id && (int) $project->project_manager_id === (int) $user->id) {
-            return true;
-        }
 
-        try {
-            return $user->hasPermissionTo('project.resume');
-        } catch (\Throwable) {
-            return false;
-        }
+        return false;
     }
 }
