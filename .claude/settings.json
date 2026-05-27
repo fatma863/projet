@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(git push origin master)",
+      "PowerShell(head -10)"
+    ]
+  }
+}
