@@ -3,11 +3,25 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  ArrowLeft, Shield, Save, Users, CheckSquare, Square, Lock,
+  ArrowLeft, Shield, Save, Users, CheckSquare, Square, Lock, Pause, Play, Info,
 } from 'lucide-react';
 import api from '../../lib/api';
 import { cn } from '../../lib/utils';
 import PermissionGate from '../../components/auth/PermissionGate';
+
+/** Permissions whose enforcement goes beyond the RBAC checkbox — extra context shown in UI */
+const RESTRICTED_PERMS = {
+  'project.pause': {
+    icon: Pause,
+    color: 'amber',
+    note: 'Accordé aussi automatiquement au chef du projet et à l\'admin, indépendamment de cette case.',
+  },
+  'project.resume': {
+    icon: Play,
+    color: 'emerald',
+    note: 'Restreint : seuls l\'admin et le chef du projet (chef_id) peuvent reprendre un projet, quelle que soit cette permission.',
+  },
+};
 
 const fetchRole        = (id) => api.get(`/roles/${id}`).then((r) => r.data.data);
 const fetchPermissions = ()   => api.get('/permissions').then((r) => r.data.data);
@@ -238,7 +252,10 @@ export default function RoleDetailPage() {
               const someSelected   = selectedInGroup.length > 0 && !allSelected;
 
               return (
-                <div key={group.slug} className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                <div key={group.slug} className={cn(
+                  'bg-white rounded-2xl border p-4 shadow-sm',
+                  group.slug === 'projects' ? 'border-indigo-200' : 'border-gray-200'
+                )}>
                   {/* Group header */}
                   <button
                     className="flex w-full items-center justify-between mb-3"
@@ -262,17 +279,75 @@ export default function RoleDetailPage() {
                     </PermissionGate>
                   </button>
 
+                  {/* Pause / Resume callout — shown only for the 'projects' group */}
+                  {group.slug === 'projects' && (
+                    <div className="mb-3 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-3 text-xs">
+                      <p className="flex items-center gap-1.5 font-bold text-amber-900 mb-2">
+                        <Pause className="h-3.5 w-3.5" />
+                        Fonctionnalité Pause / Reprise de projet
+                      </p>
+                      <p className="text-amber-800 mb-2">
+                        Quand un projet est en pause (<code className="rounded bg-amber-100 px-1 font-mono">on_hold</code>),
+                        toutes les modifications sont bloquées (HTTP 423). Seules les lectures restent autorisées.
+                      </p>
+                      <table className="w-full text-[11px] border-collapse">
+                        <thead>
+                          <tr className="text-amber-700">
+                            <th className="text-left pb-1 font-semibold">Profil</th>
+                            <th className="text-center pb-1 font-semibold">Mettre en pause</th>
+                            <th className="text-center pb-1 font-semibold">Reprendre</th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-amber-900">
+                          {[
+                            { label: 'Admin (global)', pause: true, resume: true },
+                            { label: 'Chef du projet (chef_id)', pause: true, resume: true },
+                            { label: 'Propriétaire du projet', pause: true, resume: false },
+                            { label: 'Membre', pause: false, resume: false },
+                            { label: 'Client', pause: false, resume: false },
+                          ].map((row) => (
+                            <tr key={row.label} className="border-t border-amber-100">
+                              <td className="py-1 pr-2">{row.label}</td>
+                              <td className="py-1 text-center">
+                                {row.pause
+                                  ? <span className="text-green-600 font-bold">✓</span>
+                                  : <span className="text-red-400">✕</span>}
+                              </td>
+                              <td className="py-1 text-center">
+                                {row.resume
+                                  ? <span className="text-green-600 font-bold">✓</span>
+                                  : <span className="text-red-400">✕</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="mt-2 text-[10px] text-amber-700 italic">
+                        ★ La permission <code className="font-mono">project.resume</code> dans ce RBAC n'élargit pas l'accès.
+                        La reprise est exclusivement réservée à l'admin et au chef du projet au niveau de la policy.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Individual permissions */}
                   <div className="grid gap-2 sm:grid-cols-2">
                     {group.permissions.map((perm) => {
-                      const checked = role.name === 'admin' || (selectedPerms ?? []).includes(perm.name);
+                      const checked     = role.name === 'admin' || (selectedPerms ?? []).includes(perm.name);
+                      const restricted  = RESTRICTED_PERMS[perm.name];
+                      const RestIcon    = restricted?.icon;
+                      const rColor      = restricted?.color;
+
                       return (
                         <label
                           key={perm.name}
                           className={cn(
                             'flex items-start gap-2.5 rounded-xl p-2.5 cursor-pointer transition-colors border',
                             checked
-                              ? 'bg-indigo-50 border-indigo-200'
+                              ? restricted
+                                ? rColor === 'amber'
+                                  ? 'bg-amber-50 border-amber-200'
+                                  : 'bg-emerald-50 border-emerald-200'
+                                : 'bg-indigo-50 border-indigo-200'
                               : 'border-transparent hover:bg-gray-50 border-gray-100',
                             role.name === 'admin' && 'cursor-default'
                           )}
@@ -282,11 +357,40 @@ export default function RoleDetailPage() {
                             checked={checked}
                             onChange={() => togglePerm(perm.name)}
                             disabled={role.name === 'admin'}
-                            className="mt-0.5 shrink-0 accent-indigo-600"
+                            className={cn(
+                              'mt-0.5 shrink-0',
+                              restricted
+                                ? rColor === 'amber' ? 'accent-amber-500' : 'accent-emerald-600'
+                                : 'accent-indigo-600'
+                            )}
                           />
-                          <div>
-                            <p className="text-xs font-semibold text-gray-900">{perm.description || perm.name}</p>
-                            <p className="text-[10px] font-mono text-gray-400 mt-0.5">{perm.name}</p>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                              <p className="text-xs font-semibold text-gray-900 leading-snug">
+                                {perm.description || perm.name}
+                              </p>
+                              {restricted && (
+                                <span className={cn(
+                                  'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none ring-1',
+                                  rColor === 'amber'
+                                    ? 'bg-amber-100 text-amber-700 ring-amber-300'
+                                    : 'bg-emerald-100 text-emerald-700 ring-emerald-300'
+                                )}>
+                                  {RestIcon && <RestIcon className="h-2.5 w-2.5" />}
+                                  {rColor === 'amber' ? 'PAUSE' : 'REPRENDRE'}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] font-mono text-gray-400">{perm.name}</p>
+                            {restricted && (
+                              <p className={cn(
+                                'mt-1 text-[10px] leading-tight flex items-start gap-1',
+                                rColor === 'amber' ? 'text-amber-700' : 'text-emerald-700'
+                              )}>
+                                <Info className="h-2.5 w-2.5 mt-0.5 shrink-0" />
+                                {restricted.note}
+                              </p>
+                            )}
                           </div>
                         </label>
                       );

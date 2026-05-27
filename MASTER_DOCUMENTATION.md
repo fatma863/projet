@@ -93,6 +93,7 @@
 | Sprint 3 | Tâches & Kanban | Wizard 4 étapes, drag-and-drop, dépendances, filtres, sous-tâches |
 | Sprint 4 | Planification | Gantt + CPM, calendrier, notifications temps réel, scoring risque, KPI |
 | Sprint 5 | IA & ML | Recommandation 22 features, estimation LLM, risques, chat assistant |
+| Sprint 6 | Audit RBAC & Pause | Journal d'audit enterprise, matrice permissions, Pause/Reprise de projet |
 
 ---
 
@@ -496,7 +497,7 @@ $status           = 'pending' | 'accepted' | 'declined' | 'expired'
 | Modèle | Champs `fillable` notables |
 |---|---|
 | `User` | name, email, password, status, avatar, theme, locale, notify_in_app, notify_email, notify_type_* |
-| `Project` | team_id, client_id, chef_id, owner_id, name, code, description, status, priority, start_date, end_date |
+| `Project` | team_id, client_id, chef_id, owner_id, name, code, description, status, priority, start_date, end_date, **paused_at**, **paused_by**, **pause_reason**, **previous_status** |
 | `Task` | project_id, sprint_id, parent_id, title, issue_type, priority, complexity, story_points, planned_start, planned_end, estimated_hours, workflow_status, risk_score, progress_percent, progress_mode (auto\|manual), activity_score, checklist (JSON), manager_validation |
 | `Team` | name, description, team_leader_id |
 | `Sprint` | project_id, name, goal, start_date, end_date, status |
@@ -552,6 +553,9 @@ $status           = 'pending' | 'accepted' | 'declined' | 'expired'
 | `changeChef()` | `PUT /projects/{id}/change-chef` | Changer chef |
 | `invite()` | `POST /projects/{id}/invite` | Inviter par email |
 | `exportTasks()` | `GET /projects/{id}/export/tasks` | Export CSV/JSON |
+| `pause()` ★ | `POST /projects/{id}/pause` | Mettre en pause — HTTP 423 sur toutes les modifs |
+| `resume()` ★ | `POST /projects/{id}/resume` | Reprendre — restaure le statut précédent |
+| `pausedStats()` ★ | `GET /projects/paused-stats` | Analytiques pause — admin uniquement |
 
 #### TaskController (`/tasks`, `/projects/{id}/tasks`)
 
@@ -656,12 +660,28 @@ $status           = 'pending' | 'accepted' | 'declined' | 'expired'
 | `CheckRole` | `check.role:admin` | Vérifie le rôle Spatie — supporte la **négation** `!role` |
 | `CheckProjectAccess` | `check.project:view\|edit` | Vérifie l'accès au projet (chef/member → edit, client → view) |
 | `EnsureUserIsActive` | `active.user` | Rejette si `user.status != 'active'` → 403 |
+| `CheckProjectNotPaused` | `project.not_paused` | Bloque POST/PUT/PATCH/DELETE si projet en pause → **HTTP 423 LOCKED** |
 
 **Syntaxes CheckRole :**
 ```php
 check.role:admin           // doit avoir ce rôle
 check.role:admin,member    // doit avoir au moins l'un de ces rôles
 check.role:!client         // ne doit PAS avoir le rôle client (supporte les rôles dynamiques)
+```
+
+**Réponse HTTP 423 du middleware `project.not_paused` :**
+```json
+{
+  "status": 423,
+  "message": "⏸️ This project is paused. Modifications are disabled.",
+  "code": "PROJECT_LOCKED",
+  "project": {
+    "id": 12,
+    "name": "CRM System",
+    "pause_reason": "Attente de validation client",
+    "paused_at": "2026-05-26T10:00:00Z"
+  }
+}
 ```
 
 Rate limiting : `throttle:5,1` sur auth public, `throttle:60,1` sur routes protégées.
@@ -671,7 +691,20 @@ Rate limiting : `throttle:5,1` sur auth public, `throttle:60,1` sur routes prot�
 | Policy | Méthodes protégées |
 |---|---|
 | `TaskPolicy` | `update()`, `delete()`, `assign()` — admin et chef/member du projet |
-| `ProjectPolicy` | `update()`, `delete()`, `addMember()` — admin ou propriétaire |
+| `ProjectPolicy` | `view()`, `create()`, `update()`, `delete()`, `pause()`, `resume()` |
+
+**`ProjectPolicy::pause()` — peut mettre en pause :**
+- Admin global
+- Propriétaire du projet (`owner_id`)
+- Chef du projet (`chef_id`)
+- Project Manager (`project_manager_id`)
+- Tout utilisateur avec la permission Spatie `project.pause`
+- Bloqué si projet déjà `on_hold`, `completed` ou `cancelled`
+
+**`ProjectPolicy::resume()` — peut reprendre :**
+- Admin global **uniquement**
+- Chef du projet (`chef_id`) **uniquement**
+- ⚠️ La permission Spatie `project.resume` n'élargit **pas** l'accès (policy stricte)
 
 #### Support
 
@@ -725,13 +758,18 @@ DELETE /projects/{id}
 GET    /projects/{id}/dashboard       [check.project:view]
 GET    /projects/{id}/activity        [check.project:view]
 GET    /projects/{id}/members         [check.project:view]
-POST   /projects/{id}/members         [check.project:edit]
-DELETE /projects/{id}/members/{user}  [check.project:edit]
-PUT    /projects/{id}/change-chef     [check.project:edit]
+POST   /projects/{id}/members         [check.project:edit + project.not_paused]
+DELETE /projects/{id}/members/{user}  [check.project:edit + project.not_paused]
+PUT    /projects/{id}/change-chef     [check.project:edit + project.not_paused]
 POST   /projects/{id}/invite          [check.project:view]
 GET    /projects/{id}/export/tasks    [check.project:view]
 GET    /projects/{id}/critical-path   [check.project:view]
-GET    /projects/{id}/user-search     [check.project:edit]
+GET    /projects/{id}/user-search     [check.project:edit + project.not_paused]
+
+# ★ Pause / Reprise (Sprint 6)
+POST   /projects/{id}/pause           [policy: pause — body: { pause_reason: string }]
+POST   /projects/{id}/resume          [policy: resume — admin ou chef_id uniquement]
+GET    /projects/paused-stats         [admin uniquement]
 ```
 
 ### Sprints
@@ -751,36 +789,39 @@ POST   /projects/{id}/sprints/{s}/tasks/{t}
 
 ### Tâches
 
+Toutes les routes d'écriture de tâches sont protégées par `project.not_paused`.
+Si le projet est en `on_hold` → HTTP 423 PROJECT_LOCKED.
+
 ```
 GET    /tasks
 GET    /projects/{id}/tasks           [check.project:view]
-POST   /projects/{id}/tasks           [check.project:edit]
+POST   /projects/{id}/tasks           [check.project:edit + project.not_paused]
 GET    /tasks/{id}
-PUT    /tasks/{id}                    [can:update,task]
-DELETE /tasks/{id}                    [can:delete,task]
-PATCH  /tasks/{id}/move               [can:update,task]
+PUT    /tasks/{id}                    [can:update,task + project.not_paused]
+DELETE /tasks/{id}                    [can:delete,task + project.not_paused]
+PATCH  /tasks/{id}/move               [can:update,task + project.not_paused]
 
 # Assignees
 GET    /tasks/{id}/assignees
-POST   /tasks/{id}/assign             [can:update,task]
-DELETE /tasks/{id}/unassign/{user}    [can:update,task]
+POST   /tasks/{id}/assign             [can:update,task + project.not_paused]
+DELETE /tasks/{id}/unassign/{user}    [can:update,task + project.not_paused]
 
 # Dépendances
 GET    /tasks/{id}/dependencies
-POST   /tasks/{id}/dependencies
-DELETE /tasks/{id}/dependencies/{dep}
+POST   /tasks/{id}/dependencies       [project.not_paused]
+DELETE /tasks/{id}/dependencies/{dep} [project.not_paused]
 
 # Commentaires
 GET    /tasks/{id}/comments
-POST   /tasks/{id}/comments
-PUT    /tasks/{id}/comments/{c}
-DELETE /tasks/{id}/comments/{c}
+POST   /tasks/{id}/comments           [project.not_paused]
+PUT    /tasks/{id}/comments/{c}       [project.not_paused]
+DELETE /tasks/{id}/comments/{c}       [project.not_paused]
 
 # Pièces jointes
 GET    /tasks/{id}/attachments
-POST   /tasks/{id}/attachments
+POST   /tasks/{id}/attachments        [project.not_paused]
 GET    /tasks/{id}/attachments/{a}/download
-DELETE /tasks/{id}/attachments/{a}
+DELETE /tasks/{id}/attachments/{a}    [project.not_paused]
 
 # Suivi du temps
 GET    /tasks/{id}/time-entries
@@ -923,7 +964,7 @@ Content-Type: application/json
 
 | Rôle | Accès |
 |---|---|
-| `admin` | Total — gestion users, teams, projects, specialties, dashboard global |
+| `admin` | Total — gestion users, teams, projects, specialties, dashboard global, pause/reprise tous projets |
 | `member` | Projets assignés, tâches, IA, dashboard membre |
 | `client` | Lecture seule — dashboard projet, rapports, risques IA |
 | Rôles **dynamiques** | Ex: `scrum master`, `tech lead` — traités comme `member` (non-client) |
@@ -936,6 +977,24 @@ Des rôles personnalisés peuvent être créés via l'interface *Rôles & Permis
 ```
 
 Création des rôles système : `php artisan db:seed --class=RoleAndPermissionSeeder`
+
+### Permissions Spatie — Groupe Projets (complet)
+
+| Permission | Description | Admin | Member | Client |
+|---|---|---|---|---|
+| `project.view` | Voir les projets | ✅ | ✅ | ✅ |
+| `project.create` | Créer un projet | ✅ | ✅ | ❌ |
+| `project.edit` | Modifier un projet | ✅ | ✅ | ❌ |
+| `project.delete` | Supprimer un projet | ✅ | ❌ | ❌ |
+| `project.archive` | Archiver un projet | ✅ | ✅ | ❌ |
+| `project.export` | Exporter les données | ✅ | ✅ | ✅ |
+| `project.manage_members` | Gérer les membres | ✅ | ✅ | ❌ |
+| `project.manage_settings` | Modifier les paramètres | ✅ | ✅ | ❌ |
+| `project.pause` ★ | Mettre en pause | ✅ | ❌ | ❌ |
+| `project.resume` ★ | Reprendre (RBAC seul insuffisant) | ✅ | ❌ | ❌ |
+
+★ `project.pause` : accordée aussi automatiquement au chef et propriétaire du projet via la policy.  
+★ `project.resume` : la policy impose admin ou chef_id uniquement, cette permission RBAC ne change pas la restriction.
 
 ### Rôles dans un projet (colonne `project_role` dans `project_members`)
 
@@ -1042,6 +1101,20 @@ Tous utilisent `cn()` (clsx + tailwind-merge) pour la composition de classes Tai
 | `SpecialtyCardGrid` | Grille de sélection des spécialités |
 | `UserManagement` | CRUD utilisateurs admin — rôles dynamiques chargés depuis l'API |
 | `FollowerButton` | Bouton Suivre/Ne plus suivre un projet (Star/StarOff) |
+
+#### Pause / Reprise de projet (`components/projects/`) — ★ Sprint 6
+
+| Composant | Rôle |
+|---|---|
+| `ProjectPauseButton` | Bouton adaptatif — ⏸️ Pause (amber) ou ▶️ Reprendre (vert) selon état et permissions |
+| `PauseProjectModal` | Modal de confirmation avec sélecteur de raison (7 presets) + texte libre, validation min 5 chars |
+| `ProjectPauseBanner` | Bannière pleine largeur orange affichée sur tout projet en `on_hold` — raison, qui a pausé, durée (date-fns) |
+
+#### Hook Pause (`hooks/`)
+
+| Hook | Rôle |
+|---|---|
+| `useProjectPause(projectId)` | Mutations React Query pause + resume avec **optimistic UI** — retourne `pause()`, `resume()`, `isPausing`, `isResuming` |
 
 ### 10.3 Contextes
 
@@ -1317,6 +1390,7 @@ Broadcast::channel('project.{projectId}', function($user, $projectId) {
 | `PermissionChanged` | `.permission.changed` | `private-user.{id}` | Changement rôle ou permission |
 | `SprintStateChanged` | `.sprint.state.changed` | `private-project.{id}` | Sprint démarré ou terminé |
 | `ProgressUpdated` | `.progress.updated` | `private-project.{id}` | Progression tâche ou projet mise à jour |
+| `ProjectStatusChanged` ★ | `.project.status.changed` | `private-project.{id}` | Projet mis en pause ou repris |
 
 ### Émettre un événement (backend)
 
@@ -1341,7 +1415,7 @@ event(new TaskUpdated($task, Auth::user(), 'updated', $changed));
 
 ### Listeners frontend par page
 
-#### `ProjectDetailPage.jsx` — canal `private-project.{id}` (7 événements)
+#### `ProjectDetailPage.jsx` — canal `private-project.{id}` (8 événements)
 ```js
 channel.listen('.task.comment.created', () => queryClient.invalidateQueries(['tasks', id]));
 channel.listen('.task.comment.deleted', () => queryClient.invalidateQueries(['tasks', id]));
@@ -1366,6 +1440,15 @@ channel.listen('.progress.updated', (e) => {
   queryClient.invalidateQueries(['project-dashboard', id]);
   if (e.source === 'worklog' && e.actor_id !== user?.id)
     toast.info(`${e.actor_name} a mis à jour la progression de "${e.task_title}" → ${e.task_progress}%`);
+});
+// ★ Sprint 6 — Pause / Reprise
+channel.listen('.project.status.changed', (e) => {
+  queryClient.invalidateQueries(['project', id]);
+  queryClient.invalidateQueries(['projects']);
+  if (e.action === 'paused')
+    toast.warning(`⏸️ Projet mis en pause par ${e.actor_name}`, { description: e.pause_reason });
+  else
+    toast.success(`▶️ Projet repris par ${e.actor_name}`);
 });
 ```
 
@@ -1468,7 +1551,11 @@ timezone, created_at, updated_at, deleted_at
 -- projects
 id, team_id, client_id, owner_id, created_by, project_manager_id, chef_id,
 name, code, description, status, priority,
-start_date, end_date, created_at, updated_at, deleted_at
+start_date, end_date,
+-- Pause / Reprise (★ Sprint 6 — migration 2026_05_26_000001)
+paused_at (timestamp nullable), paused_by (FK→users nullable),
+pause_reason (text nullable), previous_status (varchar nullable),
+created_at, updated_at, deleted_at
 
 -- tasks
 id, project_id, sprint_id, parent_id, status_id, created_by, updated_by,
