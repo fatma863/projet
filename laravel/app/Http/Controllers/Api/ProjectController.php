@@ -368,7 +368,7 @@ class ProjectController extends Controller
     public function pausedStats(Request $request): JsonResponse
     {
         if (! AccessControl::isAdmin($request->user())) {
-            return response()->json(['message' => 'Unauthorized.'], Response::HTTP_FORBIDDEN);
+            return response()->json(['message' => 'Accès non autorisé.'], Response::HTTP_FORBIDDEN);
         }
 
         $stats = DB::table('projects')

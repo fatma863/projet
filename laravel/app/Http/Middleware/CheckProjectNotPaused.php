@@ -56,7 +56,7 @@ class CheckProjectNotPaused
         if ($project && $project->isPaused()) {
             return response()->json([
                 'status'  => Response::HTTP_LOCKED,
-                'message' => '⏸️ This project is paused. Modifications are disabled.',
+                'message' => '⏸️ Ce projet est en pause. Les modifications sont désactivées.',
                 'code'    => 'PROJECT_LOCKED',
                 'project' => [
                     'id'           => $project->id,

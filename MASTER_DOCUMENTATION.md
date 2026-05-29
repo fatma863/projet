@@ -673,7 +673,7 @@ check.role:!client         // ne doit PAS avoir le rôle client (supporte les r�
 ```json
 {
   "status": 423,
-  "message": "⏸️ This project is paused. Modifications are disabled.",
+  "message": "⏸️ Ce projet est en pause. Les modifications sont désactivées.",
   "code": "PROJECT_LOCKED",
   "project": {
     "id": 12,
@@ -1149,7 +1149,7 @@ Interface **exclusivement en français**. Toutes les clés sont dans `i18n/messa
 | `lib/echo.js` | `getEcho()`, `disconnectEcho()` — Laravel Echo + WebSocket |
 | `lib/theme.js` | `applyAppTheme()`, `resolveThemeForUser()`, `setStoredThemeForUser()` |
 | `lib/utils.js` | `cn(...classes)` — clsx + tailwind-merge |
-| `lib/roles.js` | `isGuestViewer()`, `formatAppRole()`, `PROJECT_ROLE_LABELS` |
+| `lib/roles.js` | `isGuestViewer()`, `formatAppRole()` (FR uniquement), `APP_ROLE_LABELS`, `PROJECT_ROLE_LABELS` |
 | `lib/taskConstants.js` | `WORKFLOW_COLUMNS`, `ISSUE_TYPE_LABELS`, `PRIORITY_OPTIONS` |
 | `lib/activityHumanize.js` | `humanizeActivityLine()` — texte lisible depuis événements |
 | `lib/projectActivityHumanize.js` | Humanisation activité projet |
@@ -1642,6 +1642,7 @@ data (JSON), read_at, created_at
 - **In-app** : compteur badge en temps réel (WebSocket), dropdown, page dédiée
 - **Email** : assignation, commentaire, tâche en retard
 - **Préférences** : granularité par type d'événement (11 types : task_assigned, task_updated, task_completed, task_delayed, comment, project, invitation, permission, ai_alert — canaux in_app + email)
+- **Types pause/reprise** : `project.paused` (warning, amber), `project.resumed` (info, emerald) — visibles dans NotificationDropdown et NotificationsPage
 - Actions : marquer comme lu, marquer tout comme lu, supprimer une notif, vider toutes les lues
 
 ### Rôles & Permissions (interface admin) ★
@@ -2082,7 +2083,8 @@ diagrams-code/
 ├── sprint2/      # Sprint 2 — Projets et équipes
 ├── sprint3/      # Sprint 3 — Tâches et Kanban
 ├── sprint4/      # Sprint 4 — Planification
-└── sprint5/      # Sprint 5 — IA
+├── sprint5/      # Sprint 5 — IA et ML
+└── sprint6/      # Sprint 6 — Audit RBAC & Pause/Reprise
 ```
 
 ### Export en PNG
@@ -2129,7 +2131,7 @@ https://www.plantuml.com/plantuml/uml/ → coller le `.puml` → télécharger P
 ### Configuration `.sonarcloud.properties`
 
 ```properties
-sonar.exclusions=sonar-premium-report.html,sonar_fatma863_projet.html,sonar_report.py
+sonar.exclusions=sonar-premium-report.html,sonar_fatma863_projet.html,sonar_report.py,react/dist/**
 sonar.cpd.exclusions=laravel/lang/**,laravel/database/migrations/**,laravel/tests/**,laravel/database/seeders/**
 ```
 
@@ -2554,11 +2556,9 @@ queryClient.invalidateQueries(['audit-badge']) ← déclenché à l'ouverture de
 ---
 
 > **Légende ★** — Toutes les fonctionnalités marquées ★ ont été ajoutées lors de la session d'interconnexion SaaS du 21 mai 2026.  
-> Dernière mise à jour : **22 mai 2026** — Phase stabilisation globale :
-> - **Corrections** : N+1 GanttController (pre-load tasks en 2 queries), AiController::chat (3 queries → 1 scope `accessibleToUser`), ActivityFeedController stats optionnelles (`?with_stats=1`)
-> - **WebSocket** : listener `.task.comment.deleted` ajouté dans ProjectDetailPage, `.sprint.state.changed` + `.progress.updated` ajoutés dans DashboardPage — couverture complète 11/11 événements
-> - **DailyProgressModal** + **FollowerButton** intégrés dans ProjectDetailPage avec listener WebSocket `.progress.updated`
-> - **Rapport PDF** : page standalone `AuditReportPage.jsx` + route `/audit-log/report` (impression A4 auto)
-> - **Analytics Journal** : onglet Analytics avec KPIs, HBar, Sparkline SVG, DonutStat CSS, détection d'anomalies IA (tâches instables, membres inactifs, pics d'activité)
+> Dernière mise à jour : **29 mai 2026** — Nettoyage enterprise & Sprint 6 Pause/Reprise :
+> - **Sprint 6 (26 mai 2026)** : Système Pause/Reprise projet complet — migration `paused_at/paused_by/pause_reason/previous_status`, middleware `project.not_paused` (HTTP 423), `ProjectPolicy::pause()` + `resume()`, hook `useProjectPause`, composants `ProjectPauseButton`, `PauseProjectModal`, `ProjectPauseBanner`, événement WebSocket `ProjectStatusChanged`, permissions RBAC `project.pause` + `project.resume`, matrice permissions UI
+> - **Nettoyage (29 mai 2026)** : Suppression fichiers morts (`p.py` racine, `fix-chars.mjs`), correction message HTTP 423 anglais → français, suppression code mort `APP_ROLE_LABELS_EN` dans `roles.js`, ajout types `project.paused`/`project.resumed` dans `NotificationDropdown`, enrichissement `activityHumanize.js` (+6 cas manquants), harmonisation spinner chargement (bleu → indigo)
+> - **22 mai 2026** : Corrections N+1 (GanttController, AiController), stats journal optionnelles (`?with_stats=1`), listeners WebSocket complets 12/12 événements, rapport PDF audit standalone
 >
 > Document maintenu par **Fatma Rejeb** — ISET, Promotion 2026.
