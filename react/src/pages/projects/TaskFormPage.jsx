@@ -20,6 +20,7 @@ import { TaskDependencyPicker } from '../../components/tasks/TaskDependencyPicke
 import { MLRecommendationModal } from '../../components/tasks/MLRecommendationModal';
 import { MembersPerformanceModal } from '../../components/tasks/MembersPerformanceModal';
 import WatcherButton from '../../components/tasks/WatcherButton';
+import ProjectDateBanner from '../../components/projects/ProjectDateBanner';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -115,16 +116,16 @@ function validateStep(step, form, projectStart, projectEnd, isEdit) {
 
     // Vérification que les dates restent dans la période du projet
     if (!isEdit && ps && projectStart && ps < projectStart) {
-      e.planned_start = `La date de début doit être dans la période projet (à partir du ${fmtFr(projectStart)}).`;
+      e.planned_start = `Cette tâche ne peut pas commencer avant le ${fmtFr(projectStart)}, date de début du projet.`;
     }
     if (!isEdit && ps && projectEnd && ps > projectEnd) {
-      e.planned_start = `La date de début ne peut pas dépasser la fin du projet (${fmtFr(projectEnd)}).`;
+      e.planned_start = `Cette tâche ne peut pas dépasser le ${fmtFr(projectEnd)}, date de fin du projet.`;
     }
     if (pe && projectStart && pe < projectStart) {
-      e.planned_end = `La date de fin doit être dans la période projet (à partir du ${fmtFr(projectStart)}).`;
+      e.planned_end = `Cette tâche ne peut pas se terminer avant le ${fmtFr(projectStart)}, date de début du projet.`;
     }
     if (pe && projectEnd && pe > projectEnd) {
-      e.planned_end = `La date de fin ne peut pas dépasser la fin du projet (${fmtFr(projectEnd)}).`;
+      e.planned_end = `Cette tâche ne peut pas dépasser le ${fmtFr(projectEnd)}, date de fin du projet.`;
     }
   }
   if (step === 2) {
@@ -532,10 +533,8 @@ export default function TaskFormPage() {
           <div className="space-y-5">
             <SectionTitle icon={CalendarRange} label="Planification" />
 
-            {(projectStart || projectEnd) && (
-              <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                Période du projet : {projectStart ? fmtFr(projectStart) : 'non définie'} → {projectEnd ? fmtFr(projectEnd) : 'non définie'}
-              </div>
+            {projectMeta && (projectMeta.start_date || projectMeta.end_date) && (
+              <ProjectDateBanner project={projectMeta} compact />
             )}
 
             <div className="grid gap-4 sm:grid-cols-2">

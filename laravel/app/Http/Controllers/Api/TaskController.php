@@ -327,10 +327,23 @@ class TaskController extends Controller
 
         $task->load(['status', 'creator', 'assignees', 'dependencies']);
 
+        // Capture l'état initial complet pour le journal d'audit
+        $creationNewValues = [
+            'title'            => $task->title,
+            'status'           => $task->status?->name,
+            'priority'         => $task->priority,
+            'workflow_status'  => $task->workflow_status,
+            'planned_start'    => $task->planned_start?->toDateString(),
+            'planned_end'      => $task->planned_end?->toDateString(),
+            'due_date'         => $task->due_date?->toDateString(),
+            'progress_percent' => $task->progress_percent ?? 0,
+            'assignees'        => $task->assignees->pluck('name')->toArray(),
+        ];
+
         $this->activityLogService->log($project, Auth::user(), 'task.created', $task, [
             'task_title' => $task->title,
-            'status_id' => $task->status_id,
-        ]);
+            'status_id'  => $task->status_id,
+        ], [], $creationNewValues);
         $this->activityService->recordCreatedTask(Auth::user(), $task);
         if ($assigneeId) {
             $this->activityService->recordAssignedTask(Auth::user(), $task, (int) $assigneeId);
@@ -528,6 +541,26 @@ class TaskController extends Controller
             'progress_percent' => $task->progress_percent,
             'changed'          => $changed,
         ], $capturedOld, $capturedNew);
+
+        // Log dédié task.status_changed lorsque le statut ou workflow_status change explicitement.
+        // Permet des requêtes d'audit ciblées sans parser task.updated.
+        $statusChanged   = isset($capturedOld['status_id'])
+            && $capturedOld['status_id'] !== $capturedNew['status_id'];
+        $workflowChanged = isset($capturedOld['workflow_status'])
+            && $capturedOld['workflow_status'] !== $capturedNew['workflow_status'];
+
+        if ($statusChanged || $workflowChanged) {
+            $this->activityLogService->log($task->project, Auth::user(), 'task.status_changed', $task, [
+                'task_title'          => $task->title,
+                'old_status_id'       => $capturedOld['status_id']       ?? null,
+                'new_status_id'       => $capturedNew['status_id']       ?? null,
+                'old_workflow_status' => $capturedOld['workflow_status'] ?? null,
+                'new_workflow_status' => $capturedNew['workflow_status'] ?? null,
+            ],
+            array_filter(['status_id' => $capturedOld['status_id'] ?? null, 'workflow_status' => $capturedOld['workflow_status'] ?? null]),
+            array_filter(['status_id' => $capturedNew['status_id'] ?? null, 'workflow_status' => $capturedNew['workflow_status'] ?? null]));
+        }
+
         $this->notifyDelayIfNeeded($task);
         ProjectController::forgetDashboardCache($task->project_id);
         self::forgetProjectTasksCache($task->project_id);
@@ -1157,6 +1190,14 @@ class TaskController extends Controller
                 $errors['due_date'] = ["La date d'échéance ne peut pas être antérieure au démarrage du projet ({$fmtStart})."];
             } elseif ($projectEnd && $dueDate->gt($projectEnd)) {
                 $errors['due_date'] = ["La date d'échéance ne peut pas dépasser la date de fin du projet ({$fmtEnd})."];
+            } else {
+                // due_date doit être >= planned_start de la tâche
+                // On utilise la valeur de la requête en priorité, puis la valeur existante sur la tâche.
+                $effectiveStart = $plannedStart
+                    ?? ($existingTask?->planned_start?->copy()->startOfDay());
+                if ($effectiveStart && $dueDate->lt($effectiveStart)) {
+                    $errors['due_date'] = ["La date d'échéance ne peut pas être antérieure à la date de début de la tâche ({$effectiveStart->translatedFormat('d/m/Y')})."];
+                }
             }
         }
 

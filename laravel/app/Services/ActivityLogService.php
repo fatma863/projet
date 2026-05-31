@@ -13,7 +13,7 @@ class ActivityLogService
 {
     /** Actions that warrant a "warning" severity. */
     private const WARNING_PATTERNS = [
-        'task.assigned', 'task.unassigned',
+        'task.assigned', 'task.unassigned', 'task.status_changed',
         'project.member_added', 'project.member_removed', 'project.member_role_changed',
         'project.user_invited',
         'project.paused', 'project.resumed',

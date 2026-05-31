@@ -10,6 +10,7 @@ import GanttChart from '../../components/gantt/GanttChart';
 import { ErrorBoundary } from '../../components/ui/ErrorBoundary';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { normalizeGanttTasks } from '../../lib/ganttNormalize';
+import ProjectDateBanner from '../../components/projects/ProjectDateBanner';
 
 const PROJECT_STATUS_COLORS = {
   active: '#22c55e',
@@ -194,6 +195,11 @@ export default function GanttPage() {
     ? 'Aucune tâche planifiée pour ce projet'
     : 'Aucun projet avec des dates planifiées';
 
+  // Projet sélectionné (pour afficher le bandeau de dates)
+  const selectedProjectObj = !isGlobal && selectedProject
+    ? projects.find((p) => String(p.id) === String(selectedProject))
+    : null;
+
   const resetGanttFilters = () => {
     setViewMode('global');
     setSelectedProject('');
@@ -272,6 +278,11 @@ export default function GanttPage() {
           Réinitialiser
         </Button>
       </div>
+
+      {/* Bandeau dates du projet sélectionné — vue par projet uniquement */}
+      {selectedProjectObj && (
+        <ProjectDateBanner project={selectedProjectObj} />
+      )}
 
       {/* Summary bar for global project view */}
       {viewMode === 'global' && !isLoading && projectGanttRows.length > 0 && (

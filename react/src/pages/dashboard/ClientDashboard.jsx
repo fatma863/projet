@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
+import ProjectDateBanner from '../../components/projects/ProjectDateBanner';
 
 const ALERT_CARD_CLASS = {
   danger:  'border-red-200 bg-red-50/50 dark:border-red-900/40 dark:bg-red-950/20',
@@ -323,23 +324,8 @@ export default function ClientDashboard() {
                   const progressColor = progress >= 80 ? 'bg-emerald-500' : progress >= 40 ? 'bg-blue-500' : 'bg-amber-500';
                   return (
                     <li key={project.id}>
-                      <Link
-                        to={`/projects/${project.id}`}
-                        className="block rounded-xl border border-border/80 bg-card p-4 shadow-sm transition-all hover:border-primary/25 hover:shadow-md"
-                      >
-                        <div className="flex items-start justify-between gap-3 mb-2">
-                          <p className="font-medium text-foreground truncate">{project.name}</p>
-                          <ProjectStatusBadge status={project.status} />
-                        </div>
-                        <div>
-                          <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                            <span>Progression</span>
-                            <span className="font-semibold tabular-nums">{progress}%</span>
-                          </div>
-                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                            <div className={`h-1.5 rounded-full transition-all duration-700 ${progressColor}`} style={{ width: `${Math.min(progress, 100)}%` }} />
-                          </div>
-                        </div>
+                      <Link to={`/projects/${project.id}`} className="block">
+                        <ProjectDateBanner project={project} compact />
                       </Link>
                     </li>
                   );

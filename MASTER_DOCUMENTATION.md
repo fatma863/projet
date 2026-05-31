@@ -67,6 +67,7 @@
     - 22.5 [API filtrée + export + analytics](#225-api-filtrée--export--analytics)
 23. [Retrait de membre par le Chef de projet](#23-retrait-de-membre-par-le-chef-de-projet)
 24. [Module Gantt — Visibilité par rôle](#24-module-gantt--visibilité-par-rôle)
+27. [Visibilité des dates du projet — Règle métier obligatoire](#27-visibilité-des-dates-du-projet--règle-métier-obligatoire)
 25. [Rôle Client — Observateur de projet](#25-rôle-client--observateur-de-projet)
     - 23.1 [Règles métier](#231-règles-métier)
     - 23.2 [Endpoint API](#232-endpoint-api)
@@ -2846,56 +2847,55 @@ Gate::authorize('update', $project)    ← politique ProjectPolicy
 
 ---
 
-## 26. Gestion des tâches — Règles de suppression et contraintes de dates
+## 26. Gestion des tâches — Règles de suppression, contraintes de dates et audit
 
 ### 26.1 Règles de suppression
 
 | Rôle | Peut supprimer | Conditions |
 |---|:---:|---|
-| **Admin** | ✅ N'importe quelle tâche | Sans restriction |
-| **Chef de projet / Owner** | ✅ Toute tâche de ses projets | `project.chef_id = user.id` ou `project.owner_id = user.id` |
-| **Rôle projet « admin »** | ✅ Toute tâche du projet | Via `projectRole() === 'admin'` (legacy) |
-| **Membre créateur** | ✅ Conditionnel | Uniquement si `task.created_by = user.id` ET tâche non terminée (`workflow_status != 'done'` ET `progress_percent < 100`) |
+| **Admin** | ✅ N'importe quelle tâche | Sans restriction (project-agnostic) |
+| **Chef de projet / Owner** | ✅ Toute tâche de **ses** projets | `project.chef_id = user.id` ou `project.owner_id = user.id` — ⚠️ calculé sur le projet de la tâche, jamais hérité |
+| **Rôle projet « admin »** | ✅ Toute tâche du projet | Via `projectRole() === 'admin'` (legacy pivot) |
+| **Membre créateur** | ✅ Conditionnel | `task.created_by = user.id` ET `workflow_status != 'done'` ET `progress_percent < 100` |
 | **Membre non-créateur** | ❌ Jamais | Même si assigné à la tâche |
-| **Client** | ❌ Jamais | `isClientRole()` → retourne false |
+| **Client** | ❌ Jamais | `isClientRole()` → false |
 
-**Implémentation backend :**
+**Implémentation backend (`AccessControl::canDeleteTask()`) :**
 ```php
-// AccessControl::canDeleteTask()
-if (isAdmin) → true
-if (isClientRole) → false
-if (chef_id == user.id || owner_id == user.id) → true
-if (projectRole == 'admin') → true
-if (created_by == user.id && !isCompleted) → true  // membre créateur
-else → false
+if (isAdmin)                                          → true
+if (isClientRole)                                     → false
+if (project->chef_id == user.id || project->owner_id == user.id) → true
+if (projectRole(user, task->project) === 'admin')     → true
+if (task->created_by == user.id && !isCompleted)      → true  // membre créateur
+else                                                  → false
 ```
+
+La vérification utilise `task->project` (le projet de la **tâche**), pas le rôle global de l'utilisateur.  
+**Un chef dans le projet A ne peut pas supprimer une tâche du projet B.**
 
 **`can_delete` dans la réponse API (`TaskResource`) :**
-```json
-{
-  "access": {
-    "can_edit": true,
-    "can_delete": false
-  }
-}
-```
+- `access.can_delete` est calculé en temps réel via `AccessControl::canDeleteTask($user, $task)`
+- `access.can_edit` est distinct de `access.can_delete`
 
-Le frontend lit `task.access.can_delete` pour afficher/masquer le bouton "Supprimer" (TaskFormPage, Kanban).
+**Frontend :**
+- `TaskFormPage.jsx` : bouton Supprimer visible si `canDelete = isEdit && (isAdmin || task.access.can_delete)`
+- `ProjectDetailPage.jsx` (Kanban) : `onDelete` activé si `canWriteProject && task.access.can_delete === true`
 
 ### 26.2 Contraintes de dates des tâches
 
-Les tâches DOIVENT être comprises dans la période du projet (`start_date` → `end_date`).
+Les tâches **DOIVENT** être comprises dans la période du projet (`start_date` → `end_date`).  
+La validation est **obligatoire côté backend** même si le frontend est contourné.
 
-**Validation backend (`assertTaskDatesWithinProjectWindow()`) :**
+**Toutes les contraintes validées dans `assertTaskDatesWithinProjectWindow()` :**
 
-| Champ | Contrainte |
-|---|---|
-| `planned_start` | ≥ `project.start_date` ET ≤ `project.end_date` |
-| `planned_end` | ≥ `project.start_date` ET ≤ `project.end_date` ET ≥ `planned_start` |
-| `due_date` | ≥ `project.start_date` ET ≤ `project.end_date` |
-| `planned_start` (update) | Immuable après création |
+| Champ | Contrainte | Source de vérification |
+|---|---|---|
+| `planned_start` | ≥ `project.start_date` ET ≤ `project.end_date` | `store()` + `update()` |
+| `planned_end` | ≥ `project.start_date` ET ≤ `project.end_date` ET ≥ `planned_start` | `store()` + `update()` |
+| `due_date` | ≥ `project.start_date` ET ≤ `project.end_date` ET ≥ `planned_start` | `store()` + `update()` |
+| `planned_start` (update) | **Immuable** après création (`assertPlannedStartImmutable()`) | `update()` |
 
-La validation est déclenchée dans `store()` et `update()`. Si le projet n'a pas de dates, la validation est sautée.
+> ⚠️ Pour `due_date`, l'`effectiveStart` est la valeur fournie dans la requête OU la valeur existante sur la tâche (pour les mises à jour partielles).
 
 **Messages d'erreur :**
 - `"La date de début ne peut pas être antérieure au démarrage du projet (DD/MM/YYYY)."`
@@ -2904,30 +2904,63 @@ La validation est déclenchée dans `store()` et `update()`. Si le projet n'a pa
 - `"La date de fin ne peut pas dépasser la date de fin du projet (DD/MM/YYYY)."`
 - `"La date d'échéance ne peut pas être antérieure au démarrage du projet (DD/MM/YYYY)."`
 - `"La date d'échéance ne peut pas dépasser la date de fin du projet (DD/MM/YYYY)."`
+- `"La date d'échéance ne peut pas être antérieure à la date de début de la tâche (DD/MM/YYYY)."`
 
-**Validation frontend (`TaskFormPage.jsx`) :**
-- `planned_start` : `min=projectStart`, `max=projectEnd`
-- `planned_end` : `min=max(planned_start, projectStart)`, `max=projectEnd`
-- Les limites sont affichées à l'utilisateur dans le formulaire
+**Chemins de modification des dates — sécurité garantie :**
 
-### 26.3 Journal d'audit des suppressions
+| Chemin | Date modifiée | Validation backend | Statut |
+|---|---|---|---|
+| `TaskFormPage.jsx` (formulaire) | planned_start, planned_end, due_date | ✅ `assertTaskDatesWithinProjectWindow()` | Sécurisé |
+| Kanban drag-drop | `workflow_status` uniquement | N/A (pas de date) | Sécurisé |
+| Gantt (`GanttController::updateDates`) | planned_start, planned_end | ✅ `check.project:edit` | Sécurisé (requiert chef/admin) |
+| API directe (raw) | Tous les champs | ✅ Backend obligatoire | Sécurisé |
 
-Chaque suppression est enregistrée avec :
+### 26.3 Journal d'audit complet des tâches
 
+| Action | Sévérité | Quand | Contenu |
+|---|---|---|---|
+| `task.created` | info | Création | `new_values`: titre, statut, priorité, dates, assignés |
+| `task.updated` | info | Modification | `old_values` + `new_values` des champs modifiés |
+| `task.status_changed` | **warning** | Changement statut/workflow | `old/new status_id` + `old/new workflow_status` — log dédié |
+| `task.assigned` | warning | Assignation | `assigned_user_id`, `allocation_percent` |
+| `task.unassigned` | warning | Désassignation | `unassigned_user_id` |
+| `task.deleted` | **critical** | Suppression | `old_values` complets: titre, statut, priorité, dates, assignés, créateur |
+| `task.moved` | info | Kanban drag-drop | `status_id`, `kanban_order` |
+| `task.dependency_added` | info | Dépendance ajoutée | `depends_on_task_id`, `type` |
+| `task.dependency_removed` | info | Dépendance supprimée | `depends_on_task_id` |
+
+> `task.status_changed` est un log **dédié** (distinct de `task.updated`) permettant des requêtes d'audit ciblées sans parser le champ `changed`. Sévérité : `warning`.
+
+**Structure `task.deleted` (old_values) :**
 ```json
 {
   "action": "task.deleted",
   "severity": "critical",
   "meta": { "task_title": "..." },
   "old_values": {
-    "title": "...", "status": "...", "priority": "...",
-    "workflow_status": "...", "planned_start": "...", "planned_end": "...",
-    "due_date": "...", "progress_percent": 0,
-    "assignees": ["..."], "created_by": "..."
+    "title": "...", "status": "Nom du statut",
+    "priority": "high", "workflow_status": "in_progress",
+    "planned_start": "2026-06-01", "planned_end": "2026-06-15",
+    "due_date": "2026-06-15", "progress_percent": 45,
+    "assignees": ["Alice Dupont"], "created_by": "Bob Martin"
   },
   "new_values": {}
 }
 ```
+
+### 26.4 Comportement des suppressions (soft delete)
+
+- `$task->delete()` → **soft delete** (champ `deleted_at` rempli, données conservées)
+- Les requêtes Eloquent excluent automatiquement les tâches soft-deleted (`WHERE deleted_at IS NULL`)
+- La relation `$task->dependencies()` (BelongsToMany) applique le scope soft-delete → les dépendances vers/depuis une tâche supprimée n'apparaissent plus
+- Quand un **projet** est supprimé (hard-delete), la cascade DB supprime définitivement toutes ses tâches et leurs relations
+
+### 26.5 Multi-projets — isolation des droits
+
+Les permissions sont **calculées sur le projet de la tâche** (jamais sur le rôle global) :
+
+- Un chef dans le projet A essaie de supprimer une tâche du projet B → `AccessControl::canDeleteTask()` charge `task->project` (= projet B) et vérifie `chef_id` sur B → **403 refusé**
+- Aucun privilège ne peut être hérité d'un projet à un autre
 
 ---
 
@@ -3060,6 +3093,8 @@ PARAMÈTRES
 
 ---
 
+> - **1 juin 2026 — Visibilité des dates projet** : création du composant réutilisable `ProjectDateBanner.jsx` (dates début/fin, durée, jours restants, progression, couleurs adaptatives) ; intégré dans 5 vues : `ProjectDetailPage` (bandeau permanent avant stats), `TaskFormPage` (step Planification — remplace la ligne de texte discrète), `GanttPage` (vue par projet), `CalendarPage` (filtre projet), `ClientDashboard` (cartes projets). Messages d'erreur de validation mis à jour au format exact requis : `"Cette tâche ne peut pas commencer avant le DD/MM/YYYY, date de début du projet."`. Section §27 ajoutée dans MASTER_DOCUMENTATION.md.
+> - **31 mai 2026 — Audit module tâches** : 3 lacunes corrigées après audit complet — (1) `assertTaskDatesWithinProjectWindow()` : validation `due_date >= planned_start` ajoutée (utilisait `effectiveStart` = valeur requête OU valeur existante de la tâche) ; (2) `store()` : `task.created` log enrichi avec `new_values` complet (titre, statut, priorité, dates, assignés) ; (3) `update()` : log dédié `task.status_changed` ajouté (sévérité `warning`) déclenché quand `status_id` ou `workflow_status` change, distinct de `task.updated`. `ActivityLogService::WARNING_PATTERNS` mis à jour. §26 reécrit avec §26.2 tableau des contraintes complètes, §26.3 tableau complet des actions audit, §26.4 soft-delete, §26.5 isolation multi-projets.
 > - **31 mai 2026 — Gestion tâches RBAC + contraintes dates** : (1) `AccessControl::canDeleteTask()` étendu — chefs de projet et propriétaires peuvent supprimer toute tâche de leurs projets, membres peuvent supprimer leurs propres tâches non terminées (avant : admins seulement) ; (2) `TaskController::destroy()` enrichi avec `old_values` complets dans le journal d'audit (titre, statut, priorité, dates, assignés, créateur) ; (3) `assertTaskDatesWithinProjectWindow()` étendu pour valider aussi `due_date` contre les bornes du projet ; (4) Frontend `TaskFormPage.jsx` : bouton Supprimer basé sur `can_delete` au lieu de `can_edit` ; (5) Kanban `ProjectDetailPage.jsx` : delete handler basé sur `can_delete`. Section §26 ajoutée.
 > - **31 mai 2026 — Audit RBAC multi-projets** : refonte complète de `ActivityFeedController` — `buildQuery()` et `buildStats()` réarchitecturés avec `resolveAccess()` + `applyRbacFilter()` : les membres voient désormais **uniquement leurs propres actions** (avant : tous les événements de leurs projets) ; les chefs voient tous les événements de leurs projets + leurs propres actions dans les autres projets ; le cas multi-projets (chef ici, membre là) est géré projet par projet sans héritage croisé. `UserResource` : champ `is_chef_somewhere` ajouté (requête lazy). `AuditLogPage.jsx` : onglet Analytics visible pour `isAdmin || isChefSomewhere` (avant : admins seulement). Section §22.4 mise à jour avec l'algorithme complet. **Note** : le logging des événements d'authentification (login/logout/failed_login) nécessite un ajout de colonne nullable `project_id` dans `activity_logs` — non implémenté car cela requiert une migration.
 > - **31 mai 2026 — Rôle Client** : 5 incohérences corrigées — (1) `GET /calendar` sorti du groupe `check.role:!client` : les clients peuvent désormais consulter le calendrier de leurs projets ; (2) Sidebar : `clientHidden: true` ajouté à IA et Gantt global (liens masqués pour clients) + Audit Log masqué (`clientHidden`) ; (3) `App.jsx` : `/calendar` route mise à jour `RoleRoute allow=['admin','member','client']` ; (4) Création/édition de tâches bloquées en frontend via `RoleRoute allow=['admin','member']` ; (5) Section §25 ajoutée avec la documentation complète du rôle Client.
@@ -3146,6 +3181,65 @@ Toutes les corrections de cette session de développement :
 | 14 | `ProjectController::removeMember()` | Règles chef + audit log + notification | Retrait membre fonctionnel |
 | 15 | `NotificationService` | `notifyMemberRemoved()` | Notification au membre retiré |
 | 16 | Audit log RBAC (session précédente) | `roles/audit-log` admin-only, analytics restreints, export limité | Sécurité journal d'audit |
+
+---
+
+## 27. Visibilité des dates du projet — Règle métier obligatoire
+
+### 27.1 Règle
+
+Les dates de début (`start_date`) et de fin (`end_date`) du projet doivent être **immédiatement visibles** pour tous les utilisateurs autorisés, sans nécessiter d'ouvrir un onglet ou une fenêtre supplémentaire.
+
+### 27.2 Composant `ProjectDateBanner`
+
+**Fichier :** `react/src/components/projects/ProjectDateBanner.jsx`
+
+Composant réutilisable affichant :
+- Nom et code du projet
+- Date de début (format long fr-FR)
+- Date de fin (format long fr-FR)
+- Durée totale en jours
+- Jours restants / jours de retard (couleur adaptative : vert / orange / rouge)
+- Barre de progression
+
+**Props :**
+- `project` — objet projet avec `start_date`, `end_date`, `progress_percent`, `name`, `code`
+- `compact` (bool) — version réduite pour les espaces restreints (dashboard)
+
+### 27.3 Présence dans les vues
+
+| Vue | Condition d'affichage | Implémentation |
+|---|---|---|
+| **Page projet** (`ProjectDetailPage`) | Toujours visible si `start_date` ou `end_date` défini | Après le bandeau Pause, avant les stats KPI |
+| **Formulaire de tâche** (`TaskFormPage`) | Step "Planification" — toujours visible | Remplace l'ancienne ligne de texte discrète |
+| **Gantt** (`GanttPage`) | En "Vue par projet" quand un projet est sélectionné | Entre les contrôles et le diagramme |
+| **Calendrier** (`CalendarPage`) | Quand un projet est filtré | Après la card Filtres |
+| **Dashboard Client** (`ClientDashboard`) | Dans chaque carte de projet | Remplace l'ancienne carte progress-only |
+
+### 27.4 Contraintes de dates (règles métier appliquées)
+
+#### Backend (`assertTaskDatesWithinProjectWindow()`)
+
+| Champ | Contrainte | Message d'erreur |
+|---|---|---|
+| `planned_start` | ≥ `project.start_date` | `"Cette tâche ne peut pas commencer avant le DD/MM/YYYY, date de début du projet."` |
+| `planned_start` | ≤ `project.end_date` | `"Cette tâche ne peut pas dépasser le DD/MM/YYYY, date de fin du projet."` |
+| `planned_end` | ≥ `project.start_date` | `"Cette tâche ne peut pas se terminer avant le DD/MM/YYYY, date de début du projet."` |
+| `planned_end` | ≤ `project.end_date` | `"Cette tâche ne peut pas dépasser le DD/MM/YYYY, date de fin du projet."` |
+| `due_date` | ≥ `project.start_date` ET ≤ `project.end_date` ET ≥ `planned_start` | Messages analogues |
+
+#### Frontend (`validateStep()` in TaskFormPage)
+
+- Messages d'erreur identiques à ceux du backend (format exact)
+- Champs `min/max` sur les `<Input type="date">` :
+  - `planned_start` : `min=projectStart`, `max=projectEnd`
+  - `planned_end` : `min=max(planned_start, projectStart)`, `max=projectEnd`
+
+### 27.5 Source des données
+
+- `project.start_date` et `project.end_date` proviennent de MySQL via `GET /api/projects/{id}`
+- **Les mêmes dates** sont utilisées côté React, Laravel et pour le diagramme de Gantt
+- Si le projet n'a pas de dates définies : le bandeau ne s'affiche pas (condition `start_date || end_date`)
 
 ---
 

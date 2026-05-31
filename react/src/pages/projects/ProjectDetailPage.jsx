@@ -37,6 +37,7 @@ import DailyProgressModal from '../../components/tasks/DailyProgressModal';
 import FollowerButton from '../../components/projects/FollowerButton';
 import ProjectPauseButton from '../../components/projects/ProjectPauseButton';
 import ProjectPauseBanner from '../../components/projects/ProjectPauseBanner';
+import ProjectDateBanner from '../../components/projects/ProjectDateBanner';
 import { useProjectPause } from '../../hooks/useProjectPause';
 
 const PRIORITY_COLORS = {
@@ -471,6 +472,11 @@ export default function ProjectDetailPage() {
             ? 'Rôle client sur ce projet : consultation des tâches et commentaires uniquement.'
             : 'Vous consultez ce projet sans droits de modification sur les tâches.'}
         </div>
+      )}
+
+      {/* ── Dates et progression du projet — visible pour tous les rôles ── */}
+      {(project.start_date || project.end_date) && (
+        <ProjectDateBanner project={project} />
       )}
 
       {/* Stats bar */}

@@ -9,6 +9,7 @@ import { Spinner } from '../../components/ui/Spinner';
 import { Modal } from '../../components/ui/Modal';
 import { CalendarView } from '../../components/calendar/CalendarView';
 import { ChevronLeft, ChevronRight, CalendarDays, RotateCcw } from 'lucide-react';
+import ProjectDateBanner from '../../components/projects/ProjectDateBanner';
 
 function rangeForView(view, anchor) {
   const a = new Date(anchor);
@@ -187,6 +188,12 @@ export default function CalendarPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Bandeau dates du projet filtré — visible immédiatement */}
+      {projectId && (() => {
+        const proj = projects?.find((p) => String(p.id) === String(projectId));
+        return proj ? <ProjectDateBanner project={proj} /> : null;
+      })()}
 
       <Card>
         <CardContent className="p-4">
