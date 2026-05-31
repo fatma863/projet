@@ -27,11 +27,21 @@ class GanttController extends Controller
         $query = Task::query()->with(['status', 'assignees', 'dependencies', 'dependents', 'project']);
 
         // ── Filtrage Gantt global selon le rôle ──────────────────────────────
-        // Admin  → toutes les tâches planifiées de la plateforme
+        // Admin  → toutes les tâches planifiées de la plateforme (aucun filtre)
+        // Client → toutes les tâches des projets auxquels il est invité (lecture seule)
         // Chef   → toutes les tâches des projets qu'il gère + tâches assignées ailleurs
-        // Membre → uniquement les tâches qui lui sont assignées (pas d'accès aux tâches d'autrui)
-        // Client → bloqué par le middleware check.role:!client en amont
-        if (! AccessControl::isAdmin($user)) {
+        // Membre → uniquement les tâches qui lui sont assignées
+        if (AccessControl::isAdmin($user)) {
+            // Aucun filtre — accès total
+        } elseif (AccessControl::isClientRole($user)) {
+            // Client : toutes les tâches de ses projets associés
+            $clientProjectIds = Project::query()->accessibleToUser($user)->pluck('projects.id');
+            if ($clientProjectIds->isEmpty()) {
+                $query->whereRaw('1 = 0'); // aucun projet → aucune tâche
+            } else {
+                $query->whereIn('project_id', $clientProjectIds);
+            }
+        } else {
             $chefProjectIds = Project::query()
                 ->where('chef_id', $user->id)
                 ->orWhere('owner_id', $user->id)

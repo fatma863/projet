@@ -156,12 +156,12 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::put('statuses/{status}', [TaskStatusController::class, 'update']);
     Route::delete('statuses/{status}', [TaskStatusController::class, 'destroy']);
 
-    // Calendrier : accessible aux clients (filtré par leurs projets via accessibleBy)
+    // Calendrier et Gantt global : accessibles aux clients (filtrés par leurs projets)
     Route::get('calendar', [CalendarController::class, 'index']);
+    Route::get('gantt', [GanttController::class, 'globalIndex']);
 
-    // Ces endpoints exposent des données agrégées d'équipe inaccessibles aux clients
+    // Ces endpoints exposent des données agrégées d'équipe réservées aux membres internes
     Route::middleware('check.role:!client')->group(function () {
-        Route::get('gantt', [GanttController::class, 'globalIndex']);
         Route::get('activity/feed', [ActivityFeedController::class, 'index']);
         Route::get('activity/export', [ActivityFeedController::class, 'export']);
         Route::get('activity/analytics', [ActivityAnalyticsController::class, 'index']);

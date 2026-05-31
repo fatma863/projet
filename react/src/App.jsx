@@ -84,7 +84,7 @@ function App() {
               <Route path="/teams" element={<RoleRoute allow={['admin']}><TeamsPage /></RoleRoute>} />
               <Route path="/teams/:id" element={<RoleRoute allow={['admin']}><TeamDetailPage /></RoleRoute>} />
               <Route path="/users" element={<RoleRoute allow={['admin']}><UsersAdminPage /></RoleRoute>} />
-              <Route path="/gantt" element={<RoleRoute allow={['admin', 'member']}><GanttPage /></RoleRoute>} />
+              <Route path="/gantt" element={<RoleRoute allow={['admin', 'member', 'client']}><GanttPage /></RoleRoute>} />
               <Route path="/ai" element={<RoleRoute allow={['admin', 'member']}><AiPage /></RoleRoute>} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/notifications/settings" element={<NotificationSettingsPage />} />

@@ -1057,7 +1057,7 @@ Toutes les pages sont **lazy-loaded** via `React.lazy()` — code splitting auto
 | `/teams` | `TeamsPage` | admin |
 | `/teams/:id` | `TeamDetailPage` | admin |
 | `/users` | `UsersAdminPage` | admin |
-| `/gantt` | `GanttPage` | admin, member |
+| `/gantt` | `GanttPage` | admin, member, client |
 | `/ai` | `AiPage` | admin, member |
 | `/notifications` | `NotificationsPage` | Authentifié — filtre, recherche, scroll infini |
 | `/notifications/settings` | `NotificationSettingsPage` | Authentifié — préférences par type |
@@ -2790,12 +2790,21 @@ queryClient.invalidateQueries(['audit-badge']) ← déclenché à l'ouverture de
 
 | Rôle | `GET /gantt` (global) | `GET /projects/{id}/gantt` | `PUT /projects/{id}/gantt` |
 |---|---|---|---|
-| **Admin** | ✅ Toutes tâches | ✅ Toutes tâches | ✅ |
-| **Chef de projet** | ✅ Tâches de ses projets + assignées ailleurs | ✅ Toutes tâches (si chef/owner du projet) | ✅ (si chef/owner) |
+| **Admin** | ✅ Toutes tâches de tous projets | ✅ Toutes tâches | ✅ |
+| **Chef de projet** | ✅ Toutes tâches de ses projets + assignées ailleurs | ✅ Toutes tâches (si chef/owner du projet) | ✅ (si chef/owner) |
+| **Chef (simple membre ici)** | ✅ Seulement ses tâches assignées dans ce projet | ✅ Seulement ses tâches assignées | ❌ 403 |
 | **Membre** | ✅ Uniquement ses tâches assignées | ✅ Uniquement ses tâches assignées | ❌ 403 |
-| **Client** | ❌ Bloqué `check.role:!client` | ✅ Toutes tâches (lecture seule) | ❌ 403 `canEditProject()=false` |
+| **Client** | ✅ Toutes tâches de ses projets associés (lecture seule) | ✅ Toutes tâches (lecture seule) | ❌ 403 `canEditProject()=false` |
 
 ### 24.2 Logique de filtrage backend
+
+**`GET /gantt` — `GanttController::globalIndex()`**
+```
+if isAdmin($user)              → no filter  — toutes tâches de la plateforme
+if isClientRole($user)         → whereIn(project_id, clientProjectIds)  — tous ses projets
+if $chefProjectIds->isNotEmpty → whereIn(project_id, chefIds) OR assignee = user
+else (membre simple)           → whereHas('assignees', user->id)
+```
 
 **`GET /projects/{id}/gantt` — `GanttController::show()`**
 ```
@@ -2808,35 +2817,27 @@ if owner_id === user->id       → no filter  — propriétaire du projet
 else (membre simple)           → whereHas('assignees', user->id)
 ```
 
-**`GET /gantt` — `GanttController::globalIndex()`**
-```
-check.role:!client  ← middleware bloque les clients en amont
-  ↓
-if isAdmin($user)              → no filter  — toutes tâches
-if $chefProjectIds->isNotEmpty → whereIn(project_id, chefIds) OR assignee = user
-else (membre simple)           → whereHas('assignees', user->id)
-```
-
 **`PUT /projects/{id}/gantt` — `GanttController::updateDates()`**
 ```
-check.project:edit  → canEditProject() → false pour clients
+check.project:edit  → canEditProject() → false pour clients ET membres simples
 Gate::authorize('update', $project)    ← politique ProjectPolicy
 ```
 
 ### 24.3 Règles métier effectives
 
-- **Admin** : visibilité totale, sans aucun filtre, sur tous les projets.
-- **Chef de projet** : voit toutes les tâches planifiées (`planned_start IS NOT NULL`) dans ses projets (`chef_id` ou `owner_id`). Dans le Gantt global, voit aussi ses tâches assignées dans d'autres projets.
-- **Membre** : ne voit que les tâches qui lui sont assignées (`task_assignments`), ni plus ni moins — même dans un projet où il est membre.
-- **Client** : accès lecture seule au Gantt de ses projets via `GET /projects/{id}/gantt`. Ne peut pas accéder au Gantt global (`check.role:!client`). Aucune modification possible (`canEditProject()` renvoie `false` pour le rôle `client`).
+- **Admin** : visibilité totale, sans aucun filtre, sur tous les projets et toutes les tâches.
+- **Chef de projet** : voit toutes les tâches de ses projets (`chef_id`/`owner_id`). Dans le Gantt global, voit aussi ses tâches assignées dans les projets où il est simple membre (les droits ne sont **pas hérités** d'un projet à l'autre).
+- **Membre** : ne voit que les tâches qui lui sont assignées (`task_assignments`) — dans le Gantt global ET dans le Gantt projet.
+- **Client** : voit **toutes les tâches** des projets auxquels il est invité, dans le Gantt global ET le Gantt projet. Accès strictement **lecture seule** (`canEditProject()` renvoie `false`).
 
 ### 24.4 Frontend
 
 | Composant | Comportement |
 |---|---|
-| `GanttPage.jsx` | Accessible uniquement aux rôles `admin` et `member` via `RoleRoute`. Appelle `GET /gantt` (global) ou `GET /gantt?project_id=X` selon le mode. |
-| `ProjectDetailPage.jsx` | Onglet Gantt visible pour admin, membres ET clients (`!isViewer \|\| isClient`). Données chargées depuis `GET /projects/{id}/gantt`. Désactivé pour les invités purs (`viewer`/`guest`). |
-| `GanttChart.jsx` | Composant entièrement **lecture seule** — aucun drag, aucun bouton de modification. Affiche tâches, dépendances (SVG Bézier), chemin critique (rouge), indicateur aujourd'hui. |
+| `GanttPage.jsx` | Accessible aux rôles `admin`, `member` ET `client` via `RoleRoute`. Vue globale = lignes projets. Vue par projet = tâches filtrées selon le rôle. |
+| `Sidebar.jsx` | Lien `/gantt` visible pour tous les rôles (y compris clients) — permission `gantt.view`. |
+| `ProjectDetailPage.jsx` | Onglet Gantt visible pour admin, membres ET clients. Données depuis `GET /projects/{id}/gantt`. |
+| `GanttChart.jsx` | Composant **entièrement lecture seule** — aucun drag, aucune modification possible depuis l'UI. |
 
 ### 24.5 Sécurité — garanties backend
 
@@ -2992,6 +2993,7 @@ Le **Client** est un utilisateur externe invité par un Administrateur ou un Che
 | Projets (`/projects`) | ✅ | Lecture seule — projets auxquels il est invité |
 | Tâches (`/tasks`) | ✅ | Lecture seule — tâches de ses projets |
 | Calendrier (`/calendar`) | ✅ | Lecture seule — échéances de ses projets |
+| Gantt global (`/gantt`) | ✅ | Lecture seule — toutes les tâches de ses projets associés |
 | Gantt projet (via `/projects/{id}`) | ✅ | Lecture seule — toutes les tâches du projet |
 | Notifications (`/notifications`) | ✅ | Notifications de suivi projet |
 | Paramètres (`/settings`) | ✅ | Profil personnel uniquement |
@@ -3000,7 +3002,6 @@ Le **Client** est un utilisateur externe invité par un Administrateur ou un Che
 
 | Module | Raison |
 |---|---|
-| Gantt global (`/gantt`) | Données de toute la plateforme — bloqué `check.role:!client` + `RoleRoute` |
 | IA / Analyses (`/ai`) | Analyses avancées internes — `RoleRoute allow=['admin','member']` + `clientHidden` Sidebar |
 | Journal d'audit (`/audit-log`) | Données internes — `RoleRoute allow=['admin','member']` + `clientHidden` Sidebar |
 | Équipes (`/teams`) | Administration — `adminOnly` Sidebar |
@@ -3057,7 +3058,7 @@ PRINCIPAL
   ✅ Tableau de bord
   ✅ Projets
   ✅ Tâches
-  ❌ Gantt          (clientHidden: true — global page blocked)
+  ✅ Gantt          (accès lecture seule — projets associés uniquement)
   ✅ Calendrier     (accès lecture seule, données filtrées)
   ❌ IA             (clientHidden: true)
 
@@ -3085,7 +3086,7 @@ PARAMÈTRES
 | `/projects/:id/tasks/:id/edit` | `RoleRoute allow=['admin','member']` | ❌ redirigé |
 | `/tasks` | `ProtectedRoute` | ✅ lecture seule |
 | `/calendar` | `RoleRoute allow=['admin','member','client']` | ✅ |
-| `/gantt` | `RoleRoute allow=['admin','member']` | ❌ |
+| `/gantt` | `RoleRoute allow=['admin','member','client']` | ✅ (tâches de ses projets) |
 | `/ai` | `RoleRoute allow=['admin','member']` | ❌ |
 | `/audit-log` | `RoleRoute allow=['admin','member']` | ❌ |
 | `/notifications` | `ProtectedRoute` | ✅ |

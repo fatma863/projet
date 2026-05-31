@@ -26,7 +26,7 @@ const NAV_SECTIONS = [
       { to: '/dashboard',     icon: LayoutDashboard, labelKey: 'layout.nav.dashboard',     permission: null },
       { to: '/projects',      icon: FolderKanban,    labelKey: 'layout.nav.projects',      permission: 'project.view' },
       { to: '/tasks',         icon: ListTodo,        labelKey: 'layout.nav.tasks',         permission: 'task.view' },
-      { to: '/gantt',         icon: CalendarRange,   labelKey: 'layout.nav.gantt',         permission: 'gantt.view',  clientHidden: true },
+      { to: '/gantt',         icon: CalendarRange,   labelKey: 'layout.nav.gantt',         permission: 'gantt.view' },
       { to: '/calendar',      icon: CalendarDays,    labelKey: 'layout.nav.calendar',      permission: 'sprint.view' },
       { to: '/ai',            icon: Brain,           labelKey: 'layout.nav.ai',            permission: 'ai.view',     clientHidden: true },
     ],
