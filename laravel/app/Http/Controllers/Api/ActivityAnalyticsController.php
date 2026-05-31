@@ -15,7 +15,16 @@ class ActivityAnalyticsController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $user              = $request->user();
+        $user = $request->user();
+
+        // Only admins and project chefs may access aggregated analytics.
+        // Regular members must not see other users' activity statistics.
+        $isAdmin = $user->hasRole('admin');
+        $isChef  = $isAdmin || Project::where('chef_id', $user->id)->exists();
+        if (! $isChef) {
+            abort(403, 'Les tableaux de bord analytiques sont réservés aux administrateurs et chefs de projet.');
+        }
+
         $accessibleIds     = Project::query()->accessibleToUser($user)->pluck('projects.id');
         $cacheKey          = 'activity_analytics_' . $user->id . '_' . md5($accessibleIds->sort()->implode(','));
 

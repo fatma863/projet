@@ -26,6 +26,7 @@ import {
   BarChart3, Brain, TrendingUp,
 } from 'lucide-react';
 import ClientDashboard from './ClientDashboard';
+import { useI18n } from '../../i18n/I18nContext';
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -117,13 +118,14 @@ SectionPanel.propTypes = {
 };
 
 function AiAlertItem({ title, sub, level = 'danger', score }) {
+  const { t } = useI18n();
   const styles = level === 'danger'
     ? 'border-red-200/80 bg-red-50/60 dark:border-red-900/30 dark:bg-red-950/20'
     : 'border-amber-200/80 bg-amber-50/60 dark:border-amber-900/30 dark:bg-amber-950/20';
   const badgeClass = level === 'danger'
     ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
     : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
-  const badge = level === 'danger' ? 'Retard critique' : 'Retard';
+  const badge = level === 'danger' ? t('dashboard.riskBadge') : t('dashboard.warningBadge');
   return (
     <div className={cn('rounded-lg border p-3 flex gap-3 items-start', styles)}>
       <AlertTriangle size={16} className={level === 'danger' ? 'text-red-500 mt-0.5 shrink-0' : 'text-amber-500 mt-0.5 shrink-0'} />
@@ -135,7 +137,7 @@ function AiAlertItem({ title, sub, level = 'danger', score }) {
             {badge}
           </span>
           {score != null && (
-            <span className="text-[11px] text-muted-foreground">Score risque : {score}/100</span>
+            <span className="text-[11px] text-muted-foreground">{t('dashboard.scoreRisque')} : {score}/100</span>
           )}
         </div>
       </div>
@@ -151,8 +153,9 @@ AiAlertItem.propTypes = {
 };
 
 function DeadlineItem({ title, sub, date }) {
+  const { locale } = useI18n();
   const d = date ? new Date(date) : null;
-  const month = d ? d.toLocaleDateString('fr-FR', { month: 'short' }) : '—';
+  const month = d ? d.toLocaleDateString(locale === 'en' ? 'en-US' : 'fr-FR', { month: 'short' }) : '—';
   const day = d ? d.getDate() : '—';
   const isUrgent = d && (d - Date.now()) < 3 * 86400000;
   return (
@@ -196,15 +199,17 @@ const PROJECT_ICON_COLORS = [
   'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400',
 ];
 
-const STATUS_BADGE = {
-  active:    { label: 'Actif',         cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  planning:  { label: 'Planification', cls: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
-  on_hold:   { label: 'En pause',      cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' },
-  completed: { label: 'Terminé',       cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
-  cancelled: { label: 'Annulé',        cls: 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400' },
-};
-
 function ProjectCard({ project }) {
+  const { t } = useI18n();
+
+  const STATUS_BADGE = {
+    active:    { label: t('dashboard.statusActive'),    cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300' },
+    planning:  { label: t('dashboard.statusPlanning'),  cls: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
+    on_hold:   { label: t('dashboard.statusOnHold'),    cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' },
+    completed: { label: t('dashboard.statusCompleted'), cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' },
+    cancelled: { label: t('dashboard.statusCancelled'), cls: 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400' },
+  };
+
   const progress = project.progress_percent || 0;
   const iconColor = PROJECT_ICON_COLORS[Math.abs(project.id % PROJECT_ICON_COLORS.length)];
   const isAtRisk = (project.overdue_tasks > 0) || project.status === 'on_hold';
@@ -242,14 +247,14 @@ function ProjectCard({ project }) {
           {project.name}
         </h3>
         <p className="text-xs text-muted-foreground line-clamp-2 flex-1 mb-4">
-          {project.description || 'Aucune description.'}
+          {project.description || t('projects.noDescription')}
         </p>
 
         {/* Footer */}
         <div className="mt-auto space-y-3 pt-4 border-t border-border/60">
           <div className="flex justify-between items-center">
             <span className={cn('text-xs font-medium', isAtRisk ? 'text-red-600' : 'text-muted-foreground')}>
-              Progression
+              {t('dashboard.globalProgress')}
             </span>
             <span className={cn('text-xs font-bold tabular-nums', isAtRisk ? 'text-red-600' : 'text-foreground')}>
               {progress}%
@@ -282,12 +287,12 @@ function ProjectCard({ project }) {
             </div>
             {overdueCount > 0 ? (
               <span className="flex items-center gap-1 text-xs text-red-600 font-medium">
-                <AlertTriangle size={12} /> {overdueCount} en retard
+                <AlertTriangle size={12} /> {t('projects.overdueCount', { count: overdueCount })}
               </span>
             ) : (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <CheckCircle2 size={12} className="text-emerald-500" />
-                {project.tasks_count ?? '—'} tâches
+                {t('projects.tasksCount', { count: project.tasks_count ?? '—' })}
               </span>
             )}
           </div>
@@ -384,8 +389,9 @@ DashDonut.propTypes = {
 };
 
 function DashBarRows({ items }) {
+  const { t } = useI18n();
   const max = Math.max(1, ...items.map((i) => i.value));
-  if (!items.length) return <p className="text-sm text-muted-foreground text-center py-4">Aucune donnée.</p>;
+  if (!items.length) return <p className="text-sm text-muted-foreground text-center py-4">{t('dashboard.chartNoData')}</p>;
   return (
     <div className="space-y-3">
       {items.map((item, idx) => (
@@ -431,6 +437,7 @@ DashBarRows.propTypes = {
    DashboardTaskBadges (kept for at-risk task cards)
    ───────────────────────────────────────────────────────────── */
 function DashboardTaskBadges({ task }) {
+  const { t } = useI18n();
   const wf = task.workflow_status || 'todo';
   const done = task.is_done || (task.progress_percent || 0) >= 100;
   const atRisk = wf === 'at_risk' || task.is_at_risk;
@@ -438,15 +445,15 @@ function DashboardTaskBadges({ task }) {
   const depCount = Array.isArray(deps) ? deps.length : 0;
   return (
     <div className="flex flex-wrap gap-1 mt-1">
-      {done && <Badge className="border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-900">Terminé</Badge>}
-      {!done && task.is_overdue && <Badge variant="destructive" className="text-[10px] font-normal">En retard</Badge>}
+      {done && <Badge className="border-emerald-200 bg-emerald-50 text-[10px] font-normal text-emerald-900">{t('tasks.workflows.done')}</Badge>}
+      {!done && task.is_overdue && <Badge variant="destructive" className="text-[10px] font-normal">{t('dashboard.overdueShort')}</Badge>}
       {!done && !task.is_overdue && atRisk && (
-        <Badge className="border-amber-200 bg-amber-100 text-[10px] font-normal text-amber-900">À risque</Badge>
+        <Badge className="border-amber-200 bg-amber-100 text-[10px] font-normal text-amber-900">{t('dashboard.atRiskShort')}</Badge>
       )}
-      {task.is_blocked && <Badge variant="secondary" className="text-[10px] font-normal">Bloqué</Badge>}
+      {task.is_blocked && <Badge variant="secondary" className="text-[10px] font-normal">{t('tasks.workflows.blocked')}</Badge>}
       {depCount > 0 && (
         <Badge variant="outline" className="text-[10px] font-normal">
-          Dépend de {depCount} tâche{depCount > 1 ? 's' : ''}
+          {t(depCount > 1 ? 'dashboard.depsCountPlural' : 'dashboard.depsCount', { count: depCount })}
         </Badge>
       )}
     </div>
@@ -470,6 +477,7 @@ DashboardTaskBadges.propTypes = {
    ───────────────────────────────────────────────────────────── */
 function InternalDashboard() {
   const { user } = useAuth();
+  const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const isAdmin = user?.roles?.includes('admin');
   const isViewerUser = isGuestViewer(user);
@@ -536,19 +544,19 @@ function InternalDashboard() {
   const acceptInviteMut = useMutation({
     mutationFn: (token) => acceptProjectInvite(token),
     onSuccess: () => {
-      toast.success('Invitation acceptée. Bienvenue sur le projet.');
+      toast.success(t('dashboard.invitAccepted'));
       queryClient.invalidateQueries({ queryKey: ['invitations-pending'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects', 'dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['member-dashboard'] });
     },
-    onError: (err) => toast.error(err?.response?.data?.message || err?.message || "Impossible d'accepter l'invitation."),
+    onError: (err) => toast.error(err?.response?.data?.message || err?.message || t('dashboard.impossibleAccept')),
   });
 
   const declineInviteMut = useMutation({
     mutationFn: (token) => declineProjectInvite(token),
     onSuccess: () => {
-      toast.message('Invitation refusée');
+      toast.message(t('dashboard.invitRefused'));
       queryClient.invalidateQueries({ queryKey: ['invitations-pending'] });
     },
     onError: (err) => toast.error(err?.response?.data?.message || err?.message || 'Action impossible.'),
@@ -693,7 +701,7 @@ function InternalDashboard() {
       {/* Error banner */}
       {hasErrors && (
         <div className="rounded-xl border border-red-200 bg-red-50/90 dark:border-red-900/60 dark:bg-red-950/40 px-4 py-3 text-sm text-red-900 dark:text-red-100 space-y-1">
-          {projectsError && <p>Projets : {projectsErr?.message || 'Impossible de charger la liste des projets.'}</p>}
+          {projectsError && <p>Projets : {projectsErr?.message || t('projects.noProjects')}</p>}
           {memberDashError && <p>Tableau personnel : {memberDashErr?.message || 'Erreur API.'}</p>}
           {adminDashError && <p>Tableau admin : {adminDashErr?.message || 'Erreur API.'}</p>}
           {!isViewerUser && activityError && <p>Activité : {activityErr?.message || 'Erreur API.'}</p>}
@@ -705,17 +713,17 @@ function InternalDashboard() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-indigo-500/70 dark:text-indigo-400/60 mb-1">
-            {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            {new Date().toLocaleDateString(locale === 'en' ? 'en-US' : 'fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Bonjour, {user?.name} 👋
+            {t('dashboard.hello', { name: user?.name })} 👋
           </h1>
           <p className="mt-1 text-base text-muted-foreground">
             {isAdmin
-              ? 'Supervision globale de vos projets et équipes.'
+              ? t('dashboard.supervisionGlobale')
               : isMember
-                ? 'Vos projets actifs, tâches assignées et prochaines échéances.'
-                : 'Vos tâches assignées et les projets auxquels vous participez.'}
+                ? t('dashboard.projetsActifsSub')
+                : t('dashboard.tachesAssigneesSub')}
           </p>
         </div>
 
@@ -727,7 +735,7 @@ function InternalDashboard() {
           <div className="flex items-center gap-2">
             <Mail size={18} className="text-amber-600 shrink-0" />
             <h3 className="font-semibold text-amber-900 dark:text-amber-100">
-              Invitations en attente
+              {t('dashboard.invitationsEnAttente')}
               <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-600 text-white text-xs font-bold px-2 py-0.5">
                 {pendingInvites.pending_count}
               </span>
@@ -738,16 +746,16 @@ function InternalDashboard() {
               <div>
                 <p className="font-semibold text-sm text-foreground">{inv.project?.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  Rôle : {inv.role === 'client' || inv.role === 'guest' ? PROJECT_ROLE_LABELS.client : PROJECT_ROLE_LABELS.member}
-                  {inv.invited_by?.name ? ` · Invité par ${inv.invited_by.name}` : ''}
+                  {t('dashboard.roleLabel')} : {inv.role === 'client' || inv.role === 'guest' ? PROJECT_ROLE_LABELS.client : PROJECT_ROLE_LABELS.member}
+                  {inv.invited_by?.name ? ` · ${t('dashboard.invitePar', { name: inv.invited_by.name })}` : ''}
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
                 <Button size="sm" type="button" disabled={acceptInviteMut.isPending || declineInviteMut.isPending} onClick={() => acceptInviteMut.mutate(inv.token)}>
-                  Accepter
+                  {t('dashboard.accepter')}
                 </Button>
                 <Button size="sm" type="button" variant="outline" disabled={acceptInviteMut.isPending || declineInviteMut.isPending} onClick={() => declineInviteMut.mutate(inv.token)}>
-                  <XCircle className="mr-1 h-4 w-4" /> Refuser
+                  <XCircle className="mr-1 h-4 w-4" /> {t('dashboard.refuser')}
                 </Button>
               </div>
             </div>
@@ -762,20 +770,20 @@ function InternalDashboard() {
             Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)
           ) : (
             <>
-              <KpiCard label="Utilisateurs" value={adminDash?.users_total ?? 0} icon={Users} />
-              <KpiCard label="Projets" value={adminDash?.projects_total ?? 0} icon={FolderKanban} sub={`${activeProjects.length} actifs`} />
-              <KpiCard label="Tâches" value={adminDash?.tasks_total ?? 0} icon={ListTodo} sub={`${completedCount} terminées`} />
-              <KpiCard label="Complétion" value={`${projectProgress}%`} icon={TrendingUp} progress={projectProgress} />
-              <KpiCard label="En Retard" value={adminDash?.tasks_overdue ?? 0} icon={AlertTriangle} error />
+              <KpiCard label={t('dashboard.kpiUsers')} value={adminDash?.users_total ?? 0} icon={Users} />
+              <KpiCard label={t('dashboard.kpiProjects')} value={adminDash?.projects_total ?? 0} icon={FolderKanban} sub={`${activeProjects.length} actifs`} />
+              <KpiCard label={t('dashboard.kpiTasks')} value={adminDash?.tasks_total ?? 0} icon={ListTodo} sub={`${completedCount} terminées`} />
+              <KpiCard label={t('dashboard.kpiCompletion')} value={`${projectProgress}%`} icon={TrendingUp} progress={projectProgress} />
+              <KpiCard label={t('dashboard.kpiOverdue')} value={adminDash?.tasks_overdue ?? 0} icon={AlertTriangle} error />
             </>
           )}
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <KpiCard label="Mes Projets" value={totalProjects} icon={FolderKanban} sub={`${activeProjects.length} actifs`} />
-          <KpiCard label="Mes Tâches" value={totalTasks} icon={ListTodo} sub={`${completedCount} terminées`} />
-          <KpiCard label="Progression" value={`${projectProgress}%`} icon={TrendingUp} progress={projectProgress} />
-          <KpiCard label="À Risque" value={overdueCount} icon={AlertTriangle} error={overdueCount > 0} />
+          <KpiCard label={t('dashboard.kpiMyProjects')} value={totalProjects} icon={FolderKanban} sub={`${activeProjects.length} actifs`} />
+          <KpiCard label={t('dashboard.kpiMyTasks')} value={totalTasks} icon={ListTodo} sub={`${completedCount} terminées`} />
+          <KpiCard label={t('dashboard.kpiProgress')} value={`${projectProgress}%`} icon={TrendingUp} progress={projectProgress} />
+          <KpiCard label={t('dashboard.kpiAtRisk')} value={overdueCount} icon={AlertTriangle} error={overdueCount > 0} />
         </div>
       )}
 
@@ -783,40 +791,40 @@ function InternalDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Panel 1 : Détails globaux / Charge membre */}
-        <SectionPanel title={isAdmin ? 'Détails globaux' : 'Ma charge de travail'} icon={BarChart3}>
+        <SectionPanel title={isAdmin ? t('dashboard.panelGlobalDetails') : t('dashboard.panelMyWorkload')} icon={BarChart3}>
           <div className="space-y-3 flex-1">
             {isAdmin ? (
               <>
-                <DetailRow label="Projets totaux" value={`${adminDash?.projects_total ?? totalProjects}`} sub={`${activeProjects.length} actifs`} />
-                <DetailRow label="Tâches totales" value={`${adminDash?.tasks_total ?? totalTasks}`} sub={`${completedCount} terminées`} />
-                <DetailRow label="Progression" value={`${projectProgress}%`} />
-                <DetailRow label="Taux complétion" value={`${adminDash?.global_completion_rate_percent ?? projectProgress}%`} />
+                <DetailRow label={t('dashboard.globalProjectsTotal')} value={`${adminDash?.projects_total ?? totalProjects}`} sub={`${activeProjects.length} actifs`} />
+                <DetailRow label={t('dashboard.globalTasksTotal')} value={`${adminDash?.tasks_total ?? totalTasks}`} sub={`${completedCount} terminées`} />
+                <DetailRow label={t('dashboard.globalProgress')} value={`${projectProgress}%`} />
+                <DetailRow label={t('dashboard.globalCompletionRate')} value={`${adminDash?.global_completion_rate_percent ?? projectProgress}%`} />
                 <div className="pt-2 border-t border-border/60 space-y-3">
-                  <DetailRow label="Tâches en retard" value={adminDash?.tasks_overdue ?? overdueCount} error />
-                  <DetailRow label="Projets à risque" value={riskyProjects.length} error={riskyProjects.length > 0} />
-                  {aiRiskTotal > 0 && <DetailRow label="Risques IA détectés" value={aiRiskTotal} error />}
+                  <DetailRow label={t('dashboard.tasksOverdueSub')} value={adminDash?.tasks_overdue ?? overdueCount} error />
+                  <DetailRow label={t('dashboard.riskyProjects')} value={riskyProjects.length} error={riskyProjects.length > 0} />
+                  {aiRiskTotal > 0 && <DetailRow label={t('dashboard.aiRisksDetected')} value={aiRiskTotal} error />}
                 </div>
                 <div className="pt-3 border-t border-border/60">
                   <Link to="/ai" className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline">
-                    Ouvrir IA &amp; Analytics <ArrowRight size={12} />
+                    {t('dashboard.openAi')} <ArrowRight size={12} />
                   </Link>
                 </div>
               </>
             ) : (
               <>
-                <DetailRow label="Tâches assignées" value={totalTasks} />
-                <DetailRow label="Terminées" value={completedCount} />
-                <DetailRow label="En cours" value={ms?.in_progress ?? 0} />
-                <DetailRow label="À faire" value={ms?.todo ?? 0} />
+                <DetailRow label={t('dashboard.assignedTasks')} value={totalTasks} />
+                <DetailRow label={t('dashboard.completedTasks2')} value={completedCount} />
+                <DetailRow label={t('dashboard.inProgress2')} value={ms?.in_progress ?? 0} />
+                <DetailRow label={t('dashboard.todo2')} value={ms?.todo ?? 0} />
                 <div className="pt-2 border-t border-border/60 space-y-3">
-                  <DetailRow label="En retard" value={overdueCount} error={overdueCount > 0} />
-                  <DetailRow label="À risque" value={tasksAtRiskCount} error={tasksAtRiskCount > 0} />
-                  {ms?.blocked_count > 0 && <DetailRow label="Bloquées" value={ms.blocked_count} error />}
+                  <DetailRow label={t('dashboard.overdueLabel')} value={overdueCount} error={overdueCount > 0} />
+                  <DetailRow label={t('dashboard.atRiskLabel')} value={tasksAtRiskCount} error={tasksAtRiskCount > 0} />
+                  {ms?.blocked_count > 0 && <DetailRow label={t('dashboard.blockedLabel')} value={ms.blocked_count} error />}
                 </div>
                 {ms?.workload_percent != null && (
                   <div className="pt-3 border-t border-border/60 space-y-1.5">
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Charge relative</span>
+                      <span>{t('dashboard.relativeLoad')}</span>
                       <span className="font-semibold text-foreground">{ms.workload_percent}%</span>
                     </div>
                     <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -831,7 +839,7 @@ function InternalDashboard() {
 
         {/* Panel 2 : Alertes IA (admin) / Activité récente (member) */}
         <SectionPanel
-          title={isAdmin ? 'Alertes IA' : 'Activité récente'}
+          title={isAdmin ? t('dashboard.panelAiAlerts') : t('dashboard.panelRecentActivity')}
           icon={isAdmin ? Brain : History}
           iconColor={isAdmin ? 'text-violet-500' : 'text-indigo-500'}
           ghost
@@ -843,7 +851,7 @@ function InternalDashboard() {
               </div>
               <div className="space-y-3 relative z-10">
                 {alertTasks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center">Aucune alerte pour le moment.</p>
+                  <p className="text-sm text-muted-foreground py-4 text-center">{t('dashboard.noAlerts')}</p>
                 ) : alertTasks.map((t) => {
                   const pname = projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
                   const score = t.risk_score != null ? t.risk_score
@@ -885,7 +893,7 @@ function InternalDashboard() {
                   </div>
                 ))
               ) : activities.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">Aucune activité récente.</p>
+                <p className="text-sm text-muted-foreground text-center py-6">{t('dashboard.noRecentActivity')}</p>
               ) : activities.slice(0, 5).map((a, idx) => {
                 const { line, quote } = humanizeActivityLine(a, user);
                 return (
@@ -913,12 +921,12 @@ function InternalDashboard() {
         </SectionPanel>
 
         {/* Panel 3 : Prochaines échéances */}
-        <SectionPanel title="Prochaines échéances" icon={Calendar} iconColor="text-indigo-600 dark:text-indigo-400">
+        <SectionPanel title={t('dashboard.panelUpcomingDeadlines')} icon={Calendar} iconColor="text-indigo-600 dark:text-indigo-400">
           <div className="space-y-4 flex-1">
             {upcomingDeadlines.length === 0 ? (
               <div className="py-6 text-center">
                 <Calendar size={32} className="mx-auto text-muted-foreground/30 mb-2" />
-                <p className="text-sm text-muted-foreground">Aucune échéance à venir.</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard.noUpcomingDeadlines')}</p>
               </div>
             ) : upcomingDeadlines.map((t) => {
               const pname = t.project_name || projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
@@ -935,7 +943,7 @@ function InternalDashboard() {
             {upcomingDeadlines.length > 0 && (
               <div className="pt-2 border-t border-border/60">
                 <Link to="/calendar" className="text-xs font-medium text-indigo-600 hover:underline flex items-center gap-1">
-                  Voir le calendrier <ArrowRight size={12} />
+                  {t('dashboard.viewCalendar')} <ArrowRight size={12} />
                 </Link>
               </div>
             )}
@@ -955,13 +963,13 @@ function InternalDashboard() {
             className="rounded-2xl border border-border bg-card p-6 shadow-sm"
           >
             <h3 className="text-sm font-semibold text-foreground leading-none">
-              {isAdmin ? 'Projets par statut' : 'Mes tâches'}
+              {isAdmin ? t('dashboard.chartProjectsByStatus') : t('dashboard.chartMyTasks')}
             </h3>
-            <p className="text-[11px] text-muted-foreground mt-0.5 mb-5">Distribution actuelle</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 mb-5">{t('dashboard.chartCurrentDistribution')}</p>
             <div className="flex items-center gap-5">
               {isAdmin ? (
                 <DashDonut size={128} stroke={17}
-                  label={projects.length} sublabel="Projets" labelColor="#6366f1"
+                  label={projects.length} sublabel={t('dashboard.kpiProjects')} labelColor="#6366f1"
                   segments={[
                     { key: 'active', value: projectsByStatus.active, color: '#22c55e' },
                     { key: 'planning', value: projectsByStatus.planning, color: '#94a3b8' },
@@ -972,7 +980,7 @@ function InternalDashboard() {
               ) : (
                 <DashDonut size={128} stroke={17}
                   label={`${totalTasks > 0 ? Math.round((tasksByWorkflow.done / Math.max(1, totalTasks)) * 100) : 0}%`}
-                  sublabel="Terminé"
+                  sublabel={t('dashboard.tasksDone')}
                   labelColor={tasksByWorkflow.done / Math.max(1, totalTasks) >= 0.75 ? '#22c55e' : '#f59e0b'}
                   segments={[
                     { key: 'done', value: tasksByWorkflow.done, color: '#22c55e' },
@@ -984,15 +992,15 @@ function InternalDashboard() {
               )}
               <div className="space-y-2.5 flex-1 min-w-0">
                 {(isAdmin ? [
-                  { label: 'Actifs', value: projectsByStatus.active, color: '#22c55e' },
-                  { label: 'Planification', value: projectsByStatus.planning, color: '#94a3b8' },
-                  { label: 'En pause', value: projectsByStatus.on_hold, color: '#f59e0b' },
-                  { label: 'Terminés', value: projectsByStatus.completed, color: '#6366f1' },
+                  { label: t('dashboard.projectsActive'),   value: projectsByStatus.active,    color: '#22c55e' },
+                  { label: t('dashboard.projectsPlanning'), value: projectsByStatus.planning,   color: '#94a3b8' },
+                  { label: t('dashboard.projectsOnHold'),   value: projectsByStatus.on_hold,    color: '#f59e0b' },
+                  { label: t('dashboard.projectsDone'),     value: projectsByStatus.completed,  color: '#6366f1' },
                 ] : [
-                  { label: 'Terminées', value: tasksByWorkflow.done, color: '#22c55e' },
-                  { label: 'En cours', value: tasksByWorkflow.in_progress, color: '#f59e0b' },
-                  { label: 'À faire', value: tasksByWorkflow.todo, color: '#94a3b8' },
-                  { label: 'À risque', value: tasksByWorkflow.at_risk, color: '#ef4444' },
+                  { label: t('dashboard.tasksDone'),       value: tasksByWorkflow.done,        color: '#22c55e' },
+                  { label: t('dashboard.tasksInProgress'), value: tasksByWorkflow.in_progress, color: '#f59e0b' },
+                  { label: t('dashboard.tasksTodo'),       value: tasksByWorkflow.todo,        color: '#94a3b8' },
+                  { label: t('dashboard.tasksAtRisk'),     value: tasksByWorkflow.at_risk,     color: '#ef4444' },
                 ]).map((s) => (
                   <div key={s.label} className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full shrink-0" style={{ background: s.color }} />
@@ -1012,10 +1020,10 @@ function InternalDashboard() {
             className="rounded-2xl border border-border bg-card p-6 shadow-sm"
           >
             <h3 className="text-sm font-semibold text-foreground leading-none">
-              {isAdmin ? 'Charge des équipes' : 'Priorités'}
+              {isAdmin ? t('dashboard.chartTeamWorkload') : t('dashboard.chartPriorities')}
             </h3>
             <p className="text-[11px] text-muted-foreground mt-0.5 mb-5">
-              {isAdmin ? 'Tâches assignées par membre' : 'Répartition par niveau d\'urgence'}
+              {isAdmin ? t('dashboard.chartAssignedByMember') : t('dashboard.chartUrgencyDistribution')}
             </p>
             {isAdmin ? (
               <DashBarRows items={workloadPerUser.map((u) => ({
@@ -1026,10 +1034,10 @@ function InternalDashboard() {
               }))} />
             ) : (
               <DashBarRows items={[
-                { label: 'Urgente', value: tasksByPriority.urgent, color: '#ef4444' },
-                { label: 'Haute', value: tasksByPriority.high, color: '#f97316' },
-                { label: 'Moyenne', value: tasksByPriority.medium, color: '#f59e0b' },
-                { label: 'Basse', value: tasksByPriority.low, color: '#3b82f6' },
+                { label: t('dashboard.priorityUrgent'), value: tasksByPriority.urgent, color: '#ef4444' },
+                { label: t('dashboard.priorityHigh'),   value: tasksByPriority.high,   color: '#f97316' },
+                { label: t('dashboard.priorityMedium'), value: tasksByPriority.medium, color: '#f59e0b' },
+                { label: t('dashboard.priorityLow'),    value: tasksByPriority.low,    color: '#3b82f6' },
               ].filter((i) => i.value > 0)} />
             )}
           </motion.div>
@@ -1047,10 +1055,10 @@ function InternalDashboard() {
             )}
           >
             <h3 className="text-sm font-semibold text-foreground leading-none">
-              {isAdmin ? 'Avancement par projet' : 'Vue d\'ensemble'}
+              {isAdmin ? t('dashboard.chartProjectProgress') : t('dashboard.chartOverview')}
             </h3>
             <p className="text-[11px] text-muted-foreground mt-0.5 mb-5">
-              {isAdmin ? 'Top projets actifs' : 'Métriques de progression'}
+              {isAdmin ? t('dashboard.chartTopActiveProjects') : t('dashboard.chartProgressionMetrics')}
             </p>
             {isAdmin ? (
               <div className="space-y-3">
@@ -1082,24 +1090,24 @@ function InternalDashboard() {
                   );
                 })}
                 {activeProjects.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">Aucun projet actif.</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">{t('dashboard.chartNoActiveProjects')}</p>
                 )}
               </div>
             ) : (
               <div className="space-y-4">
                 {[
                   {
-                    label: 'Taux de complétion',
+                    label: t('dashboard.completionRateLabel'),
                     value: totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0,
                     max: 100, color: '#22c55e', suffix: '%',
                   },
                   {
-                    label: 'Tâches à risque',
+                    label: t('dashboard.tasksRisqueLabel'),
                     value: tasksAtRiskCount,
                     max: Math.max(1, totalTasks), color: '#ef4444', suffix: '',
                   },
                   {
-                    label: 'Projets actifs',
+                    label: t('dashboard.projetsActifsLabel'),
                     value: activeProjects.length,
                     max: Math.max(1, totalProjects), color: '#6366f1', suffix: '',
                   },
@@ -1132,7 +1140,7 @@ function InternalDashboard() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <AlertTriangle size={18} className="text-amber-500" />
-              Mes tâches en retard ou à risque
+              {t('dashboard.myRiskyTasks')}
             </h2>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -1144,13 +1152,13 @@ function InternalDashboard() {
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
                       <Badge variant={t.is_overdue ? 'destructive' : 'outline'} className="shrink-0 text-[10px]">
-                        {t.is_overdue ? 'En retard' : 'À risque'}
+                        {t.is_overdue ? t('dashboard.overdueShort') : t('dashboard.atRiskShort')}
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mb-2">{pname}</p>
                     {(t.due_date || t.effective_end_date) && (
                       <p className="text-xs text-muted-foreground">
-                        Échéance : {new Date(t.due_date || t.effective_end_date).toLocaleDateString('fr-FR')}
+                        {t('dashboard.echéanceLabel')} : {new Date(t.due_date || t.effective_end_date).toLocaleDateString(locale === 'en' ? 'en-US' : 'fr-FR')}
                       </p>
                     )}
                   </div>
@@ -1165,20 +1173,20 @@ function InternalDashboard() {
       <div>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-xl font-bold text-foreground">
-            {isAdmin ? 'Tous les projets' : 'Mes projets'}
+            {t(isAdmin ? 'dashboard.allProjectsTitle' : 'dashboard.myProjectsTitle')}
           </h2>
           <Link to="/projects" className="flex items-center gap-1 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
-            Voir tout <ArrowRight size={14} />
+            {t('dashboard.seeAll')} <ArrowRight size={14} />
           </Link>
         </div>
         {projects.length === 0 ? (
           <EmptyState
             icon={FolderKanban}
-            title="Aucun projet pour l'instant"
-            description="Créez un projet pour organiser vos tâches et inviter votre équipe."
+            title={t('dashboard.noProjectsYetTitle')}
+            description={t('dashboard.noProjectsYetDesc')}
           >
             <Link to="/projects" className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
-              <Plus className="h-4 w-4" /> Nouveau projet
+              <Plus className="h-4 w-4" /> {t('dashboard.newProject')}
             </Link>
           </EmptyState>
         ) : (

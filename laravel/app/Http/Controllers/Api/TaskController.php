@@ -550,14 +550,39 @@ class TaskController extends Controller
     {
         Gate::authorize('delete', $task);
         $this->invalidateMemberDashboardCaches($task);
+
         $project = $task->project;
-        $title = $task->title;
-        $taskId = $task->id;
+        $title   = $task->title;
+        $taskId  = $task->id;
+
+        // Capture l'état complet avant suppression pour le journal d'audit
+        $task->loadMissing(['assignees:id,name', 'status:id,name']);
+        $oldValues = [
+            'title'            => $task->title,
+            'status'           => $task->status?->name,
+            'priority'         => $task->priority,
+            'workflow_status'  => $task->workflow_status,
+            'planned_start'    => $task->planned_start?->toDateString(),
+            'planned_end'      => $task->planned_end?->toDateString(),
+            'due_date'         => $task->due_date?->toDateString(),
+            'progress_percent' => $task->progress_percent,
+            'assignees'        => $task->assignees->pluck('name')->toArray(),
+            'created_by'       => $task->creator?->name,
+        ];
+
         self::forgetProjectTasksCache($project->id);
         $task->delete();
-        $this->activityLogService->log($project, Auth::user(), 'task.deleted', $task, [
-            'task_title' => $title,
-        ]);
+
+        $this->activityLogService->log(
+            $project,
+            Auth::user(),
+            'task.deleted',
+            $task,
+            ['task_title' => $title],
+            $oldValues,
+            []
+        );
+
         ProjectController::forgetDashboardCache($project->id);
         event(new TaskDeletedEvent($taskId, $project->id, $title, Auth::user()));
 
@@ -1072,7 +1097,7 @@ class TaskController extends Controller
     private function assertTaskDatesWithinProjectWindow(Project $project, array $data, ?Task $existingTask = null): void
     {
         $projectStart = $project->start_date?->copy()->startOfDay();
-        $projectEnd = $project->end_date?->copy()->startOfDay();
+        $projectEnd   = $project->end_date?->copy()->startOfDay();
 
         if (! $projectStart && ! $projectEnd) {
             return;
@@ -1083,38 +1108,56 @@ class TaskController extends Controller
         // les dates existantes ne doivent pas être re-validées.
         $updatingStart = array_key_exists('planned_start', $data);
         $updatingEnd   = array_key_exists('planned_end', $data);
+        $updatingDue   = array_key_exists('due_date', $data);
 
-        if (! $updatingStart && ! $updatingEnd) {
+        if (! $updatingStart && ! $updatingEnd && ! $updatingDue) {
             return;
         }
 
-        $plannedStartRaw = $updatingStart ? $data['planned_start'] : null;
-        $plannedEndRaw   = $updatingEnd   ? $data['planned_end']   : null;
+        $plannedStart = $updatingStart && $data['planned_start']
+            ? Carbon::parse((string) $data['planned_start'])->startOfDay()
+            : null;
+        $plannedEnd = $updatingEnd && $data['planned_end']
+            ? Carbon::parse((string) $data['planned_end'])->startOfDay()
+            : null;
+        $dueDate = $updatingDue && $data['due_date']
+            ? Carbon::parse((string) $data['due_date'])->startOfDay()
+            : null;
 
-        $plannedStart = $plannedStartRaw ? Carbon::parse((string) $plannedStartRaw)->startOfDay() : null;
-        $plannedEnd = $plannedEndRaw ? Carbon::parse((string) $plannedEndRaw)->startOfDay() : null;
+        $errors   = [];
+        $fmtStart = $projectStart?->translatedFormat('d/m/Y');
+        $fmtEnd   = $projectEnd?->translatedFormat('d/m/Y');
 
-        $errors = [];
-
+        // ── Cohérence interne ─────────────────────────────────────────────────
         if ($plannedStart && $plannedEnd && $plannedEnd->lt($plannedStart)) {
             $errors['planned_end'] = ['La date de fin doit être postérieure ou égale à la date de début.'];
         }
 
-        $fmtStart = $projectStart?->translatedFormat('d/m/Y');
-        $fmtEnd   = $projectEnd?->translatedFormat('d/m/Y');
+        // ── planned_start ─────────────────────────────────────────────────────
+        if ($plannedStart) {
+            if ($projectStart && $plannedStart->lt($projectStart)) {
+                $errors['planned_start'] = ["La date de début ne peut pas être antérieure au démarrage du projet ({$fmtStart})."];
+            } elseif ($projectEnd && $plannedStart->gt($projectEnd)) {
+                $errors['planned_start'] = ["La date de début ne peut pas dépasser la date de fin du projet ({$fmtEnd})."];
+            }
+        }
 
-        if ($plannedStart && $projectStart && $plannedStart->lt($projectStart)) {
-            $errors['planned_start'] = ["La date de début ne peut pas être antérieure au démarrage du projet ({$fmtStart})."];
-        }
-        if ($plannedStart && $projectEnd && $plannedStart->gt($projectEnd)) {
-            $errors['planned_start'] = ["La date de début ne peut pas dépasser la date de fin du projet ({$fmtEnd})."];
+        // ── planned_end ───────────────────────────────────────────────────────
+        if ($plannedEnd) {
+            if ($projectStart && $plannedEnd->lt($projectStart)) {
+                $errors['planned_end'] = ["La date de fin ne peut pas être antérieure au démarrage du projet ({$fmtStart})."];
+            } elseif ($projectEnd && $plannedEnd->gt($projectEnd)) {
+                $errors['planned_end'] = ["La date de fin ne peut pas dépasser la date de fin du projet ({$fmtEnd})."];
+            }
         }
 
-        if ($plannedEnd && $projectStart && $plannedEnd->lt($projectStart)) {
-            $errors['planned_end'] = ["La date de fin ne peut pas être antérieure au démarrage du projet ({$fmtStart})."];
-        }
-        if ($plannedEnd && $projectEnd && $plannedEnd->gt($projectEnd)) {
-            $errors['planned_end'] = ["La date de fin ne peut pas dépasser la date de fin du projet ({$fmtEnd})."];
+        // ── due_date ──────────────────────────────────────────────────────────
+        if ($dueDate) {
+            if ($projectStart && $dueDate->lt($projectStart)) {
+                $errors['due_date'] = ["La date d'échéance ne peut pas être antérieure au démarrage du projet ({$fmtStart})."];
+            } elseif ($projectEnd && $dueDate->gt($projectEnd)) {
+                $errors['due_date'] = ["La date d'échéance ne peut pas dépasser la date de fin du projet ({$fmtEnd})."];
+            }
         }
 
         if (! empty($errors)) {

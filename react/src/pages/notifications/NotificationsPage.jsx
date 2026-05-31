@@ -9,6 +9,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { useI18n } from '../../i18n/I18nContext';
 import { getEcho } from '../../lib/echo';
 import { getNotificationLink } from '../../lib/notificationNav';
 import { formatRelativeTimeFr, groupNotificationsByDate } from '../../lib/formatRelativeTime';
@@ -93,6 +94,7 @@ const fetchPage = ({ pageParam = 1, type = '', unread_only = false, search = '' 
 
 export default function NotificationsPage() {
   const { user }  = useAuth();
+  const { t }     = useI18n();
   const navigate  = useNavigate();
   const qc        = useQueryClient();
 
@@ -118,7 +120,7 @@ export default function NotificationsPage() {
   });
 
   const markReadMut   = useMutation({ mutationFn: (id) => api.patch(`/notifications/${id}/read`),      onSuccess: () => { qc.invalidateQueries({ queryKey: ['notifications'] }); refetch(); } });
-  const markAllMut    = useMutation({ mutationFn: () => api.post('/notifications/read-all'),             onSuccess: () => { toast.success('Toutes les notifications ont été lues.'); qc.invalidateQueries({ queryKey: ['notifications'] }); refetch(); } });
+  const markAllMut    = useMutation({ mutationFn: () => api.post('/notifications/read-all'),             onSuccess: () => { toast.success(t('notifications.markAllRead')); qc.invalidateQueries({ queryKey: ['notifications'] }); refetch(); } });
   const deleteMut     = useMutation({ mutationFn: (id) => api.delete(`/notifications/${id}`),           onSuccess: () => { refetch(); qc.invalidateQueries({ queryKey: ['notifications'] }); } });
   const deleteReadMut = useMutation({ mutationFn: () => api.delete('/notifications/read'),              onSuccess: () => { toast.success('Notifications lues supprimées.'); refetch(); qc.invalidateQueries({ queryKey: ['notifications'] }); } });
 
@@ -150,8 +152,8 @@ export default function NotificationsPage() {
 
   // Search debounce
   useEffect(() => {
-    const t = setTimeout(() => setSearch(searchInput), 380);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setSearch(searchInput), 380);
+    return () => clearTimeout(timer);
   }, [searchInput]);
 
   const allNotifications = (data?.pages ?? []).flatMap((p) => p.notifications ?? []);
@@ -175,7 +177,7 @@ export default function NotificationsPage() {
               <Bell size={20} className="text-indigo-600" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Notifications</h1>
+              <h1 className="text-lg font-bold text-gray-900">{t('notifications.title')}</h1>
               {unreadCount > 0 && (
                 <p className="text-xs text-gray-500">{unreadCount} non lue{unreadCount > 1 ? 's' : ''}</p>
               )}
@@ -190,7 +192,7 @@ export default function NotificationsPage() {
               disabled={markAllMut.isPending || unreadCount === 0}
               className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
             >
-              <CheckCheck size={14} /> Tout lire
+              <CheckCheck size={14} /> {t('notifications.markAllRead')}
             </button>
             <button
               onClick={() => deleteReadMut.mutate()}
@@ -211,7 +213,7 @@ export default function NotificationsPage() {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Rechercher…"
+              placeholder={t('common.search') + '…'}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-8 pr-8 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -249,13 +251,13 @@ export default function NotificationsPage() {
         {/* List */}
         <div className="space-y-3">
           {isLoading && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-400 shadow-sm">Chargement…</div>
+            <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-400 shadow-sm">{t('common.loading')}</div>
           )}
 
           {!isLoading && allNotifications.length === 0 && (
             <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center shadow-sm">
               <Bell size={32} className="mx-auto mb-3 text-gray-300" />
-              <p className="text-sm font-semibold text-gray-500">Aucune notification</p>
+              <p className="text-sm font-semibold text-gray-500">{t('notifications.noNotifications')}</p>
               <p className="text-xs text-gray-400 mt-1">{unreadOnly ? 'Toutes vos notifications ont été lues.' : 'Vous êtes à jour !'}</p>
             </div>
           )}
@@ -313,7 +315,7 @@ export default function NotificationsPage() {
                             {!isRead && (
                               <button
                                 type="button"
-                                title="Marquer comme lu"
+                                title={t('notifications.markRead')}
                                 onClick={(e) => { e.stopPropagation(); markReadMut.mutate(n.id); }}
                                 className="rounded-lg p-1.5 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
                               >
@@ -322,7 +324,7 @@ export default function NotificationsPage() {
                             )}
                             <button
                               type="button"
-                              title="Supprimer"
+                              title={t('common.delete')}
                               onClick={(e) => { e.stopPropagation(); deleteMut.mutate(n.id); }}
                               className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors"
                             >
@@ -340,7 +342,7 @@ export default function NotificationsPage() {
 
           {/* Infinite scroll sentinel */}
           <div ref={loaderRef} className="py-2 text-center text-xs text-gray-400">
-            {isFetchingNextPage && 'Chargement…'}
+            {isFetchingNextPage && t('common.loading')}
             {!hasNextPage && allNotifications.length > 0 && 'Toutes les notifications ont été chargées.'}
           </div>
         </div>

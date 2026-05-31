@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useI18n } from '../../i18n/I18nContext';
 import api from '../../lib/api';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
@@ -22,6 +23,7 @@ function parseTasks(res) {
 
 export default function TasksHubPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const isViewer = isGuestViewer(user);
   const isAdmin = user?.roles?.includes('admin');
   const isMember = !isViewer && !isAdmin;
@@ -88,13 +90,13 @@ export default function TasksHubPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Tâches</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t('tasks.title')}</h1>
           <p className="text-muted-foreground">
             {isViewer
-              ? 'Consultation des tâches accessibles (lecture seule).'
+              ? t('tasks.subtitleViewer')
               : isMember
-                ? 'Vos tâches assignées — modifiez les filtres pour explorer davantage.'
-                : 'Liste globale et flux (workflow)'}
+                ? t('tasks.subtitleMember')
+                : t('tasks.subtitleAdmin')}
           </p>
         </div>
         <div className="flex rounded-lg border border-border bg-card p-1">
@@ -105,7 +107,7 @@ export default function TasksHubPage() {
             className="gap-2"
             onClick={() => setTab('list')}
           >
-            <LayoutList size={16} /> Liste
+            <LayoutList size={16} /> {t('tasks.listView')}
           </Button>
           <Button
             type="button"
@@ -114,7 +116,7 @@ export default function TasksHubPage() {
             className="gap-2"
             onClick={() => setTab('board')}
           >
-            <Columns3 size={16} /> Flux
+            <Columns3 size={16} /> {t('tasks.kanbanView')}
           </Button>
         </div>
       </div>
@@ -124,7 +126,7 @@ export default function TasksHubPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <Filter size={16} aria-hidden />
-              {isViewer ? 'Filtres (lecture seule)' : 'Filtres'}
+              {t('common.filter')}
             </div>
             <Button
               type="button"
@@ -134,15 +136,15 @@ export default function TasksHubPage() {
               onClick={isViewer ? resetViewerFilters : resetFilters}
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-              Réinitialiser les filtres
+              {t('tasks.resetFilters')}
             </Button>
           </div>
           {isViewer ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Projet</label>
+                <label className="mb-1 block text-xs text-muted-foreground">{t('projects.title')}</label>
                 <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-                  <option value="">Tous</option>
+                  <option value="">{t('tasks.allProjects')}</option>
                   {projects?.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -151,13 +153,13 @@ export default function TasksHubPage() {
                 </Select>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Workflow</label>
+                <label className="mb-1 block text-xs text-muted-foreground">{t('tasks.workflow')}</label>
                 <Select value={workflowStatus} onChange={(e) => setWorkflowStatus(e.target.value)}>
-                  <option value="">Tous</option>
-                  <option value="todo">À faire</option>
-                  <option value="in_progress">En cours</option>
-                  <option value="done">Terminé</option>
-                  <option value="at_risk">À risque</option>
+                  <option value="">{t('tasks.allStatuses')}</option>
+                  <option value="todo">{t('tasks.workflows.todo')}</option>
+                  <option value="in_progress">{t('tasks.workflows.in_progress')}</option>
+                  <option value="done">{t('tasks.workflows.done')}</option>
+                  <option value="at_risk">{t('dashboard.atRiskShort')}</option>
                 </Select>
               </div>
               <DueDateRangeFilter
@@ -170,9 +172,9 @@ export default function TasksHubPage() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Projet</label>
+                <label className="mb-1 block text-xs text-muted-foreground">{t('projects.title')}</label>
                 <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-                  <option value="">Tous</option>
+                  <option value="">{t('tasks.allProjects')}</option>
                   {projects?.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -181,33 +183,33 @@ export default function TasksHubPage() {
                 </Select>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Workflow</label>
+                <label className="mb-1 block text-xs text-muted-foreground">{t('tasks.workflow')}</label>
                 <Select value={workflowStatus} onChange={(e) => setWorkflowStatus(e.target.value)}>
-                  <option value="">Tous</option>
-                  <option value="todo">À faire</option>
-                  <option value="in_progress">En cours</option>
-                  <option value="done">Terminé</option>
-                  <option value="at_risk">À risque</option>
+                  <option value="">{t('tasks.allStatuses')}</option>
+                  <option value="todo">{t('tasks.workflows.todo')}</option>
+                  <option value="in_progress">{t('tasks.workflows.in_progress')}</option>
+                  <option value="done">{t('tasks.workflows.done')}</option>
+                  <option value="at_risk">{t('dashboard.atRiskShort')}</option>
                 </Select>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Priorité</label>
+                <label className="mb-1 block text-xs text-muted-foreground">{t('tasks.priority')}</label>
                 <Select value={priority} onChange={(e) => setPriority(e.target.value)}>
-                  <option value="">Toutes</option>
-                  <option value="low">Basse</option>
-                  <option value="medium">Moyenne</option>
-                  <option value="high">Haute</option>
-                  <option value="urgent">Urgente</option>
+                  <option value="">{t('tasks.allPriorities')}</option>
+                  <option value="low">{t('tasks.priorities.low')}</option>
+                  <option value="medium">{t('tasks.priorities.medium')}</option>
+                  <option value="high">{t('tasks.priorities.high')}</option>
+                  <option value="urgent">{t('tasks.priorities.urgent')}</option>
                 </Select>
               </div>
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">
-                  Assigné{isMember && <span className="ml-1 text-primary">(mes tâches par défaut)</span>}
+                  {t('tasks.assignee')}{isMember && <span className="ml-1 text-primary">({t('tasks.myTasksFilter')})</span>}
                 </label>
                 <Select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-                  <option value="">Tous</option>
+                  <option value="">{t('common.all')}</option>
                   {isMember && user?.id && (
-                    <option value={String(user.id)}>Moi ({user.name})</option>
+                    <option value={String(user.id)}>{t('tasks.myTasksFilter')} ({user.name})</option>
                   )}
                   {userOptions
                     .filter((u) => !isMember || String(u.id) !== String(user?.id))
@@ -219,10 +221,10 @@ export default function TasksHubPage() {
                 </Select>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Recherche</label>
+                <label className="mb-1 block text-xs text-muted-foreground">{t('common.search')}</label>
                 <input
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  placeholder="Titre, description…"
+                  placeholder={t('tasks.searchTasks')}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -249,11 +251,11 @@ export default function TasksHubPage() {
           ) : !tasks?.length ? (
             <EmptyState
               icon={ListTodo}
-              title="Aucune tâche à afficher"
+              title={t('tasks.noTasks')}
               description={
                 isViewer
-                  ? 'Aucune tâche dans les projets partagés avec vous.'
-                  : 'Modifiez les filtres ou créez une tâche depuis un projet.'
+                  ? t('tasks.subtitleViewer')
+                  : t('tasks.subtitleMember')
               }
             >
               {!isViewer && (
@@ -262,7 +264,7 @@ export default function TasksHubPage() {
                   className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
                   <Plus className="h-4 w-4" />
-                  Créer une tâche
+                  {t('tasks.newTask')}
                 </Link>
               )}
             </EmptyState>

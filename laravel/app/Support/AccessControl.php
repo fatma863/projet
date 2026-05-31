@@ -287,6 +287,39 @@ class AccessControl
 
     public static function canDeleteTask(User $user, Task $task): bool
     {
-        return self::isAdmin($user);
+        // Admin applicatif : toujours autorisé
+        if (self::isAdmin($user)) {
+            return true;
+        }
+
+        // Client : jamais autorisé
+        if (self::isClientRole($user)) {
+            return false;
+        }
+
+        $project = $task->project;
+
+        // Chef du projet ou propriétaire : peut supprimer toute tâche de son projet
+        if ($project->chef_id && (int) $project->chef_id === (int) $user->id) {
+            return true;
+        }
+        if ((int) $project->owner_id === (int) $user->id) {
+            return true;
+        }
+
+        // Rôle "admin" au niveau du projet (legacy)
+        if (self::projectRole($user, $project) === 'admin') {
+            return true;
+        }
+
+        // Membre : peut supprimer uniquement une tâche qu'il a créée
+        // et dont le workflow n'est pas encore terminé (évite la suppression rétroactive)
+        if ((int) $task->created_by === (int) $user->id) {
+            $isCompleted = $task->workflow_status === 'done'
+                || ($task->progress_percent ?? 0) >= 100;
+            return ! $isCompleted;
+        }
+
+        return false;
     }
 }

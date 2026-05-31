@@ -69,18 +69,18 @@ function App() {
             <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
             {/* Standalone print pages — no AppLayout */}
-            <Route path="/audit-log/report" element={<ProtectedRoute><AuditReportPage /></ProtectedRoute>} />
+            <Route path="/audit-log/report" element={<ProtectedRoute><RoleRoute allow={['admin', 'member']}><AuditReportPage /></RoleRoute></ProtectedRoute>} />
 
             {/* Protected routes */}
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route index path="/dashboard" element={<DashboardPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:id" element={<ProjectDetailPage />} />
-              <Route path="/projects/:id/tasks/new" element={<TaskFormPage />} />
-              <Route path="/projects/:id/tasks/:taskId/edit" element={<TaskFormPage />} />
+              <Route path="/projects/:id/tasks/new" element={<RoleRoute allow={['admin', 'member']}><TaskFormPage /></RoleRoute>} />
+              <Route path="/projects/:id/tasks/:taskId/edit" element={<RoleRoute allow={['admin', 'member']}><TaskFormPage /></RoleRoute>} />
               <Route path="/projects/:id/members-performance" element={<MembersPerformancePage />} />
               <Route path="/tasks" element={<TasksHubPage />} />
-              <Route path="/calendar" element={<RoleRoute allow={['admin', 'member']}><CalendarPage /></RoleRoute>} />
+              <Route path="/calendar" element={<RoleRoute allow={['admin', 'member', 'client']}><CalendarPage /></RoleRoute>} />
               <Route path="/teams" element={<RoleRoute allow={['admin']}><TeamsPage /></RoleRoute>} />
               <Route path="/teams/:id" element={<RoleRoute allow={['admin']}><TeamDetailPage /></RoleRoute>} />
               <Route path="/users" element={<RoleRoute allow={['admin']}><UsersAdminPage /></RoleRoute>} />

@@ -8,6 +8,12 @@ Broadcast::channel('user.{userId}', function ($user, int $userId) {
 });
 
 Broadcast::channel('project.{projectId}', function ($user, int $projectId) {
+    // Clients must never receive real-time activity broadcasts — they expose
+    // internal team events (task changes, member management, etc.).
+    if ($user->hasRole('client')) {
+        return false;
+    }
+
     if ($user->hasRole('admin')) {
         return true;
     }

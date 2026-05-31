@@ -156,9 +156,11 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::put('statuses/{status}', [TaskStatusController::class, 'update']);
     Route::delete('statuses/{status}', [TaskStatusController::class, 'destroy']);
 
-    // Accessible à tout utilisateur authentifié sauf les clients (lecture seule)
+    // Calendrier : accessible aux clients (filtré par leurs projets via accessibleBy)
+    Route::get('calendar', [CalendarController::class, 'index']);
+
+    // Ces endpoints exposent des données agrégées d'équipe inaccessibles aux clients
     Route::middleware('check.role:!client')->group(function () {
-        Route::get('calendar', [CalendarController::class, 'index']);
         Route::get('gantt', [GanttController::class, 'globalIndex']);
         Route::get('activity/feed', [ActivityFeedController::class, 'index']);
         Route::get('activity/export', [ActivityFeedController::class, 'export']);
@@ -314,7 +316,10 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
 
     // Roles (admin only for write operations, all authenticated for reads)
     Route::get('roles', [RoleController::class, 'index']);
-    Route::get('roles/audit-log', [RoleController::class, 'auditLog']);
+    // Permission audit log: admin only — must be declared before roles/{role} to avoid param capture
+    Route::middleware('check.role:admin')->group(function () {
+        Route::get('roles/audit-log', [RoleController::class, 'auditLog']);
+    });
     Route::get('roles/{role}', [RoleController::class, 'show']);
     Route::get('roles/{role}/users', [RoleController::class, 'users']);
 

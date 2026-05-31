@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Models\Task;
 use App\Services\CriticalPathService;
+use App\Support\AccessControl;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,8 +23,31 @@ class GanttController extends Controller
      */
     public function globalIndex(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $query = Task::query()->accessibleBy($user)->with(['status', 'assignees', 'dependencies', 'dependents', 'project']);
+        $user  = $request->user();
+        $query = Task::query()->with(['status', 'assignees', 'dependencies', 'dependents', 'project']);
+
+        // ── Filtrage Gantt global selon le rôle ──────────────────────────────
+        // Admin  → toutes les tâches planifiées de la plateforme
+        // Chef   → toutes les tâches des projets qu'il gère + tâches assignées ailleurs
+        // Membre → uniquement les tâches qui lui sont assignées (pas d'accès aux tâches d'autrui)
+        // Client → bloqué par le middleware check.role:!client en amont
+        if (! AccessControl::isAdmin($user)) {
+            $chefProjectIds = Project::query()
+                ->where('chef_id', $user->id)
+                ->orWhere('owner_id', $user->id)
+                ->pluck('id');
+
+            if ($chefProjectIds->isNotEmpty()) {
+                // Chef : toutes les tâches de ses projets + tâches assignées dans d'autres projets
+                $query->where(function ($q) use ($user, $chefProjectIds) {
+                    $q->whereIn('project_id', $chefProjectIds)
+                      ->orWhereHas('assignees', fn ($a) => $a->where('users.id', $user->id));
+                });
+            } else {
+                // Membre simple : uniquement les tâches qui lui sont assignées
+                $query->whereHas('assignees', fn ($a) => $a->where('users.id', $user->id));
+            }
+        }
 
         if ($request->filled('project_id')) {
             $query->where('project_id', $request->integer('project_id'));
@@ -76,8 +100,16 @@ class GanttController extends Controller
             ->with(['status', 'assignees', 'dependencies', 'dependents'])
             ->whereNotNull('planned_start');
 
-        // Non-admin users see only their own assigned tasks.
-        if (! $user->hasRole('admin')) {
+        // ── Visibilité selon le rôle ─────────────────────────────────────────
+        // Admin          → toutes les tâches du projet
+        // Client         → toutes les tâches (lecture seule ; écriture bloquée par check.project:edit)
+        // Chef / Owner   → toutes les tâches du projet dont il est responsable
+        // Membre simple  → uniquement les tâches qui lui sont assignées
+        if (! AccessControl::isAdmin($user)
+            && ! AccessControl::isClientRole($user)
+            && (int) $project->chef_id   !== (int) $user->id
+            && (int) $project->owner_id  !== (int) $user->id
+        ) {
             $query->whereHas('assignees', fn ($q) => $q->where('users.id', $user->id));
         }
 

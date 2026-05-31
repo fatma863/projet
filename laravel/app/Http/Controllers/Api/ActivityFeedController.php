@@ -6,17 +6,100 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ActivityLogResource;
 use App\Models\ActivityLog;
 use App\Models\Project;
+use App\Support\AccessControl;
 use App\Support\ApiPagination;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
 
 class ActivityFeedController extends Controller
 {
+    // ── RBAC access resolver ──────────────────────────────────────────────────
+
+    /**
+     * Compute the per-user access context once and share it across all methods.
+     *
+     * Returns:
+     *   isAdmin              → bool   : true if global admin
+     *   isChef               → bool   : true if chef/owner in at least one project
+     *   chefProjectIds       → Collection<int> : projects where user is chef/owner
+     *   memberOnlyProjectIds → Collection<int> : accessible projects where user is NOT chef/owner
+     */
+    private function resolveAccess($user): array
+    {
+        if (AccessControl::isAdmin($user)) {
+            return [
+                'isAdmin'              => true,
+                'isChef'               => true,
+                'chefProjectIds'       => collect(),
+                'memberOnlyProjectIds' => collect(),
+            ];
+        }
+
+        $chefProjectIds = Project::query()
+            ->where(fn ($q) => $q->where('chef_id', $user->id)->orWhere('owner_id', $user->id))
+            ->pluck('id');
+
+        $accessibleProjectIds = Project::query()->accessibleToUser($user)->pluck('projects.id');
+        $memberOnlyProjectIds = $accessibleProjectIds->diff($chefProjectIds);
+
+        return [
+            'isAdmin'              => false,
+            'isChef'               => $chefProjectIds->isNotEmpty(),
+            'chefProjectIds'       => $chefProjectIds,
+            'memberOnlyProjectIds' => $memberOnlyProjectIds,
+        ];
+    }
+
+    /**
+     * Apply the RBAC visibility filter to an ActivityLog query.
+     *
+     * Rules:
+     *   Admin              → no filter (all events)
+     *   Chef (project X)   → all events in project X
+     *   Member (project Y) → only events where actor_id = user->id in project Y
+     *   No projects        → only own events (actor_id = user->id)
+     */
+    private function applyRbacFilter(Builder $query, $user, array $access): void
+    {
+        if ($access['isAdmin']) {
+            return;
+        }
+
+        /** @var Collection $chefIds */
+        $chefIds  = $access['chefProjectIds'];
+        $memberIds = $access['memberOnlyProjectIds'];
+
+        if ($chefIds->isEmpty() && $memberIds->isEmpty()) {
+            $query->where('actor_id', $user->id);
+            return;
+        }
+
+        $query->where(function (Builder $q) use ($user, $chefIds, $memberIds) {
+            // Chef/Owner projects: all events visible
+            if ($chefIds->isNotEmpty()) {
+                $q->whereIn('project_id', $chefIds);
+            }
+
+            // Member-only projects: only own events (no cross-user access)
+            if ($memberIds->isNotEmpty()) {
+                $q->orWhere(function (Builder $inner) use ($user, $memberIds) {
+                    $inner->whereIn('project_id', $memberIds)
+                          ->where('actor_id', $user->id);
+                });
+            }
+        });
+    }
+
+    // ── Endpoints ─────────────────────────────────────────────────────────────
+
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $query = $this->buildQuery($request, $user);
+        $user   = $request->user();
+        $access = $this->resolveAccess($user);
+        $query  = $this->buildQuery($request, $user, $access);
 
         $paginator = $query->paginate(ApiPagination::perPage($request, 30, 100));
 
@@ -28,18 +111,24 @@ class ActivityFeedController extends Controller
                 'total'        => $paginator->total(),
                 'per_page'     => $paginator->perPage(),
             ],
-            // Stats are expensive (4 extra queries) — only compute when explicitly requested.
-            'stats' => $request->boolean('with_stats') ? $this->buildStats($request, $user) : null,
+            'stats' => $request->boolean('with_stats') ? $this->buildStats($user, $access) : null,
         ]);
     }
 
     public function export(Request $request): Response
     {
-        $user    = $request->user();
-        $query   = $this->buildQuery($request, $user);
+        $user   = $request->user();
+        $access = $this->resolveAccess($user);
+
+        // Bulk CSV export is restricted to admins and project chefs.
+        if (! $access['isAdmin'] && ! $access['isChef']) {
+            abort(403, 'L\'export des journaux est réservé aux administrateurs et chefs de projet.');
+        }
+
+        $query   = $this->buildQuery($request, $user, $access);
         $records = $query->limit(5000)->get();
 
-        $lines = [];
+        $lines   = [];
         $lines[] = implode(',', [
             'ID', 'Date', 'Acteur', 'Rôle acteur', 'Action', 'Module',
             'Entité', 'Projet', 'Sévérité', 'Source', 'IP',
@@ -59,7 +148,7 @@ class ActivityFeedController extends Controller
                     $log->project?->name ?? '',
                     $log->severity ?? 'info',
                     $log->source ?? 'web',
-                    $user->hasRole('admin') ? ($log->ip_address ?? '') : '',
+                    $access['isAdmin'] ? ($log->ip_address ?? '') : '',
                 ]
             ));
         }
@@ -70,24 +159,38 @@ class ActivityFeedController extends Controller
         ]);
     }
 
-    private function buildQuery(Request $request, $user)
-    {
-        $accessibleProjectSub = Project::query()->accessibleToUser($user)->select('projects.id');
+    // ── Query builders ────────────────────────────────────────────────────────
 
+    private function buildQuery(Request $request, $user, array $access): Builder
+    {
         $query = ActivityLog::query()
             ->with(['actor:id,name,avatar,profile_photo', 'project:id,name'])
-            ->whereIn('project_id', $accessibleProjectSub)
             ->orderByDesc('created_at');
 
+        $this->applyRbacFilter($query, $user, $access);
+
+        // ── project_id filter ──────────────────────────────────────────────────
         if ($request->filled('project_id')) {
-            $pid     = (int) $request->input('project_id');
-            $allowed = Project::query()->accessibleToUser($user)->where('projects.id', $pid)->exists();
-            abort_if(! $allowed, 403);
+            $pid = (int) $request->input('project_id');
+
+            if (! $access['isAdmin']) {
+                $allAccessible = $access['chefProjectIds']->merge($access['memberOnlyProjectIds']);
+                abort_if(! $allAccessible->contains($pid), 403, 'Accès refusé au projet demandé.');
+            }
+
             $query->where('project_id', $pid);
         }
 
+        // ── actor_id filter ────────────────────────────────────────────────────
         if ($request->filled('actor_id')) {
-            $query->where('actor_id', (int) $request->input('actor_id'));
+            $actorId = (int) $request->input('actor_id');
+
+            // Non-admin, non-chef users may only filter by their own actor_id.
+            if (! $access['isAdmin'] && ! $access['isChef'] && $actorId !== $user->id) {
+                abort(403, 'Vous ne pouvez filtrer que par votre propre identifiant d\'acteur.');
+            }
+
+            $query->where('actor_id', $actorId);
         }
 
         if ($request->filled('action')) {
@@ -95,8 +198,7 @@ class ActivityFeedController extends Controller
         }
 
         if ($request->filled('module')) {
-            $module = $request->string('module')->toString();
-            $query->where('action', 'like', $module . '.%');
+            $query->where('action', 'like', $request->string('module')->toString() . '.%');
         }
 
         if ($request->filled('severity')) {
@@ -112,31 +214,30 @@ class ActivityFeedController extends Controller
         }
 
         if ($request->filled('search')) {
-            $q = '%' . $request->string('search')->toString() . '%';
-            $query->where(function ($sub) use ($q) {
-                $sub->where('action', 'like', $q)
-                    ->orWhereJsonContains('meta->task_title', $request->string('search')->toString())
-                    ->orWhereHas('actor', fn ($u) => $u->where('name', 'like', $q));
+            $term = '%' . $request->string('search')->toString() . '%';
+            $raw  = $request->string('search')->toString();
+            $query->where(function (Builder $sub) use ($term, $raw) {
+                $sub->where('action', 'like', $term)
+                    ->orWhereJsonContains('meta->task_title', $raw)
+                    ->orWhereHas('actor', fn ($u) => $u->where('name', 'like', $term));
             });
         }
 
         return $query;
     }
 
-    private function buildStats(Request $request, $user): array
+    private function buildStats($user, array $access): array
     {
-        $accessibleProjectSub = Project::query()->accessibleToUser($user)->select('projects.id');
-
-        $base = ActivityLog::query()
-            ->whereIn('project_id', $accessibleProjectSub);
+        $base = ActivityLog::query();
+        $this->applyRbacFilter($base, $user, $access);
 
         return [
-            'total'    => $base->count(),
+            'total'       => $base->count(),
             'by_severity' => $base->clone()
                 ->selectRaw('severity, count(*) as count')
                 ->groupBy('severity')
                 ->pluck('count', 'severity'),
-            'by_module' => $base->clone()
+            'by_module'   => $base->clone()
                 ->selectRaw('SUBSTRING_INDEX(action, ".", 1) as module, count(*) as count')
                 ->groupBy('module')
                 ->orderByDesc('count')

@@ -422,6 +422,10 @@ export default function TaskFormPage() {
     ? (isAdmin || Boolean(taskDetail?.access?.can_edit))
     : true;
 
+  // Suppression : contrôlée par can_delete (distinct de can_edit)
+  // Admin, chef de projet ou créateur d'une tâche non terminée
+  const canDelete = isEdit && (isAdmin || Boolean(taskDetail?.access?.can_delete));
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -444,7 +448,7 @@ export default function TaskFormPage() {
           </h1>
         </div>
         {isEdit && <WatcherButton taskId={taskId} />}
-        {isEdit && canEdit && (
+        {canDelete && (
           <button
             type="button"
             onClick={handleDelete}

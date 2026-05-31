@@ -282,6 +282,30 @@ class NotificationService
         );
     }
 
+    /**
+     * Notify a member who has been removed from a project.
+     * Sent directly to the removed user (not to the whole team).
+     */
+    public function notifyMemberRemoved(User $member, Project $project, ?User $actor = null): ?Notification
+    {
+        $actorName = $actor?->name ?? 'Système';
+        $message   = "Vous avez été retiré du projet « {$project->name} » par {$actorName}.";
+
+        return $this->createNotification(
+            user:      $member,
+            type:      'member_removed',
+            message:   $message,
+            severity:  'warning',
+            data:      $this->projectPayload($project, $actor, [
+                'title'        => 'Retiré du projet',
+                'member_id'    => $member->id,
+                'member_name'  => $member->name,
+            ]),
+            projectId: $project->id,
+            actor:     $actor,
+        );
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // AI / smart notifications
     // ──────────────────────────────────────────────────────────────────────────
@@ -503,7 +527,7 @@ class NotificationService
             in_array($type, ['permission_updated'])  => (bool) ($user->notify_type_permission ?? true),
             in_array($type, ['invitation_received', 'project_invitation', 'project_invitation_accepted']) => (bool) ($user->notify_type_invitation ?? true),
             in_array($type, ['ai_alert', 'workload_alert', 'project_at_risk']) => (bool) ($user->notify_type_ai_alert ?? true),
-            in_array($type, ['project_created', 'project_updated']) => (bool) ($user->notify_type_project ?? true),
+            in_array($type, ['project_created', 'project_updated', 'member_removed']) => (bool) ($user->notify_type_project ?? true),
             default => true,
         };
     }

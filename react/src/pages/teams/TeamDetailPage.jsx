@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/api';
+import { useI18n } from '../../i18n/I18nContext';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -47,6 +48,7 @@ function workloadPresentation(hours) {
 
 export default function TeamDetailPage() {
   const { id } = useParams();
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [userId, setUserId] = useState('');
@@ -110,8 +112,8 @@ export default function TeamDetailPage() {
             </p>
           )}
           <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
-            <span>{team.members_count || team.members?.length || 0} membres</span>
-            <span>{team.projects_count || 0} projets</span>
+            <span>{team.members_count || team.members?.length || 0} {t('teams.members').toLowerCase()}</span>
+            <span>{team.projects_count || 0} {t('teams.projects').toLowerCase()}</span>
           </div>
         </div>
       </div>
@@ -119,9 +121,9 @@ export default function TeamDetailPage() {
       {/* Section membres */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">Membres</h2>
+          <h2 className="text-lg font-semibold text-foreground">{t('teams.members')}</h2>
           <Button size="sm" onClick={() => setShowAdd(!showAdd)}>
-            <Plus className="mr-1 h-4 w-4" /> Ajouter un membre
+            <Plus className="mr-1 h-4 w-4" /> {t('teams.addMember')}
           </Button>
         </div>
 
@@ -137,7 +139,7 @@ export default function TeamDetailPage() {
                   onChange={(v) => setUserId(v)}
                   placeholder={
                     allUsers.length > 0 && availableUsers.length === 0
-                      ? 'Tous les utilisateurs sont déjà dans cette équipe'
+                      ? t('teams.noOtherUsers')
                       : 'Choisir un utilisateur…'
                   }
                   disabled={availableUsers.length === 0}
@@ -156,7 +158,7 @@ export default function TeamDetailPage() {
                 })}
                 disabled={!userId || addMutation.isPending}
               >
-                {addMutation.isPending ? 'Ajout…' : 'Ajouter'}
+                {addMutation.isPending ? 'Ajout…' : t('common.add')}
               </Button>
             </CardContent>
           </Card>
@@ -169,7 +171,7 @@ export default function TeamDetailPage() {
             <Card>
               <CardContent className="py-10 text-center">
                 <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Aucun membre dans cette équipe</p>
+                <p className="text-sm text-muted-foreground">{t('teams.noTeams')}</p>
               </CardContent>
             </Card>
           )}
@@ -196,7 +198,7 @@ export default function TeamDetailPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium text-foreground">{m.name}</p>
                         {isChef
-                          ? <Badge variant="default" className="text-[11px]">Chef de projet</Badge>
+                          ? <Badge variant="default" className="text-[11px]">{t('projects.chefDeProjet')}</Badge>
                           : <Badge variant="secondary" className="text-[11px]">Membre</Badge>}
                       </div>
                       <p className="truncate text-sm text-muted-foreground">{m.email}</p>
@@ -227,14 +229,14 @@ export default function TeamDetailPage() {
                         </Button>
                       )}
 
-                      {/* Supprimer */}
+                      {/* Retirer */}
                       <button
                         type="button"
-                        onClick={() => { if (window.confirm('Retirer ce membre ?')) removeMutation.mutate(m.id); }}
+                        onClick={() => { if (window.confirm(t('teams.deleteConfirm'))) removeMutation.mutate(m.id); }}
                         className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-destructive dark:hover:bg-red-950/40"
-                        aria-label="Retirer le membre"
+                        aria-label={t('teams.removeMember')}
                         disabled={isChef}
-                        title={isChef ? 'Désignez un autre chef avant de retirer' : 'Retirer le membre'}
+                        title={isChef ? 'Désignez un autre chef avant de retirer' : t('teams.removeMember')}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

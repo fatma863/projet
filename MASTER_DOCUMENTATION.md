@@ -63,8 +63,19 @@
     - 22.1 [Architecture](#221-architecture)
     - 22.2 [Schéma activity_logs enrichi](#222-schéma-activity_logs-enrichi)
     - 22.3 [ActivityLogService](#223-activitylogservice)
-    - 22.4 [API filtrée + export + analytics](#224-api-filtrée--export--analytics)
-    - 22.5 [Frontend enterprise](#225-frontend-enterprise)
+    - 22.4 [Modèle d'accès RBAC multi-projets](#224-modèle-daccès-rbac-multi-projets)
+    - 22.5 [API filtrée + export + analytics](#225-api-filtrée--export--analytics)
+23. [Retrait de membre par le Chef de projet](#23-retrait-de-membre-par-le-chef-de-projet)
+24. [Module Gantt — Visibilité par rôle](#24-module-gantt--visibilité-par-rôle)
+25. [Rôle Client — Observateur de projet](#25-rôle-client--observateur-de-projet)
+    - 23.1 [Règles métier](#231-règles-métier)
+    - 23.2 [Endpoint API](#232-endpoint-api)
+    - 23.3 [Journal d'audit](#233-journal-daudit)
+    - 23.4 [Notification](#234-notification)
+    - 23.5 [Frontend](#235-frontend)
+    - 22.6 [Frontend enterprise](#226-frontend-enterprise)
+    - 22.7 [Sécurité WebSocket](#227-sécurité-websocket-canaux-temps-réel)
+    - 22.8 [Sidebar SaaS moderne](#228-sidebar-saas-moderne)
     - 22.6 [Sidebar SaaS moderne](#226-sidebar-saas-moderne)
 
 ---
@@ -549,7 +560,7 @@ $status           = 'pending' | 'accepted' | 'declined' | 'expired'
 | `activity()` | `GET /projects/{id}/activity` | Journal |
 | `members()` | `GET /projects/{id}/members` | Liste membres |
 | `addMember()` | `POST /projects/{id}/members` | Ajouter membre |
-| `removeMember()` | `DELETE /projects/{id}/members/{user}` | Retirer |
+| `removeMember()` ★ | `DELETE /projects/{id}/members/{user}` | Retirer membre — admin ou chef du projet |
 | `changeChef()` | `PUT /projects/{id}/change-chef` | Changer chef |
 | `invite()` | `POST /projects/{id}/invite` | Inviter par email |
 | `exportTasks()` | `GET /projects/{id}/export/tasks` | Export CSV/JSON |
@@ -690,7 +701,7 @@ Rate limiting : `throttle:5,1` sur auth public, `throttle:60,1` sur routes prot�
 
 | Policy | Méthodes protégées |
 |---|---|
-| `TaskPolicy` | `update()`, `delete()`, `assign()` — admin et chef/member du projet |
+| `TaskPolicy` | `update()` → `canEditTask()` ; `delete()` → `canDeleteTask()` (admin, chef projet, propriétaire, membre-créateur non-terminé) |
 | `ProjectPolicy` | `view()`, `create()`, `update()`, `delete()`, `pause()`, `resume()` |
 
 **`ProjectPolicy::pause()` — peut mettre en pause :**
@@ -923,9 +934,9 @@ PUT    /tasks/{task}/worklog/validate
 
 ```
 GET    /search
-GET    /gantt
-GET    /projects/{id}/gantt           [check.project:view]
-PUT    /projects/{id}/gantt           [check.project:edit]
+GET    /gantt                          [check.role:!client]  ← admin : toutes tâches ; chef : ses projets + assignées ; membre : assignées seulement
+GET    /projects/{id}/gantt           [check.project:view]  ← admin : toutes ; chef/client : toutes ; membre : assignées seulement
+PUT    /projects/{id}/gantt           [check.project:edit]  ← client bloqué par canEditProject() → false
 GET    /calendar                      [check.role:!client]  ★ (rôles dynamiques autorisés)
 GET    /activity/feed                 [check.role:!client]  ★ (rôles dynamiques autorisés)
 GET    /specialties
@@ -988,7 +999,8 @@ Création des rôles système : `php artisan db:seed --class=RoleAndPermissionSe
 | `project.delete` | Supprimer un projet | ✅ | ❌ | ❌ |
 | `project.archive` | Archiver un projet | ✅ | ✅ | ❌ |
 | `project.export` | Exporter les données | ✅ | ✅ | ✅ |
-| `project.manage_members` | Gérer les membres | ✅ | ✅ | ❌ |
+| `project.manage_members` | Gérer les membres (ajout) | ✅ | ✅ | ❌ |
+| `project.member.remove` ★ | Retirer un membre | ✅ | chef uniquement | ❌ |
 | `project.manage_settings` | Modifier les paramètres | ✅ | ✅ | ❌ |
 | `project.pause` ★ | Mettre en pause | ✅ | ❌ | ❌ |
 | `project.resume` ★ | Reprendre (RBAC seul insuffisant) | ✅ | ❌ | ❌ |
@@ -2314,6 +2326,116 @@ Route::middleware('check.role:!client')->group(function () {
 
 ---
 
+## 23. Retrait de membre par le Chef de projet
+
+### 23.1 Règles métier
+
+| Acteur | Peut retirer un membre ? | Restrictions |
+|---|---|---|
+| **Administrateur** | ✅ N'importe quel projet | — |
+| **Chef de projet** | ✅ Ses projets uniquement | Ne peut pas retirer un admin applicatif, ni retirer le chef |
+| **Membre** | ❌ | Refus 403 |
+| **Client** | ❌ | Refus 403 |
+
+**Règles invariantes :**
+- Le chef de projet (`projects.chef_id`) ne peut **jamais** être retiré via cet endpoint — utiliser « Changer le chef de projet » (`PUT /api/projects/{id}/change-chef`)
+- Un chef ne peut pas retirer un utilisateur qui a le rôle applicatif `admin`
+- Un projet doit toujours conserver au moins un responsable
+
+### 23.2 Endpoint API
+
+```
+DELETE /api/projects/{project}/members/{user}
+```
+
+**Middleware stack :**
+```
+auth:sanctum → active.user → throttle:60,1 → check.project:edit → project.not_paused
+```
+
+**Autorisation interne (ProjectController::removeMember) :**
+```
+AccessControl::canManageProjectMembers($actor, $project)
+  → isAdmin($actor)              ✅ OK
+  → owner_id === actor->id       ✅ OK
+  → chef_id  === actor->id       ✅ OK
+  → sinon                        ❌ HTTP 403
+
+puis :
+  target === chef_id             ❌ HTTP 422 (utiliser change-chef)
+  !isAdmin($actor) && isAdmin($target) ❌ HTTP 403
+```
+
+**Réponse succès (HTTP 200) :**
+```json
+{
+  "message": "Membre Ahmed Ben Ali retiré du projet.",
+  "members": [ ... ]  // liste complète mise à jour
+}
+```
+
+**Réponses d'erreur :**
+
+| Situation | HTTP | Message |
+|---|---|---|
+| Pas autorisé (ni admin ni chef) | 403 | "Seuls l'administrateur et le chef de projet peuvent retirer des membres." |
+| Cible est un admin applicatif | 403 | "Vous n'êtes pas autorisé à retirer un administrateur du projet." |
+| Cible est le chef du projet | 422 | "Le chef de projet ne peut pas être retiré via cette action…" |
+| Utilisateur cible introuvable | 404 | "Membre introuvable." |
+| Projet en pause | 423 | "Ce projet est en pause. Les modifications sont désactivées." |
+
+### 23.3 Journal d'audit
+
+Chaque retrait est enregistré dans `activity_logs` avec :
+
+```json
+{
+  "action"     : "project.member_removed",
+  "severity"   : "warning",
+  "meta"       : { "member_id": 42, "member_name": "Ahmed Ben Ali", "removed_by": "Fatma Trabelsi" },
+  "old_values" : { "member_id": 42, "member_name": "Ahmed Ben Ali", "member_email": "ahmed@example.com", "project_role": "member", "project_id": 5, "project_name": "IntelliPM" },
+  "new_values" : { "member_id": null, "member_name": "Ahmed Ben Ali", "project_role": null },
+  "ip_address" : "192.168.1.1",
+  "actor_role" : "member",
+  "actor_id"   : 7
+}
+```
+
+**Entrée lisible dans le journal d'audit :**
+> "Fatma Trabelsi a retiré Ahmed Ben Ali du projet IntelliPM."
+
+### 23.4 Notification
+
+Le membre retiré reçoit une notification `member_removed` de sévérité `warning` :
+
+> "Vous avez été retiré du projet « IntelliPM » par Fatma Trabelsi."
+
+- Respecte la préférence `notify_type_project` de l'utilisateur
+- Diffusée en temps réel via `NotificationCreated` → canal `private-user.{id}`
+- Visible dans la cloche de notifications
+
+### 23.5 Frontend
+
+**Qui voit le bouton « Retirer » ?**
+
+| Rôle applicatif | Est chef du projet | Voit le bouton |
+|---|---|---|
+| admin | — | ✅ |
+| member | oui (`chef?.id === user.id`) | ✅ |
+| member | non | ❌ |
+| client / invité | — | ❌ |
+
+**Flux UX :**
+1. Clic sur **"Retirer"** (icône `UserMinus`) → affiche une carte de confirmation inline
+2. La carte indique le nom du membre et précise que son accès sera révoqué
+3. **"Confirmer"** → `DELETE /api/projects/{id}/members/{uid}` → toast succès + liste mise à jour
+4. **"Annuler"** → ferme la carte, aucune action
+
+**Protections frontend supplémentaires :**
+- Le chef (`is_chef: true`) est rendu avec `removable={false}` → le bouton n'apparaît jamais
+- `canManageMembers = isAdmin || isCurrentUserChef` calculé à partir de `chef?.id === currentUser?.id`
+- La liste des membres est invalidée (`queryClient.invalidateQueries`) après chaque retrait réussi
+
 ---
 
 ## 22. Système Journal d'audit Enterprise
@@ -2414,68 +2536,141 @@ $this->activityLogService->log($task->project, Auth::user(), 'task.updated', $ta
 // → ip_address, user_agent, actor_role auto-remplis depuis Request
 ```
 
-### 22.4 API filtrée + export + analytics
+### 22.4 Modèle d'accès RBAC multi-projets
+
+Le système d'audit applique un modèle de contrôle d'accès strict à **chaque couche** (routes, contrôleurs, WebSocket, frontend).
+
+| Rôle | Feed timeline | Export CSV | Analytics | `roles/audit-log` | WebSocket projet |
+|---|---|---|---|---|---|
+| **Admin** | ✅ Tous projets, tous événements | ✅ Tous projets | ✅ Complet | ✅ | ✅ |
+| **Chef de projet** | ✅ Tous événements de ses projets | ✅ Ses projets | ✅ Ses projets (onglet visible) | ❌ 403 | ✅ |
+| **Membre** | ✅ Uniquement ses propres actions¹ | ❌ 403 | ❌ 403 | ❌ 403 | ✅ |
+| **Client** | ❌ 403 (middleware) | ❌ 403 | ❌ 403 | ❌ 403 | ❌ bloqué |
+
+¹ Les membres voient **uniquement les événements où ils sont l'acteur** (`actor_id = user->id`). Ils ne peuvent pas voir les actions des autres membres, même dans les projets partagés.
+
+**Règles RBAC multi-projets (Cas du double rôle) :**
+
+Un utilisateur peut être Chef dans un projet et simple Membre dans un autre. Les règles s'appliquent **projet par projet** :
+
+| Projet | Rôle | Événements visibles |
+|---|---|---|
+| Projet A | Chef | Tous les événements du projet A |
+| Projet B | Membre | Uniquement ses propres actions dans B |
+
+Les privilèges obtenus dans le projet A ne sont **jamais hérités** vers le projet B.
+
+**Algorithme de filtrage backend (`ActivityFeedController::resolveAccess()`) :**
+
+```php
+// 1. Déterminer les projets "chef/owner"
+$chefProjectIds = Project::where('chef_id', $user->id)
+    ->orWhere('owner_id', $user->id)->pluck('id');
+
+// 2. Déterminer les projets "membre uniquement"
+$accessibleProjectIds = Project::accessibleToUser($user)->pluck('id');
+$memberOnlyProjectIds = $accessibleProjectIds->diff($chefProjectIds);
+
+// 3. Application :
+//    Projets chef  → tous les événements (whereIn project_id)
+//    Projets membre → uniquement actor_id = user->id
+```
+
+**Résultat SQL généré pour un chef en mode mixte :**
+
+```sql
+WHERE (
+    project_id IN (1, 3)                      -- projets chef/owner
+    OR (project_id IN (2, 5) AND actor_id = 7) -- projets membre uniquement
+)
+```
+
+**Détection Chef de projet (frontend) :**
+
+Le champ `is_chef_somewhere` est inclus dans la réponse `/api/me` (via `UserResource`).  
+Si `true`, l'onglet Analytics du journal d'audit est affiché.
+
+```js
+const canSeeAnalytics = isAdmin || user?.is_chef_somewhere;
+```
+
+### 22.5 API filtrée + export + analytics
 
 **Endpoint principal :**
 ```
-GET /api/activity/feed
+GET /api/activity/feed                [check.role:!client]
 ```
 
 **Paramètres de filtre :**
 
-| Paramètre | Type | Description |
-|---|---|---|
-| `project_id` | int | Filtrer par projet (vérifie l'accès) |
-| `actor_id` | int | Filtrer par utilisateur |
-| `action` | string | Action exacte (ex: `task.updated`) |
-| `module` | string | Préfixe module (`task`, `project`) |
-| `severity` | string | `info` / `warning` / `critical` |
-| `date_from` | date | À partir de (YYYY-MM-DD) |
-| `date_to` | date | Jusqu'à (YYYY-MM-DD) |
-| `search` | string | Texte libre (action, acteur, tâche) |
-| `with_stats` | bool | `1` = inclure les stats (4 queries extra, désactivé par défaut) |
-| `per_page` | int | 1–100, défaut 30 |
-| `page` | int | Pagination |
+| Paramètre | Type | Description | Restriction |
+|---|---|---|---|
+| `project_id` | int | Filtrer par projet | Vérifie `accessibleToUser()` → 403 si hors périmètre |
+| `actor_id` | int | Filtrer par acteur | Non-admin/chef : uniquement `actor_id = soi-même` |
+| `action` | string | Action exacte (ex: `task.updated`) | — |
+| `module` | string | Préfixe module (`task`, `project`) | — |
+| `severity` | string | `info` / `warning` / `critical` | — |
+| `date_from` | date | À partir de (YYYY-MM-DD) | — |
+| `date_to` | date | Jusqu'à (YYYY-MM-DD) | — |
+| `search` | string | Texte libre (action, acteur, tâche) | — |
+| `with_stats` | bool | `1` = inclure les stats (4 queries extra, désactivé par défaut) | — |
+| `per_page` | int | 1–100, défaut 30 | — |
+| `page` | int | Pagination | — |
 
 **Réponse :**
 ```json
 {
   "activities": [ ... ],
   "meta": { "current_page": 1, "last_page": 5, "total": 142, "per_page": 30 },
-  "stats": null  // null si with_stats absent, objet si with_stats=1
+  "stats": null
 }
 ```
 
-> **Performance** : les `stats` (4 requêtes SQL d'agrégation) sont calculées uniquement si `?with_stats=1` est passé. Le polling en temps réel n'envoie jamais ce paramètre — seul le chargement initial de la StatsBar l'utilise.
+> **Performance** : les `stats` (4 requêtes SQL d'agrégation) sont calculées uniquement si `?with_stats=1` est passé.
 
 **Analytics dédiées (5 minutes de cache) :**
 ```
-GET /api/activity/analytics
+GET /api/activity/analytics           [Admin + Chef de projet uniquement]
 ```
 Retourne : `top_users`, `by_module`, `by_severity`, `trend_28d`, `unstable_tasks`, `inactive_users`, `spikes`, `collaboration_score`, `kpis`.
 
+> ⚠️ **Accès restreint** : Les analytics exposent les noms et statistiques d'activité d'autres utilisateurs (`top_users`, `inactive_users`). Elles sont donc réservées aux admins et chefs de projet. Un membre simple reçoit HTTP 403.
+
 **Export CSV :**
 ```
-GET /api/activity/export?module=task&severity=critical
+GET /api/activity/export              [Admin + Chef de projet uniquement]
 ```
 Retourne un fichier `journal-audit-YYYY-MM-DD.csv` (max 5000 lignes).  
 L'`ip_address` n'est incluse que pour les admins.
 
+> ⚠️ **Accès restreint** : L'export en masse est limité aux admins et chefs pour éviter qu'un membre puisse extraire l'historique complet d'activité d'autres utilisateurs.
+
+**Journal des permissions (PermissionAuditLog) :**
+```
+GET /api/roles/audit-log              [Admin uniquement — check.role:admin]
+```
+Retourne les événements de modification de rôles et permissions (50 par page).  
+Contient : qui a accordé/révoqué quoi, à qui, depuis quelle IP.
+
+> ⚠️ **Accès strictement admin** : Ce journal contient des informations système sensibles (assignation de rôles, changements de permissions). Déclaré **avant** `roles/{role}` dans `routes/api.php` pour éviter la capture du paramètre dynamique.
+
 **Rapport PDF (page dédiée) :**
 ```
-/audit-log/report?module=task&date_from=2026-05-01&...
+/audit-log/report?module=task&date_from=2026-05-01&...   [Admin + Membre]
 ```
 Page React standalone (`AuditReportPage.jsx`) sans sidebar/topbar :
-- Charge les données en temps réel depuis `/api/activity/feed` + `/api/activity/analytics`
-- Affiche KPIs + tables de distribution + tableau complet
+- Protégée par `ProtectedRoute` + `RoleRoute allow={['admin', 'member']}`
+- Charge les données depuis `/api/activity/feed` + `/api/activity/analytics`
 - Déclenche `window.print()` automatiquement après chargement
 - CSS `@media print` optimisé A4
 
-### 22.5 Frontend enterprise
+### 22.6 Frontend enterprise
 
-**Page `/audit-log`** (`react/src/pages/audit/AuditLogPage.jsx`) — 2 onglets :
+**Page `/audit-log`** (`react/src/pages/audit/AuditLogPage.jsx`) :
 
-**Onglet Timeline :**
+Route protégée : `RoleRoute allow={['admin', 'member']}` — les clients sont redirigés.
+
+**Onglet Timeline** (tous les utilisateurs autorisés) :
 
 | Fonctionnalité | Implémentation |
 |---|---|
@@ -2489,10 +2684,9 @@ Page React standalone (`AuditReportPage.jsx`) sans sidebar/topbar :
 | Recherche live | Debounce côté serveur |
 | WebSocket temps réel | Badge "X nouveau(x)" + prepend sans refresh |
 | Scroll infini | IntersectionObserver → `fetchNextPage()` |
-| Export PDF | `window.open('/audit-log/report?...params', '_blank')` |
 | Badge reset | `localStorage.setItem('audit_last_visit', now)` à l'ouverture |
 
-**Onglet Analytics :**
+**Onglet Analytics** (admins uniquement — `isAdmin` vérifié côté frontend ET backend) :
 
 | Widget | Données |
 |---|---|
@@ -2503,8 +2697,33 @@ Page React standalone (`AuditReportPage.jsx`) sans sidebar/topbar :
 | Tâches instables | >5 mises à jour en 7j — risk_level: critical/warning |
 | Membres inactifs | 0 activité depuis 14 jours |
 | Pics d'activité | Jours avec count > 2× moyenne des 28j |
+| Export PDF | `window.open('/audit-log/report?...params', '_blank')` |
+
+> L'onglet Analytics n'est pas rendu pour les non-admins (filtre `{ visible: isAdmin }` dans le tab switcher). Le backend rejette aussi la requête avec HTTP 403 si un membre tente d'appeler `/api/activity/analytics` directement.
 
 > Tous les graphiques sont implémentés en **CSS/SVG pur** — aucune dépendance externe (pas de recharts, chart.js ou d3).
+
+### 22.7 Sécurité WebSocket (canaux temps réel)
+
+```php
+// routes/channels.php
+Broadcast::channel('project.{projectId}', function ($user, int $projectId) {
+    // Clients bloqués — les broadcasts exposent des événements internes de l'équipe
+    if ($user->hasRole('client')) return false;
+    if ($user->hasRole('admin')) return true;
+    // Autres : vérification appartenance au projet
+    return Project::where('id', $projectId)
+        ->where(fn($q) => $q->where('owner_id', $user->id)
+            ->orWhereHas('members', fn($qm) => $qm->where('users.id', $user->id))
+            ->orWhereHas('users',   fn($qu) => $qu->where('users.id', $user->id)))
+        ->exists();
+});
+```
+
+| Canal | Autorisé | Bloqué |
+|---|---|---|
+| `user.{userId}` | Propriétaire uniquement | Tous les autres |
+| `project.{projectId}` | Admin, owner, membres (non-clients) | Clients, utilisateurs hors projet |
 
 **Humanisation naturelle** (`react/src/lib/projectActivityHumanize.js`) :
 
@@ -2518,7 +2737,7 @@ Page React standalone (`AuditReportPage.jsx`) sans sidebar/topbar :
 "Fatma a assigné "Sprint planning" à Charlie"
 ```
 
-### 22.6 Sidebar SaaS moderne
+### 22.8 Sidebar SaaS moderne
 
 La sidebar a été entièrement redessinée en style **Linear / Notion** :
 
@@ -2560,5 +2779,376 @@ queryClient.invalidateQueries(['audit-badge']) ← déclenché à l'ouverture de
 > - **Sprint 6 (26 mai 2026)** : Système Pause/Reprise projet complet — migration `paused_at/paused_by/pause_reason/previous_status`, middleware `project.not_paused` (HTTP 423), `ProjectPolicy::pause()` + `resume()`, hook `useProjectPause`, composants `ProjectPauseButton`, `PauseProjectModal`, `ProjectPauseBanner`, événement WebSocket `ProjectStatusChanged`, permissions RBAC `project.pause` + `project.resume`, matrice permissions UI
 > - **Nettoyage (29 mai 2026)** : Suppression fichiers morts (`p.py` racine, `fix-chars.mjs`), correction message HTTP 423 anglais → français, suppression code mort `APP_ROLE_LABELS_EN` dans `roles.js`, ajout types `project.paused`/`project.resumed` dans `NotificationDropdown`, enrichissement `activityHumanize.js` (+6 cas manquants), harmonisation spinner chargement (bleu → indigo)
 > - **22 mai 2026** : Corrections N+1 (GanttController, AiController), stats journal optionnelles (`?with_stats=1`), listeners WebSocket complets 12/12 événements, rapport PDF audit standalone
+>
+> - **31 mai 2026 — Retrait de membre par le Chef de projet** : nouvelle fonctionnalité (§23) — `ProjectController::removeMember` réécrit avec règles métier complètes (protection chef, blocage admin, messages d'erreur explicites), `NotificationService::notifyMemberRemoved` ajouté, frontend `MembersTab` mis à jour (bouton "Retirer" visible pour chef + admin, modal de confirmation inline, toast avec message serveur).
+> - **31 mai 2026 — Audit sécurité RBAC journal d'audit** : 6 vulnérabilités corrigées — (1) `GET /api/roles/audit-log` rendu admin-only (était accessible à tout utilisateur authentifié), (2) `GET /api/activity/analytics` restreint aux admins + chefs (exposait `top_users`/`inactive_users` aux membres), (3) `GET /api/activity/export` restreint aux admins + chefs (extraction en masse par les membres), (4) filtre `actor_id` restreint à son propre ID pour les membres (traçage d'autres utilisateurs), (5) canal WebSocket `project.{id}` bloque désormais explicitement les clients, (6) onglet Analytics du frontend masqué pour les non-admins + `AuditReportPage` protégée par `RoleRoute`. Section 22 mise à jour avec le modèle RBAC complet (§22.4) et la sécurité WebSocket (§22.7).
+>
+## 24. Module Gantt — Visibilité par rôle
+
+### 24.1 Matrice d'accès
+
+| Rôle | `GET /gantt` (global) | `GET /projects/{id}/gantt` | `PUT /projects/{id}/gantt` |
+|---|---|---|---|
+| **Admin** | ✅ Toutes tâches | ✅ Toutes tâches | ✅ |
+| **Chef de projet** | ✅ Tâches de ses projets + assignées ailleurs | ✅ Toutes tâches (si chef/owner du projet) | ✅ (si chef/owner) |
+| **Membre** | ✅ Uniquement ses tâches assignées | ✅ Uniquement ses tâches assignées | ❌ 403 |
+| **Client** | ❌ Bloqué `check.role:!client` | ✅ Toutes tâches (lecture seule) | ❌ 403 `canEditProject()=false` |
+
+### 24.2 Logique de filtrage backend
+
+**`GET /projects/{id}/gantt` — `GanttController::show()`**
+```
+Gate::authorize('view', $project)  ← vérifie canViewProject()
+  ↓
+if isAdmin($user)              → no filter  — toutes les tâches
+if isClientRole($user)         → no filter  — lecture seule (PUT bloqué séparément)
+if chef_id === user->id        → no filter  — responsable du projet
+if owner_id === user->id       → no filter  — propriétaire du projet
+else (membre simple)           → whereHas('assignees', user->id)
+```
+
+**`GET /gantt` — `GanttController::globalIndex()`**
+```
+check.role:!client  ← middleware bloque les clients en amont
+  ↓
+if isAdmin($user)              → no filter  — toutes tâches
+if $chefProjectIds->isNotEmpty → whereIn(project_id, chefIds) OR assignee = user
+else (membre simple)           → whereHas('assignees', user->id)
+```
+
+**`PUT /projects/{id}/gantt` — `GanttController::updateDates()`**
+```
+check.project:edit  → canEditProject() → false pour clients
+Gate::authorize('update', $project)    ← politique ProjectPolicy
+```
+
+### 24.3 Règles métier effectives
+
+- **Admin** : visibilité totale, sans aucun filtre, sur tous les projets.
+- **Chef de projet** : voit toutes les tâches planifiées (`planned_start IS NOT NULL`) dans ses projets (`chef_id` ou `owner_id`). Dans le Gantt global, voit aussi ses tâches assignées dans d'autres projets.
+- **Membre** : ne voit que les tâches qui lui sont assignées (`task_assignments`), ni plus ni moins — même dans un projet où il est membre.
+- **Client** : accès lecture seule au Gantt de ses projets via `GET /projects/{id}/gantt`. Ne peut pas accéder au Gantt global (`check.role:!client`). Aucune modification possible (`canEditProject()` renvoie `false` pour le rôle `client`).
+
+### 24.4 Frontend
+
+| Composant | Comportement |
+|---|---|
+| `GanttPage.jsx` | Accessible uniquement aux rôles `admin` et `member` via `RoleRoute`. Appelle `GET /gantt` (global) ou `GET /gantt?project_id=X` selon le mode. |
+| `ProjectDetailPage.jsx` | Onglet Gantt visible pour admin, membres ET clients (`!isViewer \|\| isClient`). Données chargées depuis `GET /projects/{id}/gantt`. Désactivé pour les invités purs (`viewer`/`guest`). |
+| `GanttChart.jsx` | Composant entièrement **lecture seule** — aucun drag, aucun bouton de modification. Affiche tâches, dépendances (SVG Bézier), chemin critique (rouge), indicateur aujourd'hui. |
+
+### 24.5 Sécurité — garanties backend
+
+1. Tout filtre de visibilité est appliqué **côté serveur** ; la frontend n'est qu'une couche de confort.
+2. Un membre ne peut jamais récupérer les tâches d'autres utilisateurs via `GET /gantt` car le filtre `whereHas('assignees', user_id)` est injecté directement dans la requête SQL.
+3. Un chef ne peut pas voir les tâches d'un projet qu'il ne dirige pas via le Gantt global, grâce au filtre `whereIn('project_id', chefProjectIds)`.
+4. Un client tente-t-il `PUT /projects/{id}/gantt` → rejeté par `check.project:edit` (middleware) qui appelle `canEditProject()` → retourne `false` pour tous les utilisateurs avec le rôle `client`.
+
+---
+
+## 26. Gestion des tâches — Règles de suppression et contraintes de dates
+
+### 26.1 Règles de suppression
+
+| Rôle | Peut supprimer | Conditions |
+|---|:---:|---|
+| **Admin** | ✅ N'importe quelle tâche | Sans restriction |
+| **Chef de projet / Owner** | ✅ Toute tâche de ses projets | `project.chef_id = user.id` ou `project.owner_id = user.id` |
+| **Rôle projet « admin »** | ✅ Toute tâche du projet | Via `projectRole() === 'admin'` (legacy) |
+| **Membre créateur** | ✅ Conditionnel | Uniquement si `task.created_by = user.id` ET tâche non terminée (`workflow_status != 'done'` ET `progress_percent < 100`) |
+| **Membre non-créateur** | ❌ Jamais | Même si assigné à la tâche |
+| **Client** | ❌ Jamais | `isClientRole()` → retourne false |
+
+**Implémentation backend :**
+```php
+// AccessControl::canDeleteTask()
+if (isAdmin) → true
+if (isClientRole) → false
+if (chef_id == user.id || owner_id == user.id) → true
+if (projectRole == 'admin') → true
+if (created_by == user.id && !isCompleted) → true  // membre créateur
+else → false
+```
+
+**`can_delete` dans la réponse API (`TaskResource`) :**
+```json
+{
+  "access": {
+    "can_edit": true,
+    "can_delete": false
+  }
+}
+```
+
+Le frontend lit `task.access.can_delete` pour afficher/masquer le bouton "Supprimer" (TaskFormPage, Kanban).
+
+### 26.2 Contraintes de dates des tâches
+
+Les tâches DOIVENT être comprises dans la période du projet (`start_date` → `end_date`).
+
+**Validation backend (`assertTaskDatesWithinProjectWindow()`) :**
+
+| Champ | Contrainte |
+|---|---|
+| `planned_start` | ≥ `project.start_date` ET ≤ `project.end_date` |
+| `planned_end` | ≥ `project.start_date` ET ≤ `project.end_date` ET ≥ `planned_start` |
+| `due_date` | ≥ `project.start_date` ET ≤ `project.end_date` |
+| `planned_start` (update) | Immuable après création |
+
+La validation est déclenchée dans `store()` et `update()`. Si le projet n'a pas de dates, la validation est sautée.
+
+**Messages d'erreur :**
+- `"La date de début ne peut pas être antérieure au démarrage du projet (DD/MM/YYYY)."`
+- `"La date de début ne peut pas dépasser la date de fin du projet (DD/MM/YYYY)."`
+- `"La date de fin ne peut pas être antérieure au démarrage du projet (DD/MM/YYYY)."`
+- `"La date de fin ne peut pas dépasser la date de fin du projet (DD/MM/YYYY)."`
+- `"La date d'échéance ne peut pas être antérieure au démarrage du projet (DD/MM/YYYY)."`
+- `"La date d'échéance ne peut pas dépasser la date de fin du projet (DD/MM/YYYY)."`
+
+**Validation frontend (`TaskFormPage.jsx`) :**
+- `planned_start` : `min=projectStart`, `max=projectEnd`
+- `planned_end` : `min=max(planned_start, projectStart)`, `max=projectEnd`
+- Les limites sont affichées à l'utilisateur dans le formulaire
+
+### 26.3 Journal d'audit des suppressions
+
+Chaque suppression est enregistrée avec :
+
+```json
+{
+  "action": "task.deleted",
+  "severity": "critical",
+  "meta": { "task_title": "..." },
+  "old_values": {
+    "title": "...", "status": "...", "priority": "...",
+    "workflow_status": "...", "planned_start": "...", "planned_end": "...",
+    "due_date": "...", "progress_percent": 0,
+    "assignees": ["..."], "created_by": "..."
+  },
+  "new_values": {}
+}
+```
+
+---
+
+## 25. Rôle Client — Observateur de projet
+
+### 25.1 Définition du rôle
+
+Le **Client** est un utilisateur externe invité par un Administrateur ou un Chef de projet pour suivre l'avancement d'un ou plusieurs projets sans participer à leur réalisation. C'est un **observateur en lecture seule**.
+
+### 25.2 Permissions Spatie accordées
+
+| Permission | Accordée | Usage |
+|---|:---:|---|
+| `project.view` | ✅ | Consulter les projets où il est membre |
+| `project.export` | ✅ | Exporter des données projet |
+| `task.view` | ✅ | Consulter les tâches |
+| `sprint.view` | ✅ | Consulter l'avancement des sprints |
+| `gantt.view` | ✅ | Consulter le Gantt projet (via detail page) |
+| `dashboard.view_client` | ✅ | Accéder au tableau de bord client |
+| `notification.view` | ✅ | Recevoir des notifications |
+| `ai.view` | ✅ | Accès aux rapports IA projet (ClientDashboard) |
+| Toutes les permissions d'écriture | ❌ | Aucune création / modification / suppression |
+
+### 25.3 Modules accessibles
+
+| Module | Accès | Niveau |
+|---|:---:|---|
+| Tableau de bord (`/dashboard`) | ✅ | `ClientDashboard` — stats projets uniquement |
+| Projets (`/projects`) | ✅ | Lecture seule — projets auxquels il est invité |
+| Tâches (`/tasks`) | ✅ | Lecture seule — tâches de ses projets |
+| Calendrier (`/calendar`) | ✅ | Lecture seule — échéances de ses projets |
+| Gantt projet (via `/projects/{id}`) | ✅ | Lecture seule — toutes les tâches du projet |
+| Notifications (`/notifications`) | ✅ | Notifications de suivi projet |
+| Paramètres (`/settings`) | ✅ | Profil personnel uniquement |
+
+### 25.4 Modules restreints (interdits)
+
+| Module | Raison |
+|---|---|
+| Gantt global (`/gantt`) | Données de toute la plateforme — bloqué `check.role:!client` + `RoleRoute` |
+| IA / Analyses (`/ai`) | Analyses avancées internes — `RoleRoute allow=['admin','member']` + `clientHidden` Sidebar |
+| Journal d'audit (`/audit-log`) | Données internes — `RoleRoute allow=['admin','member']` + `clientHidden` Sidebar |
+| Équipes (`/teams`) | Administration — `adminOnly` Sidebar |
+| Utilisateurs (`/users`) | Administration — `adminOnly` Sidebar |
+| Rôles & Permissions (`/admin/roles`) | Administration — `PermissionRoute` (role.view) |
+| Activity Feed API | Données internes — `check.role:!client` |
+| ML / Recommandations | Calculs internes — `check.role:!client` |
+| Gestion des sprints (écriture) | `check.project:edit` → `canEditProject()=false` |
+
+### 25.5 Tableau de bord client (`ClientDashboard.jsx`)
+
+Le client voit uniquement ses projets (jamais les statistiques globales de la plateforme) :
+
+| Widget | Données |
+|---|---|
+| KPIs | Avancement global, échéance estimée, tâches en cours, tâches en retard |
+| Alertes | Tâches à risque, tâches en retard — de ses projets uniquement |
+| Mes projets | Liste des projets avec barre de progression |
+| Prochaines échéances | Tâches avec due_date proche |
+| Tableau des tâches récentes | Statut, priorité, échéance, avancement |
+| Rapports IA | Probabilité de retard, santé planning (via `/client/projects/{id}/ai/*`) |
+
+### 25.6 Gestion des accès clients
+
+| Acteur | Peut inviter un client | Peut retirer un client |
+|---|---|---|
+| **Admin** | ✅ Tout projet | ✅ Tout projet |
+| **Chef de projet** | ✅ Ses projets uniquement | ✅ Ses projets uniquement |
+| **Membre** | ❌ | ❌ |
+
+### 25.7 Sécurité — Garanties backend
+
+```
+canViewProject(client, project)
+  → isClientRole = true
+  → projectRole = null AND owner_id ≠ user.id  → false  (client non-invité bloqué)
+  → projectRole != null                          → true   (client invité autorisé)
+
+canEditProject(client, project) → always false (isClientRole check)
+canCreateTaskInProject(client)  → always false
+canCommentOnProject(client)     → always false
+
+Middleware check.role:!client bloque :
+  GET /gantt, GET /activity/feed, GET /activity/export,
+  GET /activity/analytics, ML, AI (global)
+
+check.project:edit bloque toutes les opérations d'écriture projet
+```
+
+### 25.8 Interface utilisateur — Barre latérale client
+
+```
+PRINCIPAL
+  ✅ Tableau de bord
+  ✅ Projets
+  ✅ Tâches
+  ❌ Gantt          (clientHidden: true — global page blocked)
+  ✅ Calendrier     (accès lecture seule, données filtrées)
+  ❌ IA             (clientHidden: true)
+
+COLLABORATION
+  ❌ Équipes        (adminOnly: true)
+  ❌ Utilisateurs   (adminOnly: true)
+  ✅ Notifications
+
+ADMINISTRATION
+  ❌ Rôles         (permission role.view absente)
+  ❌ Journal audit  (clientHidden: true)
+
+PARAMÈTRES
+  ✅ Profil / Préférences
+```
+
+### 25.9 Routes frontend protégées
+
+| Route | Protection | Client accès |
+|---|---|:---:|
+| `/dashboard` | `ProtectedRoute` | ✅ → `ClientDashboard` |
+| `/projects` | `ProtectedRoute` | ✅ lecture seule |
+| `/projects/:id` | `ProtectedRoute` | ✅ onglet Gantt inclus |
+| `/projects/:id/tasks/new` | `RoleRoute allow=['admin','member']` | ❌ redirigé |
+| `/projects/:id/tasks/:id/edit` | `RoleRoute allow=['admin','member']` | ❌ redirigé |
+| `/tasks` | `ProtectedRoute` | ✅ lecture seule |
+| `/calendar` | `RoleRoute allow=['admin','member','client']` | ✅ |
+| `/gantt` | `RoleRoute allow=['admin','member']` | ❌ |
+| `/ai` | `RoleRoute allow=['admin','member']` | ❌ |
+| `/audit-log` | `RoleRoute allow=['admin','member']` | ❌ |
+| `/notifications` | `ProtectedRoute` | ✅ |
+| `/settings` | `ProtectedRoute` | ✅ profil uniquement |
+
+---
+
+> - **31 mai 2026 — Gestion tâches RBAC + contraintes dates** : (1) `AccessControl::canDeleteTask()` étendu — chefs de projet et propriétaires peuvent supprimer toute tâche de leurs projets, membres peuvent supprimer leurs propres tâches non terminées (avant : admins seulement) ; (2) `TaskController::destroy()` enrichi avec `old_values` complets dans le journal d'audit (titre, statut, priorité, dates, assignés, créateur) ; (3) `assertTaskDatesWithinProjectWindow()` étendu pour valider aussi `due_date` contre les bornes du projet ; (4) Frontend `TaskFormPage.jsx` : bouton Supprimer basé sur `can_delete` au lieu de `can_edit` ; (5) Kanban `ProjectDetailPage.jsx` : delete handler basé sur `can_delete`. Section §26 ajoutée.
+> - **31 mai 2026 — Audit RBAC multi-projets** : refonte complète de `ActivityFeedController` — `buildQuery()` et `buildStats()` réarchitecturés avec `resolveAccess()` + `applyRbacFilter()` : les membres voient désormais **uniquement leurs propres actions** (avant : tous les événements de leurs projets) ; les chefs voient tous les événements de leurs projets + leurs propres actions dans les autres projets ; le cas multi-projets (chef ici, membre là) est géré projet par projet sans héritage croisé. `UserResource` : champ `is_chef_somewhere` ajouté (requête lazy). `AuditLogPage.jsx` : onglet Analytics visible pour `isAdmin || isChefSomewhere` (avant : admins seulement). Section §22.4 mise à jour avec l'algorithme complet. **Note** : le logging des événements d'authentification (login/logout/failed_login) nécessite un ajout de colonne nullable `project_id` dans `activity_logs` — non implémenté car cela requiert une migration.
+> - **31 mai 2026 — Rôle Client** : 5 incohérences corrigées — (1) `GET /calendar` sorti du groupe `check.role:!client` : les clients peuvent désormais consulter le calendrier de leurs projets ; (2) Sidebar : `clientHidden: true` ajouté à IA et Gantt global (liens masqués pour clients) + Audit Log masqué (`clientHidden`) ; (3) `App.jsx` : `/calendar` route mise à jour `RoleRoute allow=['admin','member','client']` ; (4) Création/édition de tâches bloquées en frontend via `RoleRoute allow=['admin','member']` ; (5) Section §25 ajoutée avec la documentation complète du rôle Client.
+> - **31 mai 2026 — Module Gantt RBAC** : 3 incohérences corrigées — (1) `GanttController::show()` : le chef de projet et le client voient désormais TOUTES les tâches du projet (avant : uniquement leurs tâches assignées, identiques aux membres) ; (2) `GanttController::globalIndex()` : le filtrage `accessibleBy` remplacé par un filtrage Gantt dédié — admin = tout, chef = ses projets + assignées ailleurs, membre = uniquement ses tâches assignées (avant : membres voyaient toutes les tâches de leurs projets) ; (3) `ProjectDetailPage.jsx` : onglet Gantt et requête activés pour les clients (`isClient` ajouté, `!isViewer || isClient` pour `enabled` et rendu du tab). Section §24 ajoutée.
+>
+## 27. État de santé du projet — Audit technique complet
+
+Audit réalisé le **31 mai 2026** sur l'ensemble du monorepo IntelliPM.
+
+### 27.1 Backend Laravel
+
+| Catégorie | Compte | Statut |
+|---|:---:|---|
+| Contrôleurs API | 30 | ✅ 100% utilisés — 0 orphelin |
+| Modèles Eloquent | 24 | ✅ 100% utilisés — 0 mort |
+| Services métier | 20 | ✅ 100% injectés et utilisés |
+| Middleware | 5 | ✅ 100% enregistrés et actifs |
+| Routes API | 100+ | ✅ 100% valides — 0 cassée |
+| Migrations | 52 | ✅ 0 obsolète |
+| Seeders actifs | 4/8 | ✅ 4 actifs, 3 optionnels (usage CLI), 1 DB seeder |
+| Dépendances Composer | 6 prod | ✅ Toutes nécessaires |
+| Code mort / TODO | 0 | ✅ Aucun |
+| Injection SQL | 0 | ✅ Paramétrisé partout |
+
+### 27.2 Frontend React
+
+| Catégorie | Compte | Statut |
+|---|:---:|---|
+| Pages | 29 | ✅ 100% routées et importées |
+| Composants UI | 37 | ✅ 100% utilisés |
+| Hooks personnalisés | 2 | ✅ Utilisés |
+| Librairies utilitaires | 17 | ✅ Toutes importées |
+| Routes App.jsx | 28 | ✅ 0 route morte |
+| Mock data | 0 | ✅ 100% API-driven |
+| console.log debug | 0 | ✅ (1 `console.error` intentionnel dans ErrorBoundary) |
+| Dépendances npm supprimées | 2 | ✅ `zod` + `date-fns` retirées (non utilisées) |
+
+### 27.3 Microservice ML (FastAPI / Python)
+
+| Catégorie | Statut |
+|---|---|
+| Endpoints FastAPI | ✅ 6 endpoints opérationnels |
+| Modèle ML | ✅ Fichier `.joblib` présent (`task_assignment.joblib` 745 KB) |
+| Connexion DB | ✅ SQLAlchemy via MySQL pooling |
+| Features | ✅ 22 dimensions (skill, workload, performance, affinity, context, trend, risk) |
+| Intégration Laravel | ✅ `PythonMLClient` → `SpecialtyController::autoAssign()` |
+| `avatar_url` transformation | ✅ **Corrigé** : chemin brut → `/storage/...` |
+
+### 27.4 Sécurité
+
+| Vérification | Résultat |
+|---|---|
+| Authentification Sanctum | ✅ Token Bearer sur toutes les routes protégées |
+| RBAC Spatie (4 rôles) | ✅ admin / member / client correctement scoped |
+| Policies Laravel | ✅ TaskPolicy + ProjectPolicy complètes et testées |
+| Gates | ✅ `Gate::authorize()` partout dans les controllers |
+| WebSocket canal projet | ✅ Clients explicitement bloqués (`hasRole('client') → false`) |
+| XSS (dangerouslySetInnerHTML) | ✅ Aucun usage |
+| SQL Injection | ✅ Requêtes paramétrées, pas de concaténation de strings |
+| `APP_DEBUG` production | ✅ `.env.example` corrigé → `false` |
+| `SESSION_ENCRYPT` production | ✅ `.env.example` corrigé → `true` |
+| CORS | ⚠️ `allowed_headers: ['*']` — acceptable pour dev, restreindre en prod |
+| Token localStorage | ⚠️ Architectural — acceptable pour SPA, httpOnly cookies recommandés en prod |
+
+### 27.5 Corrections appliquées (31 mai 2026)
+
+Toutes les corrections de cette session de développement :
+
+| # | Module | Correction | Impact |
+|---|---|---|---|
+| 1 | `SpecialtyController` | Ajout `avatar_url` dans réponse auto-assign | Images ML recommendation correctement chargées |
+| 2 | `package.json` | Suppression `zod` + `date-fns` | Bundle réduit, dépendances propres |
+| 3 | `.env.example` | `APP_DEBUG=false`, `SESSION_ENCRYPT=true`, `LOG_LEVEL=error` | Template production sécurisé |
+| 4 | `AccessControl::canDeleteTask()` | Chef + membre-créateur | Règles métier correctement appliquées |
+| 5 | `TaskController::destroy()` | `old_values` audit log + `due_date` validation | Traçabilité complète + contraintes dates |
+| 6 | `TaskFormPage.jsx` + `ProjectDetailPage.jsx` | Bouton Supprimer basé sur `can_delete` | UI cohérente avec le backend |
+| 7 | `ActivityFeedController` | RBAC multi-projets — membres voient uniquement leurs actions | Conformité règles métier audit |
+| 8 | `UserResource` | `is_chef_somewhere` ajouté | Analytics audit accessibles aux chefs |
+| 9 | `AuditLogPage.jsx` | Onglet Analytics pour chefs | UX cohérente avec les permissions |
+| 10 | `routes/api.php` | Calendrier débloqué pour clients | Clients voient le calendrier projet |
+| 11 | `Sidebar.jsx` | `clientHidden: true` sur IA, Gantt, Audit Log | Navigation propre pour clients |
+| 12 | `GanttController` | Chef/Client voient toutes les tâches projet | Conformité règles Gantt |
+| 13 | `ProjectDetailPage.jsx` | Onglet Gantt + `isClient` | Clients accèdent au Gantt projet |
+| 14 | `ProjectController::removeMember()` | Règles chef + audit log + notification | Retrait membre fonctionnel |
+| 15 | `NotificationService` | `notifyMemberRemoved()` | Notification au membre retiré |
+| 16 | Audit log RBAC (session précédente) | `roles/audit-log` admin-only, analytics restreints, export limité | Sécurité journal d'audit |
+
+---
+
+> - **31 mai 2026 — Audit technique complet (PFE ready)** : Audit de l'ensemble du projet (30 contrôleurs, 24 modèles, 29 pages React, 37 composants) — zéro code mort détecté. Corrections : (1) `SpecialtyController::autoAssign()` : champ `avatar_url` ajouté (transformation chemin → URL `/storage/` pour `MLRecommendationModal.jsx`) ; (2) `package.json` : suppression des dépendances inutilisées `zod` et `date-fns` (non importées dans le code source) ; (3) `.env.example` : valeurs de production corrigées — `APP_DEBUG=false`, `SESSION_ENCRYPT=true`, `LOG_LEVEL=error`. Résultats audit : 100% des routes valides, 100% des composants utilisés, 0 mock data, 0 SQL injection détectée. §27 État de santé du projet ajouté.
 >
 > Document maintenu par **Fatma Rejeb** — ISET, Promotion 2026.

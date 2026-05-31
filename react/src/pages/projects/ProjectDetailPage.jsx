@@ -16,6 +16,7 @@ import {
   ArrowLeft, Plus, GripVertical, Clock, User, AlertTriangle,
   BarChart3, Users, Calendar, Mail, Download, History,
   Pencil, Trash2, LayoutGrid, MessageSquare, Link2, FolderKanban, Crown, TrendingUp,
+  UserMinus,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -103,7 +104,8 @@ export default function ProjectDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const queryClient = useQueryClient();
-  const isAdmin = user?.roles?.includes('admin');
+  const isAdmin  = user?.roles?.includes('admin');
+  const isClient = user?.roles?.includes('client');
   const isViewer = isGuestViewer(user);
   const isMember = !isAdmin && !isViewer;
 
@@ -204,7 +206,8 @@ export default function ProjectDetailPage() {
   });
   const { data: ganttData, isLoading: loadingGantt } = useQuery({
     queryKey: ['project-gantt', id],
-    enabled: !isViewer && tab === 'gantt',
+    // Clients have read-only access to the full project Gantt; only true guests (viewer/guest role) are blocked
+    enabled: (!isViewer || isClient) && tab === 'gantt',
     queryFn: () => api.get(`/projects/${id}/gantt`).then((r) => (
       r.data?.gantt ?? r.data?.data?.gantt ?? r.data?.data ?? []
     )),
@@ -537,7 +540,7 @@ export default function ProjectDetailPage() {
           { key: 'kanban', label: 'Kanban' },
           { key: 'members', label: 'Membres' },
           { key: 'activity', label: 'Historique' },
-          ...(!isViewer ? [{ key: 'gantt', label: 'Gantt' }] : []),
+          ...(!isViewer || isClient ? [{ key: 'gantt', label: 'Gantt' }] : []),
           { key: 'progress', label: "Rapport d'avancement" },
           ...(isViewer ? [{ key: 'reports', label: 'Rapports IA' }] : []),
         ].map((t) => (
@@ -992,7 +995,7 @@ function KanbanBoard({
                 key={task.id}
                 task={task}
                 onClick={() => onEditTask(task)}
-                onDelete={canWriteProject && (isAdmin || task?.access?.can_edit !== false)
+                onDelete={canWriteProject && (isAdmin || task?.access?.can_delete === true)
                   ? () => onDeleteTask(task)
                   : null}
                 onLogWork={onLogWork ? () => onLogWork(task) : null}
@@ -1223,17 +1226,30 @@ function MembersTab({ project, projectId, canEditProject, canInvite, isAdmin, on
     onError: (err) => toast.error(err?.response?.data?.message || 'Erreur lors de l\'ajout.'),
   });
 
+  // Current authenticated user (to detect if they are the project chef)
+  const { user: currentUser } = useAuth();
+
+  const [confirmMember, setConfirmMember] = useState(null);
+
   const removeMutation = useMutation({
     mutationFn: (uid) => api.delete(`/projects/${projectId}/members/${uid}`),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['project-members', projectId] });
-      toast.success('Membre retiré.');
+      setConfirmMember(null);
+      toast.success(data?.data?.message || 'Membre retiré du projet.');
     },
-    onError: (err) => toast.error(err?.response?.data?.message || 'Erreur lors du retrait.'),
+    onError: (err) => {
+      setConfirmMember(null);
+      toast.error(err?.response?.data?.message || 'Erreur lors du retrait.');
+    },
   });
 
   const chef    = (members ?? []).find((m) => m.is_chef);
   const membres = (members ?? []).filter((m) => !m.is_chef);
+
+  // Chef du projet courant peut aussi retirer des membres
+  const isCurrentUserChef = !isAdmin && chef?.id === currentUser?.id;
+  const canManageMembers  = isAdmin || isCurrentUserChef;
 
   if (isLoading) return <div className="flex justify-center py-10"><Spinner /></div>;
 
@@ -1341,6 +1357,41 @@ function MembersTab({ project, projectId, canEditProject, canInvite, isAdmin, on
         </div>
       )}
 
+      {/* ── Fenêtre de confirmation de retrait ── */}
+      {confirmMember && (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">
+                Retirer <span className="text-destructive">{confirmMember.name}</span> du projet ?
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Son accès sera révoqué immédiatement. Une notification lui sera envoyée.
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setConfirmMember(null)}
+                disabled={removeMutation.isPending}
+              >
+                Annuler
+              </Button>
+              <Button
+                size="sm"
+                className="bg-destructive text-white hover:bg-destructive/90"
+                onClick={() => removeMutation.mutate(confirmMember.id)}
+                disabled={removeMutation.isPending}
+              >
+                <UserMinus className="mr-1.5 h-3.5 w-3.5" />
+                {removeMutation.isPending ? 'Retrait…' : 'Confirmer'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Membres */}
       <div>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1355,10 +1406,8 @@ function MembersTab({ project, projectId, canEditProject, canInvite, isAdmin, on
                 key={m.id}
                 member={m}
                 isChef={false}
-                removable={isAdmin}
-                onRemove={() => {
-                  if (window.confirm('Retirer ce membre ?')) removeMutation.mutate(m.id);
-                }}
+                removable={canManageMembers}
+                onRemove={() => setConfirmMember(m)}
               />
             ))}
           </div>
@@ -1369,7 +1418,7 @@ function MembersTab({ project, projectId, canEditProject, canInvite, isAdmin, on
 }
 
 function MemberRow({ member: m, isChef, removable, onRemove }) {
-  const specs    = m.specialties || [];
+  const specs     = m.specialties || [];
   const canRemove = removable && !isChef;
   return (
     <div className={`flex items-center justify-between rounded-lg border bg-card p-3 ${isChef ? 'border-amber-300 dark:border-amber-700' : 'border-border'}`}>
@@ -1411,11 +1460,13 @@ function MemberRow({ member: m, isChef, removable, onRemove }) {
         )}
         {canRemove && (
           <button
+            type="button"
             onClick={onRemove}
-            className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-destructive"
-            title="Retirer ce membre"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            title="Retirer ce membre du projet"
           >
-            ×
+            <UserMinus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Retirer</span>
           </button>
         )}
       </div>

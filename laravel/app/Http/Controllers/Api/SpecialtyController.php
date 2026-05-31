@@ -170,12 +170,19 @@ class SpecialtyController extends Controller
         $best       = $candidates[0];
 
         // Map to legacy shape for backward-compat + new ML fields
+        // avatar_url: transform raw path → public storage URL for frontend
         $topUsers = array_map(function ($c) {
+            $avatarPath = $c['avatar'] ?? null;
+            $avatarUrl  = $avatarPath
+                ? '/storage/' . ltrim(str_replace('\\', '/', $avatarPath), '/')
+                : null;
+
             return [
                 'id'               => $c['user_id'],
                 'name'             => $c['name'],
                 'email'            => $c['email'],
-                'avatar'           => $c['avatar'],
+                'avatar'           => $avatarPath,
+                'avatar_url'       => $avatarUrl,
                 'score'            => (int)round($c['score']),
                 'relative_score'   => $c['relative_score'] ?? 100,
                 'is_recommended'   => $c['score'] >= 50,

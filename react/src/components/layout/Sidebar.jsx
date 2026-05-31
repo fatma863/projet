@@ -16,6 +16,8 @@ import api from '../../lib/api';
 
 // ── Navigation sections ────────────────────────────────────────────────────────
 
+// clientHidden: true  → masqué pour les utilisateurs avec le rôle 'client'
+// adminOnly: true     → masqué pour tout utilisateur non-admin
 const NAV_SECTIONS = [
   {
     key: 'main',
@@ -24,17 +26,17 @@ const NAV_SECTIONS = [
       { to: '/dashboard',     icon: LayoutDashboard, labelKey: 'layout.nav.dashboard',     permission: null },
       { to: '/projects',      icon: FolderKanban,    labelKey: 'layout.nav.projects',      permission: 'project.view' },
       { to: '/tasks',         icon: ListTodo,        labelKey: 'layout.nav.tasks',         permission: 'task.view' },
-      { to: '/gantt',         icon: CalendarRange,   labelKey: 'layout.nav.gantt',         permission: 'gantt.view' },
+      { to: '/gantt',         icon: CalendarRange,   labelKey: 'layout.nav.gantt',         permission: 'gantt.view',  clientHidden: true },
       { to: '/calendar',      icon: CalendarDays,    labelKey: 'layout.nav.calendar',      permission: 'sprint.view' },
-      { to: '/ai',            icon: Brain,           labelKey: 'layout.nav.ai',            permission: 'ai.view' },
+      { to: '/ai',            icon: Brain,           labelKey: 'layout.nav.ai',            permission: 'ai.view',     clientHidden: true },
     ],
   },
   {
     key: 'collab',
     label: 'Collaboration',
     items: [
-      { to: '/teams',         icon: Users,           labelKey: 'layout.nav.teams',         permission: 'team.view' },
-      { to: '/users',         icon: UserCog,         labelKey: 'layout.nav.users',         permission: 'user.view' },
+      { to: '/teams',         icon: Users,           labelKey: 'layout.nav.teams',         permission: 'team.view',         adminOnly: true },
+      { to: '/users',         icon: UserCog,         labelKey: 'layout.nav.users',         permission: 'user.view',         adminOnly: true },
       { to: '/notifications', icon: Bell,            labelKey: 'layout.nav.notifications', permission: 'notification.view', badge: 'notif' },
     ],
   },
@@ -43,7 +45,7 @@ const NAV_SECTIONS = [
     label: 'Administration',
     items: [
       { to: '/admin/roles',   icon: ShieldCheck,     labelKey: 'layout.nav.roles',         permission: 'role.view' },
-      { to: '/audit-log',     icon: History,         labelKey: 'layout.nav.auditLog',      permission: 'task.view',   badge: 'audit' },
+      { to: '/audit-log',     icon: History,         labelKey: 'layout.nav.auditLog',      permission: 'task.view',   badge: 'audit', clientHidden: true },
     ],
   },
 ];
@@ -139,9 +141,13 @@ function NavItem({ item, collapsed, onClose, notifCount, auditBadge }) {
 
 // ── Section group ──────────────────────────────────────────────────────────────
 
-function SectionGroup({ section, collapsed, onClose, notifCount, auditBadge, can }) {
+function SectionGroup({ section, collapsed, onClose, notifCount, auditBadge, can, isAdmin, isClient }) {
   const { t } = useI18n();
-  const visibleItems = section.items.filter(({ permission }) => !permission || can(permission));
+  const visibleItems = section.items.filter(({ permission, adminOnly, clientHidden }) => {
+    if (adminOnly && !isAdmin) return false;
+    if (clientHidden && isClient) return false;
+    return !permission || can(permission);
+  });
   if (!visibleItems.length) return null;
 
   return (
@@ -183,7 +189,8 @@ function SectionGroup({ section, collapsed, onClose, notifCount, auditBadge, can
 export default function Sidebar({ onClose }) {
   const { user, logout } = useAuth();
   const { t } = useI18n();
-  const { can } = usePermissions();
+  const { can, isAdmin } = usePermissions();
+  const isClient = user?.roles?.includes('client');
 
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar_collapsed') === 'true'; } catch { return false; }
@@ -293,6 +300,8 @@ export default function Sidebar({ onClose }) {
             notifCount={notifCount}
             auditBadge={auditBadge}
             can={can}
+            isAdmin={isAdmin}
+            isClient={isClient}
           />
         ))}
       </nav>

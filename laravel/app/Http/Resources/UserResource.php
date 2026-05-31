@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Http\Resources\SpecialtyResource;
+use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -41,6 +42,12 @@ class UserResource extends JsonResource
             'notify_type_task_delayed' => (bool) ($this->notify_type_task_delayed ?? true),
             'theme' => $this->theme,
             'created_at' => $this->created_at?->toISOString(),
+            // Indique si l'utilisateur est chef ou propriétaire d'au moins un projet.
+            // Utilisé par le frontend pour afficher l'onglet Analytics du journal d'audit.
+            'is_chef_somewhere' => Project::query()
+                ->where('chef_id', $this->id)
+                ->orWhere('owner_id', $this->id)
+                ->exists(),
             'specialties' => $this->when(
                 $this->relationLoaded('specialties'),
                 fn () => SpecialtyResource::collection($this->specialties),

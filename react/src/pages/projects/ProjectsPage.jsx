@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useI18n } from '../../i18n/I18nContext';
 import api from '../../lib/api';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -17,25 +18,6 @@ import {
   Pencil, Trash2, Eye, X, RotateCcw, ChevronDown, Check, Crown,
 } from 'lucide-react';
 import { isGuestViewer } from '../../lib/roles';
-
-const STATUS_OPTIONS = [
-  { value: 'planning', label: 'Planification', variant: 'secondary' },
-  { value: 'active', label: 'Actif', variant: 'success' },
-  { value: 'on_hold', label: 'En pause', variant: 'warning' },
-  { value: 'completed', label: 'Terminé', variant: 'default' },
-  { value: 'cancelled', label: 'Annulé', variant: 'destructive' },
-];
-
-function getStatusBadge(status) {
-  const opt = STATUS_OPTIONS.find((s) => s.value === status);
-  return opt ? <Badge variant={opt.variant}>{opt.label}</Badge> : <Badge>{status}</Badge>;
-}
-
-const PRIORITY_OPTIONS = [
-  { value: 'low', label: 'Basse' },
-  { value: 'medium', label: 'Moyenne' },
-  { value: 'high', label: 'Haute' },
-];
 
 const EMPTY_FORM = {
   name: '',
@@ -57,6 +39,7 @@ function parseUsersResponse(res) {
 
 export default function ProjectsPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const isAdmin = user?.roles?.includes('admin');
   const isViewer = isGuestViewer(user);
   const queryClient = useQueryClient();
@@ -67,6 +50,25 @@ export default function ProjectsPage() {
   const [menuOpen, setMenuOpen] = useState(null);
   const [formSession, setFormSession] = useState(0);
   const [notice, setNotice] = useState(null);
+
+  const STATUS_OPTIONS = [
+    { value: 'planning', label: t('projects.statuses.planning'), variant: 'secondary' },
+    { value: 'active', label: t('projects.statuses.active'), variant: 'success' },
+    { value: 'on_hold', label: t('projects.statuses.on_hold'), variant: 'warning' },
+    { value: 'completed', label: t('projects.statuses.completed'), variant: 'default' },
+    { value: 'cancelled', label: t('projects.statuses.cancelled'), variant: 'destructive' },
+  ];
+
+  const PRIORITY_OPTIONS = [
+    { value: 'low', label: t('projects.priorityLabels.low') },
+    { value: 'medium', label: t('projects.priorityLabels.medium') },
+    { value: 'high', label: t('projects.priorityLabels.high') },
+  ];
+
+  const getStatusBadge = (status) => {
+    const opt = STATUS_OPTIONS.find((s) => s.value === status);
+    return opt ? <Badge variant={opt.variant}>{opt.label}</Badge> : <Badge>{status}</Badge>;
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['projects', { search, status: filterStatus }],
@@ -105,7 +107,7 @@ export default function ProjectsPage() {
   };
 
   const handleDelete = (id) => {
-    if (window.confirm('Supprimer ce projet ?')) {
+    if (window.confirm(t('projects.deleteConfirmSimple'))) {
       deleteMutation.mutate(id);
     }
     setMenuOpen(null);
@@ -124,18 +126,18 @@ export default function ProjectsPage() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Projets</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t('projects.title')}</h1>
           <p className="text-muted-foreground">
             {isAdmin
-              ? 'Gérez vos projets et suivez leur avancement'
+              ? t('projects.subtitleAdmin')
               : isViewer
-                ? 'Projets auxquels vous avez été invité. Les autres ne sont pas visibles.'
-                : 'Projets auxquels vous participez (membre ou assigné). Les autres ne sont pas visibles.'}
+                ? t('projects.subtitleViewer')
+                : t('projects.subtitleMember')}
           </p>
         </div>
         {isAdmin && (
           <Button onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" /> Nouveau projet
+            <Plus className="mr-2 h-4 w-4" /> {t('projects.newProject')}
           </Button>
         )}
       </div>
@@ -144,14 +146,14 @@ export default function ProjectsPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Rechercher un projet..."
+            placeholder={t('projects.searchProjects')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
           />
         </div>
         <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-          <option value="">Tous les statuts</option>
+          <option value="">{t('projects.allStatuses')}</option>
           {STATUS_OPTIONS.map((s) => (
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
@@ -167,7 +169,7 @@ export default function ProjectsPage() {
           }}
         >
           <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-          Réinitialiser les filtres
+          {t('projects.resetFilters')}
         </Button>
       </div>
 
@@ -177,7 +179,7 @@ export default function ProjectsPage() {
         <Card>
           <CardContent className="py-16 text-center">
             <FolderKanban className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-            <p className="text-muted-foreground">Aucun projet trouvé</p>
+            <p className="text-muted-foreground">{t('projects.noProjects')}</p>
           </CardContent>
         </Card>
       ) : (
@@ -206,19 +208,19 @@ export default function ProjectsPage() {
                         to={`/projects/${project.id}`}
                         className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
                       >
-                        <Eye className="h-4 w-4" /> Voir
+                        <Eye className="h-4 w-4" /> {t('common.view')}
                       </Link>
                       <button
                         onClick={() => openEdit(project)}
                         className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
                       >
-                        <Pencil className="h-4 w-4" /> Modifier
+                        <Pencil className="h-4 w-4" /> {t('common.edit')}
                       </button>
                       <button
                         onClick={() => handleDelete(project.id)}
                         className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-red-50"
                       >
-                        <Trash2 className="h-4 w-4" /> Supprimer
+                        <Trash2 className="h-4 w-4" /> {t('common.delete')}
                       </button>
                     </div>
                   )}
@@ -258,7 +260,7 @@ export default function ProjectsPage() {
                   {project.chef && (
                     <div className="flex items-center gap-1.5 mb-3 text-xs">
                       <Crown className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                      <span className="text-muted-foreground">Chef&nbsp;:</span>
+                      <span className="text-muted-foreground">{t('projects.leaderLabel')}&nbsp;:</span>
                       <span className="font-semibold text-foreground">{project.chef.name}</span>
                     </div>
                   )}
@@ -276,7 +278,7 @@ export default function ProjectsPage() {
                       </span>
                     )}
                     <span className="flex items-center gap-1">
-                      <FolderKanban className="h-3.5 w-3.5" /> {project.tasks_count || 0} tâche{(project.tasks_count || 0) > 1 ? 's' : ''}
+                      <FolderKanban className="h-3.5 w-3.5" /> {t('projects.tasksCount', { count: project.tasks_count || 0 })}
                     </span>
                   </div>
                 </Link>
@@ -351,13 +353,16 @@ function UserSelectOption({ user, selected, onClick }) {
   );
 }
 
-function UserSelect({ users, value, onChange, placeholder = 'Sélectionner…', disabled }) {
+function UserSelect({ users, value, onChange, placeholder, disabled }) {
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [dropStyle, setDropStyle] = useState({});
   const triggerRef = useRef(null);
   const dropRef = useRef(null);
   const inputRef = useRef(null);
+
+  const resolvedPlaceholder = placeholder ?? t('common.search') + '…';
 
   const selectedUser = useMemo(
     () => users.find((u) => u.id === (typeof value === 'string' ? Number(value) : value)),
@@ -469,7 +474,7 @@ function UserSelect({ users, value, onChange, placeholder = 'Sélectionner…', 
             </div>
           </>
         ) : (
-          <span className="flex-1 text-left text-muted-foreground">{placeholder}</span>
+          <span className="flex-1 text-left text-muted-foreground">{resolvedPlaceholder}</span>
         )}
         <ChevronDown className={`h-4 w-4 text-muted-foreground flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -484,14 +489,14 @@ function UserSelect({ users, value, onChange, placeholder = 'Sélectionner…', 
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher par nom ou spécialité…"
+                placeholder={t('common.search') + '…'}
                 className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-black dark:text-white pl-8 pr-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/40 transition-shadow"
               />
             </div>
           </div>
           <div className="overflow-y-auto flex-1 overscroll-contain bg-white dark:bg-gray-900">
             {filtered.length === 0 ? (
-              <p className="px-3 py-6 text-sm text-gray-500 dark:text-gray-400 text-center">Aucun résultat</p>
+              <p className="px-3 py-6 text-sm text-gray-500 dark:text-gray-400 text-center">{t('common.noResults')}</p>
             ) : (
               filtered.map((u) => (
                 <UserSelectOption
@@ -511,11 +516,26 @@ function UserSelect({ users, value, onChange, placeholder = 'Sélectionner…', 
 }
 
 function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { user: authUser } = useAuth();
   const isEdit = !!project;
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
+
+  const STATUS_OPTIONS = [
+    { value: 'planning', label: t('projects.statuses.planning'), variant: 'secondary' },
+    { value: 'active', label: t('projects.statuses.active'), variant: 'success' },
+    { value: 'on_hold', label: t('projects.statuses.on_hold'), variant: 'warning' },
+    { value: 'completed', label: t('projects.statuses.completed'), variant: 'default' },
+    { value: 'cancelled', label: t('projects.statuses.cancelled'), variant: 'destructive' },
+  ];
+
+  const PRIORITY_OPTIONS = [
+    { value: 'low', label: t('projects.priorityLabels.low') },
+    { value: 'medium', label: t('projects.priorityLabels.medium') },
+    { value: 'high', label: t('projects.priorityLabels.high') },
+  ];
 
   const { data: users = [], isLoading: loadingUsers } = useQuery({
     queryKey: ['users', 'project-form'],
@@ -653,15 +673,15 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
   const formId = 'project-form-modal';
   const footerButtons = !showLoading ? (
     <>
-      <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+      <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
       <Button type="submit" form={formId} disabled={mutation.isPending}>
-        {mutation.isPending ? 'Enregistrement…' : isEdit ? 'Modifier' : 'Créer'}
+        {mutation.isPending ? t('common.saving') : isEdit ? t('common.edit') : t('common.create')}
       </Button>
     </>
   ) : null;
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? 'Modifier le projet' : 'Nouveau projet'} size="lg" footer={footerButtons}>
+    <Modal open={open} onClose={onClose} title={isEdit ? t('projects.editProject') : t('projects.newProject')} size="lg" footer={footerButtons}>
       {showLoading ? (
         <div className="flex justify-center py-12">
           <Spinner />
@@ -677,8 +697,8 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
           {/* Nom + Code */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">Nom <span className="text-destructive">*</span></label>
-              <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nom du projet" />
+              <label className="mb-1 block text-sm font-medium">{t('common.name')} <span className="text-destructive">*</span></label>
+              <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={t('projects.projectName')} />
               {errors.name && <p className="mt-0.5 text-xs text-destructive">{errors.name[0]}</p>}
             </div>
             <div>
@@ -690,14 +710,14 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
 
           {/* Description */}
           <div>
-            <label className="mb-1 block text-sm font-medium">Description</label>
-            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={2} placeholder="Décrivez le projet…" />
+            <label className="mb-1 block text-sm font-medium">{t('common.description')}</label>
+            <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={2} placeholder={t('projects.projectDescription') + '…'} />
           </div>
 
           {/* Équipe / Statut / Priorité */}
           <div className="grid gap-3 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-sm font-medium">Équipe</label>
+              <label className="mb-1 block text-sm font-medium">{t('projects.projectTeam')}</label>
               <Select value={form.team_id} onChange={(e) => {
                 const teamId = e.target.value;
                 if (!teamId) {
@@ -726,18 +746,18 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
                   memberIds: newMemberIds,
                 }));
               }}>
-                <option value="">Aucune</option>
+                <option value="">{t('common.none')}</option>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Statut</label>
+              <label className="mb-1 block text-sm font-medium">{t('common.status')}</label>
               <Select value={form.status} onChange={(e) => set('status', e.target.value)}>
                 {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </Select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Priorité</label>
+              <label className="mb-1 block text-sm font-medium">{t('tasks.priority')}</label>
               <Select value={form.priority} onChange={(e) => set('priority', e.target.value)}>
                 {PRIORITY_OPTIONS.map((p) => (
                   <option key={p.value} value={p.value}>{p.label}</option>
@@ -749,7 +769,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
           {/* Dates */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium">Date de début</label>
+              <label className="mb-1 block text-sm font-medium">{t('projects.startDate')}</label>
               <Input
                 type="date"
                 value={form.start_date}
@@ -765,7 +785,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
               {errors.start_date && <p className="mt-0.5 text-xs text-destructive">{errors.start_date[0]}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Date de fin</label>
+              <label className="mb-1 block text-sm font-medium">{t('projects.endDate')}</label>
               <Input
                 type="date"
                 value={form.end_date}
@@ -780,7 +800,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
 
           {/* Chef de projet */}
           <div>
-            <label className="mb-1 block text-sm font-medium">Chef de projet</label>
+            <label className="mb-1 block text-sm font-medium">{t('projects.chefDeProjet')}</label>
             {form.team_id ? (
               (() => {
                 const chefUser = form.chef_id ? users.find((u) => u.id === Number(form.chef_id)) : null;
@@ -813,7 +833,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
                     memberIds: f.memberIds.filter((id) => Number(id) !== Number(v)),
                   }));
                 }}
-                placeholder="Sélectionner le chef de projet"
+                placeholder={t('projects.chefDeProjet') + '…'}
               />
             )}
             {errors.chef_id && (
@@ -828,7 +848,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
 
           {/* Membres */}
           <div>
-            <label className="mb-1 block text-sm font-medium">Membres du projet</label>
+            <label className="mb-1 block text-sm font-medium">{t('projects.members')}</label>
             {form.team_id ? (
               selectedMemberUsers.length > 0 ? (
                 <div className="rounded-lg border border-input bg-muted/30 divide-y divide-border">
@@ -870,7 +890,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
                           type="button"
                           onClick={() => removeMember(u.id)}
                           className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                          aria-label={`Retirer ${u.name}`}
+                          aria-label={`${t('projects.removeMember')} ${u.name}`}
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -882,7 +902,7 @@ function ProjectFormModal({ open, onClose, project, teams, onSuccess }) {
                   users={availableMembers}
                   value=""
                   onChange={(v) => { addMember(v); }}
-                  placeholder={availableMembers.length === 0 ? 'Aucun membre disponible' : 'Ajouter un membre…'}
+                  placeholder={availableMembers.length === 0 ? t('projects.noMembersAvailable') : t('projects.addMember') + '…'}
                   disabled={availableMembers.length === 0}
                 />
               </>

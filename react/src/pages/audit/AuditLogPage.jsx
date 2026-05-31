@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
 import { getEcho } from '../../lib/echo';
 import { Card, CardContent } from '../../components/ui/Card';
@@ -576,6 +577,11 @@ export default function AuditLogPage() {
   const navigate      = useNavigate();
   const queryClient   = useQueryClient();
   const loadMoreRef   = useRef(null);
+  const { user }        = useAuth();
+  const isAdmin         = user?.roles?.includes('admin');
+  // Chef de projet dans au moins un projet → accès aux analytics d'audit de ses projets
+  const isChefSomewhere = user?.is_chef_somewhere ?? false;
+  const canSeeAnalytics = isAdmin || isChefSomewhere;
 
   const [activeTab,      setActiveTab]      = useState('timeline');
   const [search,         setSearch]         = useState('');
@@ -714,12 +720,12 @@ export default function AuditLogPage() {
           )}
         </div>
 
-        {/* Tab switcher */}
+        {/* Tab switcher — Analytics : admin + chefs de projet */}
         <div className="relative mt-5 flex gap-1 rounded-xl bg-muted/50 p-1 w-fit">
           {[
-            { key: 'timeline',  label: 'Timeline',  icon: History },
-            { key: 'analytics', label: 'Analytics', icon: BarChart2 },
-          ].map(({ key, label, icon: Icon }) => (
+            { key: 'timeline',  label: 'Timeline',  icon: History,   visible: true },
+            { key: 'analytics', label: 'Analytics', icon: BarChart2, visible: canSeeAnalytics },
+          ].filter((t) => t.visible).map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               type="button"
@@ -737,9 +743,9 @@ export default function AuditLogPage() {
         </div>
       </div>
 
-      {/* ── ANALYTICS TAB ── */}
+      {/* ── ANALYTICS TAB — admin + chefs ── */}
       <AnimatePresence mode="wait">
-        {activeTab === 'analytics' && (
+        {activeTab === 'analytics' && canSeeAnalytics && (
           <motion.div key="analytics" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
             <AnalyticsDashboard onExportPdf={handleExportPdf} />
           </motion.div>

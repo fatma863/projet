@@ -672,18 +672,79 @@ class ProjectController extends Controller
 
     public function removeMember(Request $request, Project $project, int $userId): JsonResponse
     {
-        Gate::authorize('update', $project);
+        $actor = $request->user();
 
+        // ── Authorization : admin, propriétaire ou chef du projet ────────────
+        if (! AccessControl::canManageProjectMembers($actor, $project)) {
+            return response()->json([
+                'message' => 'Seuls l\'administrateur et le chef de projet peuvent retirer des membres.',
+            ], 403);
+        }
+
+        // ── Résoudre l'utilisateur cible ─────────────────────────────────────
+        $member = User::find($userId);
+        if (! $member) {
+            return response()->json(['message' => 'Membre introuvable.'], 404);
+        }
+
+        // ── Protection : le chef de projet ne peut pas être retiré ici ───────
+        // Utilisez « Changer le chef de projet » pour transférer la responsabilité.
+        if ((int) $project->chef_id === $userId) {
+            return response()->json([
+                'message' => 'Le chef de projet ne peut pas être retiré via cette action. '
+                    . 'Utilisez « Changer le chef de projet » pour transférer la responsabilité.',
+            ], 422);
+        }
+
+        // ── Protection : un chef ne peut pas retirer un admin applicatif ─────
+        if (! AccessControl::isAdmin($actor) && AccessControl::isAdmin($member)) {
+            return response()->json([
+                'message' => 'Vous n\'êtes pas autorisé à retirer un administrateur du projet.',
+            ], 403);
+        }
+
+        // ── Capture des valeurs avant suppression (journal d'audit) ──────────
+        $oldValues = [
+            'member_id'    => $member->id,
+            'member_name'  => $member->name,
+            'member_email' => $member->email,
+            'project_role' => 'member',
+            'project_id'   => $project->id,
+            'project_name' => $project->name,
+        ];
+
+        // ── Suppression des deux tables pivot ────────────────────────────────
         $project->members()->detach($userId);
-        if (\Illuminate\Support\Facades\Schema::hasTable('project_user')) {
+        if (Schema::hasTable('project_user')) {
             $project->users()->detach($userId);
         }
 
-        $this->activityLogService->log($project, $request->user(), 'project.member_removed', $project, [
-            'member_id' => $userId,
-        ]);
+        // ── Journal d'audit complet ───────────────────────────────────────────
+        $this->activityLogService->log(
+            $project,
+            $actor,
+            'project.member_removed',
+            $project,
+            [
+                'member_id'    => $member->id,
+                'member_name'  => $member->name,
+                'removed_by'   => $actor->name,
+            ],
+            $oldValues,
+            [
+                'member_id'    => null,
+                'member_name'  => $member->name,
+                'project_role' => null,
+            ]
+        );
 
-        return response()->json(['message' => 'Membre retiré du projet.']);
+        // ── Notification au membre retiré ─────────────────────────────────────
+        $this->notificationService->notifyMemberRemoved($member, $project, $actor);
+
+        return response()->json([
+            'message' => "Membre {$member->name} retiré du projet.",
+            'members' => $this->mergedProjectMembers($project->fresh()),
+        ]);
     }
 
     /**
