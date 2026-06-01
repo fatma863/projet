@@ -1,5 +1,6 @@
 import { useAuth } from '../../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
+import { formatProjectRole } from '../../lib/roles';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import api from '../../lib/api';
@@ -504,7 +505,7 @@ export default function ClientDashboard() {
                         {m.name?.charAt(0)?.toUpperCase()}
                       </div>
                       <span className="text-foreground">{m.name}</span>
-                      <span className="text-xs text-muted-foreground capitalize">({m.role})</span>
+                      <span className="text-xs text-muted-foreground">({formatProjectRole(m.role)})</span>
                     </div>
                   ))}
                 </div>

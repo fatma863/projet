@@ -11,7 +11,7 @@ import { Spinner } from '../../components/ui/Spinner';
 import { Card, CardContent } from '../../components/ui/Card';
 import { DueDateRangeFilter } from '../../components/tasks/DueDateRangeFilter';
 import { WORKFLOW_COLUMNS, ISSUE_TYPE_LABELS } from '../../lib/taskConstants';
-import { isGuestViewer } from '../../lib/roles';
+import { isGuestViewer, formatProjectRole } from '../../lib/roles';
 import {
   ArrowLeft, Plus, GripVertical, Clock, User, AlertTriangle,
   BarChart3, Users, Calendar, Mail, Download, History,
@@ -2282,7 +2282,7 @@ function ProjectReportsTab({ projectId }) {
                   {m.name?.charAt(0)?.toUpperCase()}
                 </div>
                 <span className="text-foreground">{m.name}</span>
-                <span className="text-xs text-muted-foreground capitalize">({m.role})</span>
+                <span className="text-xs text-muted-foreground">({formatProjectRole(m.role)})</span>
               </div>
             ))}
           </div>

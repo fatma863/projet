@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { APP_ROLE_LABELS } from '../../lib/roles';
+import { APP_ROLE_LABELS, formatAppRole } from '../../lib/roles';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -34,7 +34,7 @@ function RolePreview({ role }) {
         className="h-2 w-2 rounded-full shrink-0"
         style={{ backgroundColor: role.color ?? '#6366f1' }}
       />
-      {role.name}
+      {APP_ROLE_LABELS[role.name] ?? role.name}
       {role.description && (
         <span className="font-normal text-gray-500 ml-1 truncate">— {role.description}</span>
       )}
@@ -557,7 +557,7 @@ export default function UserManagement({ variant = 'page' }) {
                 )}
                 {activeRoles.map((r) => (
                   <option key={r.id} value={r.name}>
-                    {r.name}{r.is_system ? ' ★' : ''}
+                    {APP_ROLE_LABELS[r.name] ?? r.name}{r.is_system ? ' ★' : ''}
                   </option>
                 ))}
               </Select>
