@@ -39,6 +39,7 @@ class ProjectResource extends JsonResource
             'statuses' => TaskStatusResource::collection($this->whenLoaded('statuses')),
             'access' => [
                 'is_chef'          => $user ? (int) $this->chef_id === (int) $user->id : false,
+                'is_client'        => $user ? AccessControl::isProjectClient($user, $this->resource) : false,
                 'can_view'         => $user ? AccessControl::canViewProject($user, $this->resource) : false,
                 'can_edit'         => $user ? AccessControl::canEditProject($user, $this->resource) : false,
                 'can_invite'       => $user ? AccessControl::canInviteToProject($user, $this->resource) : false,
