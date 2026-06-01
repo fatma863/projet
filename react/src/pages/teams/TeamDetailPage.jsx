@@ -199,7 +199,7 @@ export default function TeamDetailPage() {
                         <p className="font-medium text-foreground">{m.name}</p>
                         {isChef
                           ? <Badge variant="default" className="text-[11px]">{t('projects.chefDeProjet')}</Badge>
-                          : <Badge variant="secondary" className="text-[11px]">Membre</Badge>}
+                          : <Badge variant="secondary" className="text-[11px]">Collaborateur</Badge>}
                       </div>
                       <p className="truncate text-sm text-muted-foreground">{m.email}</p>
                     </div>

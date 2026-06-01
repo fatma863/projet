@@ -53,7 +53,7 @@ class TestDataSeeder extends Seeder
                 'timezone' => 'Africa/Tunis',
             ]
         );
-        $u3->assignRole('viewer');
+        $u3->assignRole('client'); // 'viewer' a été renommé en 'client' (migration 2026_05_08)
 
         $teamMobile = Team::firstOrCreate(
             ['name' => 'Équipe Mobile (test)'],

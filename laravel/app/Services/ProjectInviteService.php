@@ -59,7 +59,8 @@ class ProjectInviteService
 
         $frontend = rtrim((string) config('app.frontend_url', config('app.url')), '/');
         $acceptUrl = "{$frontend}/accept-invite?token=".urlencode((string) $pending->token);
-        $roleLabel = $role === 'client' ? 'Client' : 'Membre';
+        // Nomenclature officielle : Observateur (client) / Contributeur (membre)
+        $roleLabel = $role === 'client' ? 'Observateur' : 'Contributeur';
 
         try {
             Mail::to($email)->send(new ProjectInvitationMail(

@@ -148,7 +148,7 @@ class FreshDemoSeeder extends Seeder
             'timezone' => 'Africa/Tunis',
             'status' => 'active',
         ]);
-        $sonia->assignRole('viewer');
+        $sonia->assignRole('client'); // 'viewer' a été renommé en 'client' (migration 2026_05_08)
 
         return [$admin, $manager, $dev1, $dev2, $dev3, $leila, $karim, $sonia];
     }
