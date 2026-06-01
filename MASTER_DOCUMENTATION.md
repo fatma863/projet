@@ -3299,35 +3299,42 @@ Composant réutilisable affichant :
 
 ### 28.2 Matrice complète des permissions
 
+> **Convention** : ✅ = accordé via Spatie RBAC · ✅ (policy) = accordé via `TaskPolicy` / `AccessControl` · — = non applicable à ce niveau de rôle
+
 #### Permissions Projets
 
-| Permission | Administrateur | Collaborateur | Observateur | Chef de projet | Contributeur |
+| Permission Spatie | Administrateur | Collaborateur | Observateur | Chef de projet¹ | Contributeur¹ |
 |---|:---:|:---:|:---:|:---:|:---:|
 | `project.view` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `project.create` | ✅ | ✅ | ❌ | — | — |
-| `project.edit` | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `project.edit` | ✅ | ✅ | ❌ | ✅ (policy) | ❌ |
 | `project.delete` | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `project.archive` | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `project.archive` | ✅ | ✅ | ❌ | ✅ (policy) | ❌ |
 | `project.export` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `project.manage_members` | ✅ | ✅ | ❌ | ✅ | ❌ |
-| `project.manage_settings` | ✅ | ✅ | ❌ | ✅ | ❌ |
-| `project.pause` | ✅ | ❌ | ❌ | ✅ (policy) | ❌ |
-| `project.resume` | ✅ | ❌ | ❌ | ✅ (chef_id) | ❌ |
+| `project.manage_members` | ✅ | ✅ | ❌ | ✅ (policy) | ❌ |
+| `project.manage_settings` | ✅ | ✅ | ❌ | ✅ (policy) | ❌ |
+| `project.pause` | ✅ | ❌ | ❌ | ✅ (policy, chef_id) | ❌ |
+| `project.resume` | ✅ | ❌ | ❌ | ✅ (policy, chef_id uniquement) | ❌ |
+
+> ¹ Les droits Chef de projet et Contributeur sont appliqués par `AccessControl.php` + `ProjectPolicy` sur la base du champ `chef_id` et de la table `project_user`, indépendamment du rôle Spatie global.  
+> Le retrait de membre (`removeMember`) est contrôlé par `AccessControl::canManageProjectMembers()` (policy), non par une permission Spatie dédiée.
 
 #### Permissions Tâches
 
-| Permission | Administrateur | Collaborateur | Observateur | Chef de projet | Contributeur |
+| Permission Spatie | Administrateur | Collaborateur | Observateur | Chef de projet¹ | Contributeur¹ |
 |---|:---:|:---:|:---:|:---:|:---:|
 | `task.view` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `task.create` | ✅ | ✅ | ❌ | ✅ | ✅ |
 | `task.edit` | ✅ | ✅ | ❌ | ✅ | ✅ (ses tâches) |
-| `task.delete` | ✅ | ✅ (policy) | ❌ | ✅ | ✅ (si non terminée) |
+| `task.delete` | ✅ | ✅ (policy²) | ❌ | ✅ | ✅ (policy², si non terminée) |
 | `task.assign` | ✅ | ✅ | ❌ | ✅ | ❌ |
 | `task.comment` | ✅ | ✅ | ❌ | ✅ | ✅ |
 | `task.change_status` | ✅ | ✅ | ❌ | ✅ | ✅ |
 | `task.manage_dependencies` | ✅ | ✅ | ❌ | ✅ | ✅ |
 | `task.manage_time` | ✅ | ✅ | ❌ | ✅ | ✅ |
 | `task.export` | ✅ | ✅ | ❌ | ✅ | ✅ |
+
+> ² `task.delete` n'est pas défini dans le seeder Spatie. La suppression est entièrement gérée par `TaskPolicy::delete()` → `AccessControl::canDeleteTask()` : autorisé pour admin, chef, ou créateur de la tâche (si non terminée).
 
 #### Permissions Sprints
 

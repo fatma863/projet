@@ -302,7 +302,7 @@ export default function UserManagement({ variant = 'page' }) {
                 <th className="px-4 py-3 font-semibold text-foreground">Utilisateur</th>
                 <th className="px-4 py-3 font-semibold text-foreground">Rôle</th>
                 <th className="px-4 py-3 font-semibold text-foreground">Statut</th>
-                <th className="px-4 py-3 font-semibold text-foreground">Membre depuis</th>
+                <th className="px-4 py-3 font-semibold text-foreground">Inscrit depuis</th>
                 <th className="px-4 py-3 text-right font-semibold text-foreground">Actions</th>
               </tr>
             </thead>

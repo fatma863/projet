@@ -486,7 +486,7 @@ function RecommendationsPanel() {
                     <table className="w-full min-w-[360px] text-sm">
                       <thead>
                         <tr className="text-left text-xs text-muted-foreground">
-                          <th className="px-2 py-1.5">Membre</th>
+                          <th className="px-2 py-1.5">Collaborateur</th>
                           <th className="px-2 py-1.5 text-right">Tâches actives</th>
                         </tr>
                       </thead>
@@ -581,7 +581,7 @@ function WorkloadBalancePanel() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/40 text-left text-xs font-medium text-muted-foreground">
-                      <th className="px-4 py-2.5">Membre</th>
+                      <th className="px-4 py-2.5">Collaborateur</th>
                       <th className="px-4 py-2.5 text-right">Score</th>
                       <th className="px-4 py-2.5 text-right">Heures ouvertes</th>
                       <th className="px-4 py-2.5 text-right">Actives</th>

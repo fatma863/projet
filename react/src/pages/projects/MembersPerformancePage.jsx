@@ -583,7 +583,7 @@ export default function MembersPerformancePage() {
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
                     <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground w-10">#</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground min-w-[180px]">Membre</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground min-w-[180px]">Collaborateur</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-muted-foreground min-w-[140px]">Score global</th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Terminées/Total</th>
                     <th className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground">Actives</th>
