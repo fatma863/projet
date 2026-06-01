@@ -18,6 +18,11 @@ class NotificationController extends Controller
         $uid   = Auth::id();
         $query = Notification::where('user_id', $uid)->orderByDesc('created_at');
 
+        // Clients ne reçoivent que les notifications liées à leurs projets invités
+        if (Auth::user()->hasRole('client')) {
+            $query->whereIn('type', $this->clientAllowedTypes());
+        }
+
         if ($request->boolean('unread_only')) {
             $query->whereNull('read_at');
         }
@@ -31,9 +36,12 @@ class NotificationController extends Controller
 
         $notifications = $query->paginate(ApiPagination::perPage($request));
 
-        // Run the unread count in the same DB round-trip as a subquery count
-        // instead of a separate full query, avoiding a second network hop.
-        $unreadCount = Notification::where('user_id', $uid)->whereNull('read_at')->count();
+        // Le compteur non-lu respecte aussi le filtre de rôle client
+        $unreadQuery = Notification::where('user_id', $uid)->whereNull('read_at');
+        if (Auth::user()->hasRole('client')) {
+            $unreadQuery->whereIn('type', $this->clientAllowedTypes());
+        }
+        $unreadCount = $unreadQuery->count();
 
         return response()->json([
             'notifications' => NotificationResource::collection($notifications),
@@ -54,6 +62,12 @@ class NotificationController extends Controller
         $uid = Auth::id();
 
         $scoped = Notification::query()->where('user_id', $uid);
+
+        // Clients ne reçoivent que les notifications liées à leurs projets invités
+        if (Auth::user()->hasRole('client')) {
+            $scoped->whereIn('type', $this->clientAllowedTypes());
+        }
+
         if ($request->filled('type')) {
             $types = $this->expandNotificationTypes((string) $request->input('type'));
             if ($types !== []) {
@@ -155,9 +169,14 @@ class NotificationController extends Controller
      */
     public function stats(): JsonResponse
     {
-        $uid = Auth::id();
+        $uid   = Auth::id();
+        $query = Notification::where('user_id', $uid);
 
-        $counts = Notification::where('user_id', $uid)
+        if (Auth::user()->hasRole('client')) {
+            $query->whereIn('type', $this->clientAllowedTypes());
+        }
+
+        $counts = $query
             ->selectRaw('type, count(*) as total, sum(case when read_at is null then 1 else 0 end) as unread')
             ->groupBy('type')
             ->orderByDesc('total')
@@ -165,6 +184,24 @@ class NotificationController extends Controller
             ->keyBy('type');
 
         return response()->json(['data' => $counts]);
+    }
+
+    /**
+     * Types de notifications autorisés pour le rôle client (liste blanche).
+     * Seules les notifications liées au suivi du projet sont transmises.
+     *
+     * @return array<int, string>
+     */
+    private function clientAllowedTypes(): array
+    {
+        return [
+            'project_created',
+            'project_updated',
+            'project_at_risk',
+            'project_invitation',
+            'invitation_received',
+            'project_invitation_accepted',
+        ];
     }
 
     /**

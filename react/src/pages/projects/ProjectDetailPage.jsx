@@ -16,7 +16,7 @@ import {
   ArrowLeft, Plus, GripVertical, Clock, User, AlertTriangle,
   BarChart3, Users, Calendar, Mail, Download, History,
   Pencil, Trash2, LayoutGrid, MessageSquare, Link2, FolderKanban, Crown, TrendingUp,
-  UserMinus,
+  UserMinus, ListTodo,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -117,7 +117,7 @@ export default function ProjectDetailPage() {
     priority: '', type: '', workflow: '', due_from: '', due_to: '',
   }));
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [tab, setTab] = useState('kanban');
+  const [tab, setTab] = useState(() => (user?.roles?.includes('client') ? 'tasks' : 'kanban'));
   const [worklogTask, setWorklogTask] = useState(null);
 
   const { data: project, isLoading, error } = useQuery({
@@ -543,9 +543,13 @@ export default function ProjectDetailPage() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border">
         {[
-          { key: 'kanban', label: 'Kanban' },
+          // Kanban masqué pour les clients ; onglet Tâches (lecture seule) à la place
+          ...(isClient
+            ? [{ key: 'tasks', label: 'Tâches' }]
+            : [{ key: 'kanban', label: 'Kanban' }]),
           { key: 'members', label: 'Membres' },
-          { key: 'activity', label: 'Historique' },
+          // Historique / journal d'audit masqué pour les clients
+          ...(isClient ? [] : [{ key: 'activity', label: 'Historique' }]),
           ...(!isViewer || isClient ? [{ key: 'gantt', label: 'Gantt' }] : []),
           { key: 'progress', label: "Rapport d'avancement" },
           ...(isViewer ? [{ key: 'reports', label: 'Rapports IA' }] : []),
@@ -565,7 +569,11 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Tab content */}
-      {tab === 'kanban' && (
+      {tab === 'tasks' && isClient && (
+        <ClientTasksTab tasks={tasks} />
+      )}
+
+      {tab === 'kanban' && !isClient && (
         <div className="space-y-4">
           {Array.isArray(tasks) && tasks.length === 0 && (
             <div className="rounded-lg border border-amber-200/90 bg-amber-50 px-4 py-3 text-sm text-amber-950">
@@ -648,7 +656,7 @@ export default function ProjectDetailPage() {
       {tab === 'members' && (
         <MembersTab project={project} projectId={id} canEditProject={canEditProject} canInvite={canInvite} isAdmin={isAdmin} onOpenInvite={() => setInviteOpen(true)} />
       )}
-      {tab === 'activity' && <ProjectActivityTab projectId={id} />}
+      {tab === 'activity' && !isClient && <ProjectActivityTab projectId={id} />}
       {tab === 'gantt' && (
         <div className="pt-4">
           {loadingGantt ? (
@@ -761,7 +769,7 @@ function InviteUserModal({ open, onClose, projectId, onInvited }) {
         {!success && (
           <>
             <p className="text-xs text-muted-foreground">
-              Le client aura un acc&egrave;s en lecture seule : il pourra consulter le Kanban, le Gantt et les tableaux de bord.
+              Le client aura un acc&egrave;s en lecture seule : il pourra consulter les t&acirc;ches, le Gantt et les tableaux de bord du projet.
             </p>
             <div>
               <label className="mb-1 block text-sm font-medium">E-mail du client</label>
@@ -2295,6 +2303,73 @@ function ReportKpi({ label, value, color }) {
     <div className="rounded-xl border border-border bg-card p-4">
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className={`text-2xl font-bold tabular-nums ${colorMap[color] || 'text-foreground'}`}>{value}</p>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Onglet Tâches (lecture seule) — affiché uniquement au rôle Client
+   Remplace le Kanban : liste simple sans actions de modification
+   ───────────────────────────────────────────────────────────── */
+function ClientTasksTab({ tasks }) {
+  const list = Array.isArray(tasks) ? tasks : [];
+
+  const WF_LABELS = { todo: 'À faire', in_progress: 'En cours', done: 'Terminé', at_risk: 'À risque' };
+  const WF_COLORS = {
+    todo:        'bg-slate-100 text-slate-700',
+    in_progress: 'bg-amber-100 text-amber-800',
+    done:        'bg-emerald-100 text-emerald-700',
+    at_risk:     'bg-red-100 text-red-700',
+  };
+
+  if (list.length === 0) {
+    return (
+      <EmptyState
+        icon={ListTodo}
+        title="Aucune tâche"
+        description="Ce projet ne contient pas encore de tâches."
+        className="py-12"
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-2 pt-2">
+      <p className="text-sm text-muted-foreground mb-3">
+        {list.length} tâche{list.length > 1 ? 's' : ''}
+      </p>
+      {list.map((task) => {
+        const wf = task.workflow_status || 'todo';
+        return (
+          <div
+            key={task.id}
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-3 text-sm shadow-sm"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-foreground truncate">{task.title}</p>
+              {task.description && (
+                <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{task.description}</p>
+              )}
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${WF_COLORS[wf] || WF_COLORS.todo}`}>
+                {WF_LABELS[wf] || wf}
+              </span>
+              {task.priority && (
+                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${PRIORITY_COLORS[task.priority] || ''}`}>
+                  {PRIORITY_LABELS_FR[task.priority] || task.priority}
+                </span>
+              )}
+              {task.due_date && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  {new Date(task.due_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

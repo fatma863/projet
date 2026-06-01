@@ -935,14 +935,15 @@ PUT    /tasks/{task}/worklog/validate
 
 ```
 GET    /search
-GET    /gantt                          [check.role:!client]  ← admin : toutes tâches ; chef : ses projets + assignées ; membre : assignées seulement
+GET    /gantt                                    ← admin : toutes tâches ; chef : ses projets + assignées ; client : projets invités
 GET    /projects/{id}/gantt           [check.project:view]  ← admin : toutes ; chef/client : toutes ; membre : assignées seulement
 PUT    /projects/{id}/gantt           [check.project:edit]  ← client bloqué par canEditProject() → false
-GET    /calendar                      [check.role:!client]  ★ (rôles dynamiques autorisés)
+GET    /calendar                                 ← accessible à tous les rôles authentifiés, données filtrées par projet
 GET    /activity/feed                 [check.role:!client]  ★ (rôles dynamiques autorisés)
 GET    /specialties
-GET    /projects/{id}/auto-assign     [check.project:view]
-GET    /projects/{id}/members-performance [check.project:view]
+GET    /projects/{id}/auto-assign     [check.project:view, check.role:!client]  ← NOUVEAU
+GET    /projects/{id}/members-performance [check.project:view, check.role:!client]  ← NOUVEAU
+GET    /projects/{id}/activity        [check.project:view, check.role:!client]   ← NOUVEAU
 GET    /tasks/{task}/matching-members
 GET    /admin/dashboard               [admin]
 GET    /member/dashboard
@@ -2991,25 +2992,31 @@ Le **Client** est un utilisateur externe invité par un Administrateur ou un Che
 |---|:---:|---|
 | Tableau de bord (`/dashboard`) | ✅ | `ClientDashboard` — stats projets uniquement |
 | Projets (`/projects`) | ✅ | Lecture seule — projets auxquels il est invité |
-| Tâches (`/tasks`) | ✅ | Lecture seule — tâches de ses projets |
-| Calendrier (`/calendar`) | ✅ | Lecture seule — échéances de ses projets |
-| Gantt global (`/gantt`) | ✅ | Lecture seule — toutes les tâches de ses projets associés |
+| Tâches (`/tasks`) | ✅ | Lecture seule — tâches de ses projets (liste simple, sans Kanban) |
+| Membres du projet | ✅ | Onglet Membres dans `/projects/{id}` |
 | Gantt projet (via `/projects/{id}`) | ✅ | Lecture seule — toutes les tâches du projet |
-| Notifications (`/notifications`) | ✅ | Notifications de suivi projet |
-| Paramètres (`/settings`) | ✅ | Profil personnel uniquement |
+| Gantt global (`/gantt`) | ✅ | Lecture seule — toutes les tâches de ses projets associés |
+| Rapport d'avancement | ✅ | Onglet Rapport dans `/projects/{id}` |
+| Calendrier (`/calendar`) | ✅ | Lecture seule — échéances de ses projets |
+| Notifications (`/notifications`) | ✅ | Uniquement : statut projet, jalon, retard, livrable, invitation |
+| Paramètres (`/settings`) | ✅ | Profil, sécurité, préférences, notifications — **sans Spécialités** |
 
 ### 25.4 Modules restreints (interdits)
 
 | Module | Raison |
 |---|---|
-| IA / Analyses (`/ai`) | Analyses avancées internes — `RoleRoute allow=['admin','member']` + `clientHidden` Sidebar |
-| Journal d'audit (`/audit-log`) | Données internes — `RoleRoute allow=['admin','member']` + `clientHidden` Sidebar |
-| Équipes (`/teams`) | Administration — `adminOnly` Sidebar |
-| Utilisateurs (`/users`) | Administration — `adminOnly` Sidebar |
-| Rôles & Permissions (`/admin/roles`) | Administration — `PermissionRoute` (role.view) |
-| Activity Feed API | Données internes — `check.role:!client` |
-| ML / Recommandations | Calculs internes — `check.role:!client` |
+| **Kanban** (onglet dans `/projects/{id}`) | Workflow interne — onglet remplacé par liste tâches lecture seule |
+| **Historique** (onglet dans `/projects/{id}`) | Journal d'audit projet interne — `check.role:!client` sur `GET /projects/{id}/activity` |
+| **Spécialités** (section dans `/settings`) | Données de compétences membres — `check.role:!client` sur `PUT /me/specialties` ; section masquée dans UI |
+| IA / Analyses (`/ai`) | Analyses avancées internes — `clientHidden: true` Sidebar |
+| Journal d'audit global (`/audit-log`) | Données internes — `clientHidden: true` Sidebar |
+| Équipes (`/teams`) | Administration — `adminOnly: true` Sidebar |
+| Utilisateurs (`/users`) | Administration — `adminOnly: true` Sidebar |
+| Rôles & Permissions (`/admin/roles`) | Permission `role.view` absente pour le rôle client |
+| Activity Feed API | Données agrégées équipe — `check.role:!client` |
+| ML / Auto-assign / Performance membres | Calculs internes — `check.role:!client` |
 | Gestion des sprints (écriture) | `check.project:edit` → `canEditProject()=false` |
+| Notifications internes | Assignation tâche, commentaires, alertes surcharge, IA, permissions — filtrées côté backend |
 
 ### 25.5 Tableau de bord client (`ClientDashboard.jsx`)
 
@@ -3045,8 +3052,19 @@ canCreateTaskInProject(client)  → always false
 canCommentOnProject(client)     → always false
 
 Middleware check.role:!client bloque :
-  GET /gantt, GET /activity/feed, GET /activity/export,
-  GET /activity/analytics, ML, AI (global)
+  GET /activity/feed, GET /activity/export, GET /activity/analytics,
+  GET /projects/{id}/activity,                   ← NOUVEAU (historique projet)
+  GET /projects/{id}/auto-assign,                ← NOUVEAU (assignation IA)
+  GET /projects/{id}/members-performance,        ← NOUVEAU (perf membres)
+  PUT /me/specialties,                           ← NOUVEAU (écriture spécialités)
+  ML endpoints, AI endpoints (global)
+
+NotificationController filtre par liste blanche pour les clients :
+  Autorisés : project_created, project_updated, project_at_risk,
+              project_invitation, invitation_received, project_invitation_accepted
+  Bloqués   : task_assigned, task_updated, task_completed, task_delayed,
+              task_comment, comment_added, task_mentioned, mention,
+              workload_alert, ai_alert, permission_updated, gantt_updated
 
 check.project:edit bloque toutes les opérations d'écriture projet
 ```
@@ -3057,22 +3075,35 @@ check.project:edit bloque toutes les opérations d'écriture projet
 PRINCIPAL
   ✅ Tableau de bord
   ✅ Projets
-  ✅ Tâches
-  ✅ Gantt          (accès lecture seule — projets associés uniquement)
-  ✅ Calendrier     (accès lecture seule, données filtrées)
-  ❌ IA             (clientHidden: true)
+  ✅ Tâches             (liste lecture seule)
+  ✅ Gantt              (accès lecture seule — projets associés uniquement)
+  ✅ Calendrier         (accès lecture seule, données filtrées)
+  ❌ IA                 (clientHidden: true)
 
 COLLABORATION
-  ❌ Équipes        (adminOnly: true)
-  ❌ Utilisateurs   (adminOnly: true)
-  ✅ Notifications
+  ❌ Équipes            (adminOnly: true)
+  ❌ Utilisateurs       (adminOnly: true)
+  ✅ Notifications      (types filtrés : projets + invitations uniquement)
 
 ADMINISTRATION
-  ❌ Rôles         (permission role.view absente)
-  ❌ Journal audit  (clientHidden: true)
+  ❌ Rôles              (permission role.view absente)
+  ❌ Journal audit      (clientHidden: true)
 
-PARAMÈTRES
-  ✅ Profil / Préférences
+PARAMÈTRES (/settings)
+  ✅ Profil
+  ✅ Sécurité (mot de passe)
+  ✅ Notifications
+  ✅ Préférences (thème, langue)
+  ❌ Spécialités        (section masquée — !isViewer ; PUT /me/specialties bloqué backend)
+
+PAGE PROJET (/projects/{id})
+  ✅ Onglet Tâches      (liste lecture seule — remplace Kanban)
+  ✅ Onglet Membres
+  ✅ Onglet Gantt
+  ✅ Onglet Rapport d'avancement
+  ✅ Onglet Rapports IA
+  ❌ Onglet Kanban      (masqué — isClient check frontend + aucune route dédiée)
+  ❌ Onglet Historique  (masqué — isClient check frontend + check.role:!client backend)
 ```
 
 ### 25.9 Routes frontend protégées
@@ -3081,7 +3112,9 @@ PARAMÈTRES
 |---|---|:---:|
 | `/dashboard` | `ProtectedRoute` | ✅ → `ClientDashboard` |
 | `/projects` | `ProtectedRoute` | ✅ lecture seule |
-| `/projects/:id` | `ProtectedRoute` | ✅ onglet Gantt inclus |
+| `/projects/:id` | `ProtectedRoute` | ✅ onglets : Tâches, Membres, Gantt, Rapport, Rapports IA |
+| `/projects/:id` onglet Kanban | masqué via `isClient` JS | ❌ non rendu, non accessible |
+| `/projects/:id` onglet Historique | masqué via `isClient` JS + `check.role:!client` API | ❌ |
 | `/projects/:id/tasks/new` | `RoleRoute allow=['admin','member']` | ❌ redirigé |
 | `/projects/:id/tasks/:id/edit` | `RoleRoute allow=['admin','member']` | ❌ redirigé |
 | `/tasks` | `ProtectedRoute` | ✅ lecture seule |
@@ -3089,8 +3122,8 @@ PARAMÈTRES
 | `/gantt` | `RoleRoute allow=['admin','member','client']` | ✅ (tâches de ses projets) |
 | `/ai` | `RoleRoute allow=['admin','member']` | ❌ |
 | `/audit-log` | `RoleRoute allow=['admin','member']` | ❌ |
-| `/notifications` | `ProtectedRoute` | ✅ |
-| `/settings` | `ProtectedRoute` | ✅ profil uniquement |
+| `/notifications` | `ProtectedRoute` | ✅ types filtrés (projets + invitations) |
+| `/settings` | `ProtectedRoute` | ✅ profil, sécurité, notifs, préférences — **sans Spécialités** |
 
 ---
 

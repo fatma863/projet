@@ -258,7 +258,7 @@ export default function SettingsPage() {
   const { data: mySpecialties = [], refetch: refetchSpecialties } = useQuery({
     queryKey: ['me', 'specialties'],
     queryFn: () => api.get('/me/specialties').then((r) => r.data.specialties ?? []),
-    enabled: Boolean(user) && !loading,
+    enabled: Boolean(user) && !loading && !isViewer,
   });
 
   const [selectedSpecialtyIds, setSelectedSpecialtyIds] = useState([]);
@@ -415,7 +415,7 @@ export default function SettingsPage() {
         <nav className="mt-4 flex flex-wrap gap-2 text-sm">
           {[
             { href: '#profil', label: t('settings.navProfile') },
-            { href: '#specialites', label: 'Spécialités' },
+            ...(!isViewer ? [{ href: '#specialites', label: 'Spécialités' }] : []),
             { href: '#securite', label: t('settings.navSecurity') },
             { href: '#notifications', label: t('settings.navNotifications') },
             { href: '#preferences', label: t('settings.navPreferences') },
@@ -443,7 +443,7 @@ export default function SettingsPage() {
         />
       </Section>
 
-      <Section id="specialites" title="Mes spécialités" icon={Brain} delay={0.05}>
+      {!isViewer && <Section id="specialites" title="Mes spécialités" icon={Brain} delay={0.05}>
         <div className="space-y-5">
           {/* Intro */}
           <div className="flex flex-col gap-1 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
@@ -490,7 +490,7 @@ export default function SettingsPage() {
             </Button>
           </div>
         </div>
-      </Section>
+      </Section>}
 
       <Section id="securite" title={t('settings.sectionSecurity')} icon={Lock} delay={0.06}>
         <div className="space-y-8">

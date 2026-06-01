@@ -115,12 +115,14 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
 
     Route::middleware('check.project:view')->group(function () {
         Route::get('projects/{project}/dashboard', [ProjectController::class, 'dashboard']);
-        Route::get('projects/{project}/activity', [ProjectController::class, 'activity']);
         Route::get('projects/{project}/members', [ProjectController::class, 'members']);
         Route::get('projects/{project}/critical-path', [CriticalPathController::class, 'index']);
         Route::post('projects/{project}/invite', [ProjectController::class, 'invite']);
         Route::get('projects/{project}/export/tasks', [ProjectController::class, 'exportTasks']);
     });
+    // Historique / journal d'audit projet — réservé aux membres internes (pas au rôle client)
+    Route::get('projects/{project}/activity', [ProjectController::class, 'activity'])
+        ->middleware(['check.project:view', 'check.role:!client']);
     // Project write operations are guarded by the paused-lock middleware
     Route::middleware(['check.project:edit', 'project.not_paused'])->group(function () {
         Route::get('projects/{project}/user-search', [ProjectController::class, 'searchUsers']);
@@ -236,12 +238,13 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
 
     // ── Spécialités ───────────────────────────────────────────────────────────
     Route::get('specialties', [SpecialtyController::class, 'index']);
-    Route::middleware('check.project:view')->group(function () {
+    Route::middleware(['check.project:view', 'check.role:!client'])->group(function () {
         Route::get('projects/{project}/auto-assign',          [SpecialtyController::class, 'autoAssign']);
         Route::get('projects/{project}/members-performance',  [SpecialtyController::class, 'membersPerformance']);
     });
     Route::get('me/specialties', [SpecialtyController::class, 'mySpecialties']);
-    Route::put('me/specialties', [SpecialtyController::class, 'syncMySpecialties']);
+    Route::put('me/specialties', [SpecialtyController::class, 'syncMySpecialties'])
+        ->middleware('check.role:!client');
     Route::get('tasks/{task}/matching-members', [SpecialtyController::class, 'matchingMembers']);
     Route::middleware('check.role:admin')->group(function () {
         Route::post('specialties', [SpecialtyController::class, 'store']);

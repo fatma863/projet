@@ -17,7 +17,6 @@ export default defineConfig({
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-query': ['@tanstack/react-query'],
           'vendor-motion': ['framer-motion'],
-          'vendor-forms': ['react-hook-form', 'zod', '@hookform/resolvers'],
           'vendor-ui': ['sonner', 'date-fns'],
         },
       },

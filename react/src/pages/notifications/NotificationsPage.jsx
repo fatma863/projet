@@ -29,6 +29,13 @@ const TYPE_GROUPS = [
   { key: 'permission_updated',                                               label: 'Permissions' },
 ];
 
+// Filtres visibles pour le rôle Client : uniquement suivi projet et invitations
+const CLIENT_TYPE_GROUPS = [
+  { key: '',                                                                    label: 'Toutes' },
+  { key: 'project_created,project_updated,project_at_risk',                    label: 'Projets' },
+  { key: 'invitation_received,project_invitation,project_invitation_accepted',  label: 'Invitations' },
+];
+
 const TYPE_LABELS = {
   task_assigned:               'Assignation',
   task_updated:                'Modification',
@@ -97,6 +104,8 @@ export default function NotificationsPage() {
   const { t }     = useI18n();
   const navigate  = useNavigate();
   const qc        = useQueryClient();
+  const isClient  = Boolean(user?.roles?.includes('client'));
+  const activeTypeGroups = isClient ? CLIENT_TYPE_GROUPS : TYPE_GROUPS;
 
   const [typeFilter,   setTypeFilter]   = useState('');
   const [unreadOnly,   setUnreadOnly]   = useState(false);
@@ -226,7 +235,7 @@ export default function NotificationsPage() {
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            {TYPE_GROUPS.map((g) => (
+            {activeTypeGroups.map((g) => (
               <button
                 key={g.key}
                 onClick={() => setTypeFilter(g.key)}
