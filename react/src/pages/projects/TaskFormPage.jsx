@@ -849,7 +849,7 @@ export default function TaskFormPage() {
         assigneeId={form.assignee_id}
         onAssign={(id) => {
           set('assignee_id', id);
-          toast.success(`${memberOptions.find(m => String(m.id) === String(id))?.name ?? 'Membre'} assigné`);
+          toast.success(`${memberOptions.find(m => String(m.id) === String(id))?.name ?? 'Utilisateur'} assigné`);
         }}
       />
     </div>

@@ -973,16 +973,16 @@ Accept: application/json
 Content-Type: application/json
 ```
 
-### RBAC — Rôles applicatifs (Spatie) — Dynamiques
+### RBAC — Rôles globaux (Spatie) — Nomenclature officielle
 
-| Rôle | Accès |
-|---|---|
-| `admin` | Total — gestion users, teams, projects, specialties, dashboard global, pause/reprise tous projets |
-| `member` | Projets assignés, tâches, IA, dashboard membre |
-| `client` | Lecture seule — dashboard projet, rapports, risques IA |
-| Rôles **dynamiques** | Ex: `scrum master`, `tech lead` — traités comme `member` (non-client) |
+| Nom technique | Nom affiché | Accès |
+|---|---|---|
+| `admin` | **Administrateur** | Total — gestion users, teams, projects, specialties, dashboard global, pause/reprise tous projets |
+| `member` | **Collaborateur** | Projets assignés, tâches, IA, dashboard membre |
+| `client` | **Observateur** | Lecture seule — dashboard projet, rapports, risques IA |
+| Rôles **dynamiques** | *(nom libre)* | Ex: `scrum master`, `tech lead` — traités comme Collaborateur (non-client) |
 
-Des rôles personnalisés peuvent être créés via l'interface *Rôles & Permissions*. Ils peuvent avoir leurs propres permissions granulaires. La règle d'accès principale repose sur `!client` : tout rôle différent de `client` a les droits membre.
+Des rôles personnalisés peuvent être créés via l'interface *Rôles & Permissions*. Ils peuvent avoir leurs propres permissions granulaires. La règle d'accès principale repose sur `!client` : tout rôle différent de `client` a les droits Collaborateur.
 
 **Validation backend (dynamique) :**
 ```php
@@ -993,7 +993,7 @@ Création des rôles système : `php artisan db:seed --class=RoleAndPermissionSe
 
 ### Permissions Spatie — Groupe Projets (complet)
 
-| Permission | Description | Admin | Member | Client |
+| Permission | Description | Administrateur | Collaborateur | Observateur |
 |---|---|---|---|---|
 | `project.view` | Voir les projets | ✅ | ✅ | ✅ |
 | `project.create` | Créer un projet | ✅ | ✅ | ❌ |
@@ -1002,7 +1002,7 @@ Création des rôles système : `php artisan db:seed --class=RoleAndPermissionSe
 | `project.archive` | Archiver un projet | ✅ | ✅ | ❌ |
 | `project.export` | Exporter les données | ✅ | ✅ | ✅ |
 | `project.manage_members` | Gérer les membres (ajout) | ✅ | ✅ | ❌ |
-| `project.member.remove` ★ | Retirer un membre | ✅ | chef uniquement | ❌ |
+| `project.member.remove` ★ | Retirer un membre | ✅ | Chef de projet uniquement | ❌ |
 | `project.manage_settings` | Modifier les paramètres | ✅ | ✅ | ❌ |
 | `project.pause` ★ | Mettre en pause | ✅ | ❌ | ❌ |
 | `project.resume` ★ | Reprendre (RBAC seul insuffisant) | ✅ | ❌ | ❌ |
@@ -1010,14 +1010,14 @@ Création des rôles système : `php artisan db:seed --class=RoleAndPermissionSe
 ★ `project.pause` : accordée aussi automatiquement au chef et propriétaire du projet via la policy.  
 ★ `project.resume` : la policy impose admin ou chef_id uniquement, cette permission RBAC ne change pas la restriction.
 
-### Rôles dans un projet (colonne `project_role` dans `project_members`)
+### Rôles projet (colonne `project_role` dans `project_members`) — Nomenclature officielle
 
-| Rôle pivot | Droits | Affiché comme |
+| Nom technique | Nom affiché | Droits |
 |---|---|---|
-| `chef` | Chef de projet — CRUD complet, gestion membres, invitations | Chef de projet |
-| `membre` | Membre — création/édition de tâches, commentaires | Membre |
-| `client` / `guest` / `viewer` | Observateur — lecture seule | Client |
-| `admin` / `owner` (legacy) | Traité comme chef | Chef de projet |
+| `chef` | **Chef de projet** | CRUD complet, gestion membres, invitations, pause/reprise |
+| `membre` | **Contributeur** | Création/édition de tâches, commentaires, worklog |
+| `client` / `guest` / `viewer` | **Observateur** | Lecture seule — suit le projet, accès Gantt/calendrier |
+| `admin` / `owner` (legacy) | **Chef de projet** | Traité comme chef |
 
 ### Flux d'authentification
 
@@ -3274,6 +3274,155 @@ Composant réutilisable affichant :
 - `project.start_date` et `project.end_date` proviennent de MySQL via `GET /api/projects/{id}`
 - **Les mêmes dates** sont utilisées côté React, Laravel et pour le diagramme de Gantt
 - Si le projet n'a pas de dates définies : le bandeau ne s'affiche pas (condition `start_date || end_date`)
+
+## 28. Nomenclature officielle des rôles — Matrice complète des permissions
+
+### 28.1 Hiérarchie des rôles
+
+#### Niveau 1 — Rôles globaux (Spatie, plateforme entière)
+
+| Nom technique | Nom affiché | Couleur | Description |
+|---|---|---|---|
+| `admin` | **Administrateur** | `#6366f1` | Gestion complète de la plateforme |
+| `member` | **Collaborateur** | `#10b981` | Utilisateur standard inscrit |
+| `client` | **Observateur** | `#f59e0b` | Utilisateur externe en lecture seule |
+
+#### Niveau 2 — Rôles projet (table `project_members`)
+
+| Nom technique | Nom affiché | Description |
+|---|---|---|
+| `chef` | **Chef de projet** | Responsable du projet |
+| `membre` | **Contributeur** | Participe aux tâches du projet |
+| `client` / `guest` / `viewer` | **Observateur** | Suit le projet en lecture seule |
+
+---
+
+### 28.2 Matrice complète des permissions
+
+#### Permissions Projets
+
+| Permission | Administrateur | Collaborateur | Observateur | Chef de projet | Contributeur |
+|---|:---:|:---:|:---:|:---:|:---:|
+| `project.view` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `project.create` | ✅ | ✅ | ❌ | — | — |
+| `project.edit` | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `project.delete` | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `project.archive` | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `project.export` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `project.manage_members` | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `project.manage_settings` | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `project.pause` | ✅ | ❌ | ❌ | ✅ (policy) | ❌ |
+| `project.resume` | ✅ | ❌ | ❌ | ✅ (chef_id) | ❌ |
+
+#### Permissions Tâches
+
+| Permission | Administrateur | Collaborateur | Observateur | Chef de projet | Contributeur |
+|---|:---:|:---:|:---:|:---:|:---:|
+| `task.view` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `task.create` | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `task.edit` | ✅ | ✅ | ❌ | ✅ | ✅ (ses tâches) |
+| `task.delete` | ✅ | ✅ (policy) | ❌ | ✅ | ✅ (si non terminée) |
+| `task.assign` | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `task.comment` | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `task.change_status` | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `task.manage_dependencies` | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `task.manage_time` | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `task.export` | ✅ | ✅ | ❌ | ✅ | ✅ |
+
+#### Permissions Sprints
+
+| Permission | Administrateur | Collaborateur | Observateur |
+|---|:---:|:---:|:---:|
+| `sprint.view` | ✅ | ✅ | ✅ |
+| `sprint.create` | ✅ | ✅ | ❌ |
+| `sprint.edit` | ✅ | ✅ | ❌ |
+| `sprint.complete` | ✅ | ✅ | ❌ |
+
+#### Permissions Équipes & Utilisateurs
+
+| Permission | Administrateur | Collaborateur | Observateur |
+|---|:---:|:---:|:---:|
+| `team.view` | ✅ | ✅ | ❌ |
+| `user.view` | ✅ | ✅ | ❌ |
+| `user.create` | ✅ | ❌ | ❌ |
+| `user.edit` | ✅ | ❌ | ❌ |
+| `user.delete` | ✅ | ❌ | ❌ |
+
+#### Permissions IA & Analytics
+
+| Permission | Administrateur | Collaborateur | Observateur |
+|---|:---:|:---:|:---:|
+| `ai.view` | ✅ | ✅ | ✅ (rapports projet uniquement) |
+| `ai.use` | ✅ | ✅ | ❌ |
+| `ai.analytics` | ✅ | ✅ | ❌ |
+| `ai.retrain` | ✅ | ❌ | ❌ |
+
+#### Permissions Dashboard
+
+| Permission | Administrateur | Collaborateur | Observateur |
+|---|:---:|:---:|:---:|
+| `dashboard.view_member` | ✅ | ✅ | ❌ |
+| `dashboard.view_client` | ✅ | ❌ | ✅ |
+| `dashboard.view_analytics` | ✅ | ✅ | ❌ |
+
+#### Permissions Gantt & Notifications
+
+| Permission | Administrateur | Collaborateur | Observateur |
+|---|:---:|:---:|:---:|
+| `gantt.view` | ✅ | ✅ | ✅ |
+| `gantt.edit` | ✅ | ✅ | ❌ |
+| `notification.view` | ✅ | ✅ | ✅ (filtrée) |
+| `notification.manage` | ✅ | ✅ | ❌ |
+
+#### Permissions Rôles & Permissions
+
+| Permission | Administrateur | Collaborateur | Observateur |
+|---|:---:|:---:|:---:|
+| `role.view` | ✅ | ❌ | ❌ |
+| `role.create` | ✅ | ❌ | ❌ |
+| `role.edit` | ✅ | ❌ | ❌ |
+| `role.delete` | ✅ | ❌ | ❌ |
+| `role.assign` | ✅ | ❌ | ❌ |
+| `user.manage_permissions` | ✅ | ❌ | ❌ |
+| `user.assign_role` | ✅ | ❌ | ❌ |
+
+---
+
+### 28.3 Règles d'accès spéciales (logic AccessControl.php)
+
+| Règle | Condition | Résultat |
+|---|---|---|
+| Voir un projet | Administrateur OU membre du projet OU propriétaire | Autorisé |
+| Voir un projet (Observateur) | Doit être explicitement invité (pivot `project_user`) | Sinon refusé |
+| Modifier un projet | Administrateur OU chef du projet | Autorisé |
+| Créer une tâche | Tout rôle sauf Observateur | Autorisé |
+| Modifier une tâche | Tout rôle sauf Observateur ; créateur ou assigné | Autorisé |
+| Supprimer une tâche | Administrateur OU Chef OU créateur (tâche non terminée) | Autorisé |
+| Commenter | Tout rôle sauf Observateur | Autorisé |
+| Mettre en pause | Administrateur OU chef_id du projet | Autorisé |
+| Reprendre | Administrateur OU chef_id uniquement | Autorisé |
+
+---
+
+### 28.4 Correspondance technique → affichage
+
+| Contexte | Valeur technique | Affiché dans l'UI |
+|---|---|---|
+| `APP_ROLE_LABELS` (global) | `admin` | Administrateur |
+| `APP_ROLE_LABELS` (global) | `member` | Collaborateur |
+| `APP_ROLE_LABELS` (global) | `client` | Observateur |
+| `PROJECT_ROLE_LABELS` (projet) | `chef` | Chef de projet |
+| `PROJECT_ROLE_LABELS` (projet) | `membre` / `member` | Contributeur |
+| `PROJECT_ROLE_LABELS` (projet) | `client` / `guest` / `viewer` | Observateur |
+| Sidebar bas de page | `userRoleLabel` via `formatAppRole()` | Label officiel |
+| Badge profil (Settings) | `formatAppRole(user.role)` | Label officiel |
+| Badge membre (ProjectDetail) | Hardcodé | Contributeur |
+| Invitation (AcceptInvitePage) | `PROJECT_ROLE_LABELS[role]` | Label officiel |
+| Filtre admin (UserManagement) | `APP_ROLE_LABELS[name]` | Label officiel |
+
+---
+
+> - **1 juin 2026 — Nomenclature officielle des rôles** : Harmonisation complète de tous les labels rôles dans l'application. `member` → **Collaborateur**, `client` (global) → **Observateur**, `membre` (projet) → **Contributeur**. Fichiers modifiés : `roles.js`, `messages.js` (FR+EN), `Sidebar.jsx`, `UserManagement.jsx`, `ProjectDetailPage.jsx`, `RoleDetailPage.jsx`, `projectActivityHumanize.js`, `DashboardPage.jsx`, `TaskFormPage.jsx`, `RoleAndPermissionSeeder.php`. Matrice complète des permissions ajoutée (§28).
 
 ---
 

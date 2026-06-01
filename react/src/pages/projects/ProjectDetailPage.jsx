@@ -1469,7 +1469,7 @@ function MemberRow({ member: m, isChef, removable, onRemove }) {
           </span>
         ) : (
           <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-            Membre
+            Contributeur
           </span>
         )}
         {canRemove && (
@@ -1825,7 +1825,7 @@ function ProjectProgressReport({ dashboard, tasks, project, criticalPath }) {
       (task.assignees || []).forEach((a) => {
         const u = a.user || a;
         if (!u?.id) return;
-        const cur = map.get(u.id) || { id: u.id, name: u.name || 'Membre', done: 0, active: 0, total: 0 };
+        const cur = map.get(u.id) || { id: u.id, name: u.name || 'Utilisateur', done: 0, active: 0, total: 0 };
         cur.total++;
         if (normalizeWorkflowStatus(task.workflow_status) === 'done') cur.done++;
         else cur.active++;

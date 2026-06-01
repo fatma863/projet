@@ -300,11 +300,11 @@ export default function RoleDetailPage() {
                         </thead>
                         <tbody className="text-amber-900">
                           {[
-                            { label: 'Admin (global)', pause: true, resume: true },
-                            { label: 'Chef du projet (chef_id)', pause: true, resume: true },
+                            { label: 'Administrateur', pause: true, resume: true },
+                            { label: 'Chef de projet', pause: true, resume: true },
                             { label: 'Propriétaire du projet', pause: true, resume: false },
-                            { label: 'Membre', pause: false, resume: false },
-                            { label: 'Client', pause: false, resume: false },
+                            { label: 'Collaborateur', pause: false, resume: false },
+                            { label: 'Observateur', pause: false, resume: false },
                           ].map((row) => (
                             <tr key={row.label} className="border-t border-amber-100">
                               <td className="py-1 pr-2">{row.label}</td>

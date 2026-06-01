@@ -255,11 +255,11 @@ export function getActivityContextRows(action, meta = {}) {
       if (meta.minutes != null) rows.push({ key: 'time', label: 'Durée', value: `${meta.minutes} min`, kind: 'text' });
       break;
     case 'project.member_role_changed':
-      if (meta.member_name) rows.push({ key: 'member', label: 'Membre', value: meta.member_name, kind: 'text' });
+      if (meta.member_name) rows.push({ key: 'member', label: 'Utilisateur', value: meta.member_name, kind: 'text' });
       if (meta.role) rows.push({ key: 'role', label: 'Nouveau rôle', value: formatProjectRole(meta.role), kind: 'text' });
       break;
     case 'project.member_removed':
-      if (meta.member_id != null) rows.push({ key: 'mid', label: 'Membre (ID)', value: `#${meta.member_id}`, kind: 'text' });
+      if (meta.member_id != null) rows.push({ key: 'mid', label: 'Utilisateur (ID)', value: `#${meta.member_id}`, kind: 'text' });
       break;
     case 'project.user_invited':
       if (meta.email) rows.push({ key: 'email', label: 'E-mail', value: meta.email, kind: 'text' });

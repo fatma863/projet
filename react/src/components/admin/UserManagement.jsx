@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { APP_ROLE_LABELS } from '../../lib/roles';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -44,7 +45,9 @@ function RolePreview({ role }) {
 function roleBadge(roleName, allRoles = []) {
   const found = allRoles.find((r) => r.name === roleName);
   const color = found?.color ?? '#6366f1';
-  const label = found?.name ?? roleName ?? 'Membre';
+  const rawName = found?.name ?? roleName;
+  // Utilise le label d'affichage officiel pour les rôles système, sinon le nom brut
+  const label = APP_ROLE_LABELS[rawName] ?? rawName ?? 'Collaborateur';
   return (
     <span
       className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"

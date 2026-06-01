@@ -1,8 +1,15 @@
-/** Rôles applicatifs (Spatie) — clés API : admin, member, client */
+/**
+ * Rôles globaux (Spatie) — clés API : admin, member, client
+ *
+ * Nomenclature officielle :
+ *   admin   → Administrateur  (accès complet plateforme)
+ *   member  → Collaborateur   (utilisateur standard inscrit)
+ *   client  → Observateur     (externe, lecture seule)
+ */
 export const APP_ROLE_LABELS = {
   admin:  'Administrateur',
-  member: 'Membre',
-  client: 'Client',
+  member: 'Collaborateur',
+  client: 'Observateur',
 };
 
 const CANONICAL_ROLES = ['admin', 'member', 'client'];
@@ -16,8 +23,8 @@ export function normalizeAppRole(role) {
 }
 
 /**
- * Profil client (lecture seule) : rôle `client` ou legacy guest/viewer.
- * Les rôles dynamiques (ex: "scrum master") sont traités comme membre.
+ * Observateur (lecture seule) : rôle `client` ou legacy guest/viewer.
+ * Les rôles dynamiques (ex: "scrum master") sont traités comme collaborateur.
  */
 const CLIENT_ROLES = new Set(['client', 'guest', 'viewer']);
 
@@ -28,23 +35,28 @@ export function isGuestViewer(user) {
   return CLIENT_ROLES.has(user.role);
 }
 
-/** Retourne le label FR du rôle applicatif */
+/** Retourne le label FR du rôle applicatif global */
 export function formatAppRole(role) {
   if (!role) return APP_ROLE_LABELS.member;
   const key = normalizeAppRole(role);
   return APP_ROLE_LABELS[key] ?? role;
 }
 
-/** Rôles projet : chef (1 par projet), membre, client */
+/**
+ * Rôles projet (table project_members) — nomenclature officielle :
+ *   chef    → Chef de projet  (responsable du projet)
+ *   membre  → Contributeur    (participe aux tâches)
+ *   client  → Observateur     (suit le projet en lecture seule)
+ */
 export const PROJECT_ROLE_LABELS = {
   chef:   'Chef de projet',
-  membre: 'Membre',
+  membre: 'Contributeur',
   // Legacy — conservés pour la compatibilité d'affichage uniquement
   admin:  'Chef de projet',
-  member: 'Membre',
-  client: 'Client',
-  guest:  'Client',
-  viewer: 'Client',
+  member: 'Contributeur',
+  client: 'Observateur',
+  guest:  'Observateur',
+  viewer: 'Observateur',
   owner:  'Chef de projet',
 };
 

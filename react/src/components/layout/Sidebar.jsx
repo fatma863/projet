@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { useI18n } from '../../i18n/I18nContext';
 import { usePermissions } from '../../hooks/usePermissions';
+import { formatAppRole } from '../../lib/roles';
 import api from '../../lib/api';
 
 // ── Navigation sections ────────────────────────────────────────────────────────
@@ -225,8 +226,9 @@ export default function Sidebar({ onClose }) {
   });
   const auditBadge = auditBadgeData > 0 ? auditBadgeData : 0;
 
-  const userInitial = user?.name?.charAt(0)?.toUpperCase() ?? '?';
-  const userRole    = user?.roles?.[0] ?? 'member';
+  const userInitial    = user?.name?.charAt(0)?.toUpperCase() ?? '?';
+  const userRole       = user?.roles?.[0] ?? 'member';
+  const userRoleLabel  = formatAppRole(userRole);
 
   return (
     <motion.aside
@@ -357,7 +359,7 @@ export default function Sidebar({ onClose }) {
                   className="min-w-0 flex-1"
                 >
                   <p className="truncate text-xs font-semibold text-slate-200 leading-tight">{user.name}</p>
-                  <p className="truncate text-[10px] text-slate-500 capitalize leading-tight">{userRole}</p>
+                  <p className="truncate text-[10px] text-slate-500 leading-tight">{userRoleLabel}</p>
                 </motion.div>
               )}
             </AnimatePresence>

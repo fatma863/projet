@@ -642,8 +642,8 @@ export const messages = {
     },
     roles: {
       admin: 'Administrateur',
-      member: 'Membre',
-      client: 'Client',
+      member: 'Collaborateur',
+      client: 'Observateur',
     },
   },
   en: {
@@ -1288,8 +1288,8 @@ export const messages = {
     },
     roles: {
       admin: 'Administrator',
-      member: 'Member',
-      client: 'Client',
+      member: 'Collaborator',
+      client: 'Observer',
     },
   },
 };

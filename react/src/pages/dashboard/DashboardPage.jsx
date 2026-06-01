@@ -904,7 +904,7 @@ function InternalDashboard() {
                     transition={{ delay: idx * 0.04 }}
                     className="flex gap-2.5 items-start"
                   >
-                    <UserAvatar name={a.actor?.name || 'Membre'} src={a.actor?.avatar_url} size="sm" className="shrink-0 mt-0.5" />
+                    <UserAvatar name={a.actor?.name || 'Utilisateur'} src={a.actor?.avatar_url} size="sm" className="shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-foreground leading-snug">
                         {line}{quote && <span className="font-semibold"> {quote}</span>}
