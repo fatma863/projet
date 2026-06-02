@@ -653,8 +653,8 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* Audit Journal — admin and member only */}
-      {!isViewer && (
+      {/* Audit Journal — Administrateur uniquement */}
+      {isAdmin && (
         <MotionSection
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}

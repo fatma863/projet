@@ -46,7 +46,7 @@ const NAV_SECTIONS = [
     label: 'Administration',
     items: [
       { to: '/admin/roles',   icon: ShieldCheck,     labelKey: 'layout.nav.roles',         permission: 'role.view' },
-      { to: '/audit-log',     icon: History,         labelKey: 'layout.nav.auditLog',      permission: 'task.view',   badge: 'audit', clientHidden: true },
+      { to: '/audit-log',     icon: History,         labelKey: 'layout.nav.auditLog',      permission: 'task.view',   badge: 'audit', adminOnly: true },
     ],
   },
 ];
@@ -222,7 +222,7 @@ export default function Sidebar({ onClose }) {
       api.get('/activity/feed', { params: { date_from: lastAuditVisit, per_page: 1 } })
         .then((r) => r.data?.meta?.total ?? 0),
     staleTime: 60_000,
-    enabled: can('task.view'),
+    enabled: isAdmin,
   });
   const auditBadge = auditBadgeData > 0 ? auditBadgeData : 0;
 

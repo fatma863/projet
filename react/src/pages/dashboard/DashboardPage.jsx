@@ -536,7 +536,7 @@ function InternalDashboard() {
   const { data: activityData, isLoading: activityLoading, isError: activityError, error: activityErr } = useQuery({
     queryKey: ['activity-feed'],
     queryFn: () => fetchActivityFeed({ per_page: 10 }),
-    enabled: !!user && !isViewerUser,
+    enabled: !!user && isAdmin,
     refetchInterval: POLL_INTERVAL_MS,
     staleTime: 10000,
   });
@@ -693,7 +693,7 @@ function InternalDashboard() {
   };
   const showCharts = isAdmin ? flatTasks.length > 0 || projects.length > 0 : chartTasks.length > 0 || (usePersonalDashboardApi && totalTasks > 0);
 
-  const hasErrors = projectsError || memberDashError || adminDashError || (!isViewerUser && activityError) || invitesError;
+  const hasErrors = projectsError || memberDashError || adminDashError || (isAdmin && activityError) || invitesError;
 
   /* ─── RENDER ─── */
   return (
@@ -704,7 +704,7 @@ function InternalDashboard() {
           {projectsError && <p>Projets : {projectsErr?.message || t('projects.noProjects')}</p>}
           {memberDashError && <p>Tableau personnel : {memberDashErr?.message || 'Erreur API.'}</p>}
           {adminDashError && <p>Tableau admin : {adminDashErr?.message || 'Erreur API.'}</p>}
-          {!isViewerUser && activityError && <p>Activité : {activityErr?.message || 'Erreur API.'}</p>}
+          {isAdmin && activityError && <p>Activité : {activityErr?.message || 'Erreur API.'}</p>}
           {invitesError && <p>Invitations : erreur de chargement.</p>}
         </div>
       )}

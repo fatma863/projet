@@ -548,8 +548,8 @@ export default function ProjectDetailPage() {
             ? [{ key: 'tasks', label: 'Tâches' }]
             : [{ key: 'kanban', label: 'Kanban' }]),
           { key: 'members', label: 'Membres' },
-          // Historique / journal d'audit masqué pour les clients
-          ...(isClient ? [] : [{ key: 'activity', label: 'Historique' }]),
+          // Historique / journal d'audit : Administrateur uniquement
+          ...(isAdmin ? [{ key: 'activity', label: 'Historique' }] : []),
           ...(!isViewer || isClient ? [{ key: 'gantt', label: 'Gantt' }] : []),
           { key: 'progress', label: "Rapport d'avancement" },
           ...(isViewer ? [{ key: 'reports', label: 'Rapports IA' }] : []),
@@ -656,7 +656,7 @@ export default function ProjectDetailPage() {
       {tab === 'members' && (
         <MembersTab project={project} projectId={id} canEditProject={canEditProject} canInvite={canInvite} isAdmin={isAdmin} onOpenInvite={() => setInviteOpen(true)} />
       )}
-      {tab === 'activity' && !isClient && <ProjectActivityTab projectId={id} />}
+      {tab === 'activity' && isAdmin && <ProjectActivityTab projectId={id} />}
       {tab === 'gantt' && (
         <div className="pt-4">
           {loadingGantt ? (

@@ -69,7 +69,7 @@ function App() {
             <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
             {/* Standalone print pages — no AppLayout */}
-            <Route path="/audit-log/report" element={<ProtectedRoute><RoleRoute allow={['admin', 'member']}><AuditReportPage /></RoleRoute></ProtectedRoute>} />
+            <Route path="/audit-log/report" element={<ProtectedRoute><RoleRoute allow={['admin']}><AuditReportPage /></RoleRoute></ProtectedRoute>} />
 
             {/* Protected routes */}
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
@@ -89,7 +89,7 @@ function App() {
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/notifications/settings" element={<NotificationSettingsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/audit-log" element={<RoleRoute allow={['admin', 'member']}><AuditLogPage /></RoleRoute>} />
+              <Route path="/audit-log" element={<RoleRoute allow={['admin']}><AuditLogPage /></RoleRoute>} />
 
               {/* ── Enterprise RBAC admin pages ──────────────────────── */}
               <Route

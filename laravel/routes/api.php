@@ -126,9 +126,9 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
         Route::post('projects/{project}/invite', [ProjectController::class, 'invite']);
         Route::get('projects/{project}/export/tasks', [ProjectController::class, 'exportTasks']);
     });
-    // Historique / journal d'audit projet — réservé aux membres internes (pas au rôle client)
+    // Historique / journal d'audit projet — Administrateur uniquement
     Route::get('projects/{project}/activity', [ProjectController::class, 'activity'])
-        ->middleware(['check.project:view', 'check.role:!client']);
+        ->middleware(['check.project:view', 'check.role:admin']);
     // Project write operations are guarded by the paused-lock middleware
     Route::middleware(['check.project:edit', 'project.not_paused'])->group(function () {
         Route::get('projects/{project}/user-search', [ProjectController::class, 'searchUsers']);
@@ -168,8 +168,8 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::get('calendar', [CalendarController::class, 'index']);
     Route::get('gantt', [GanttController::class, 'globalIndex']);
 
-    // Ces endpoints exposent des données agrégées d'équipe réservées aux membres internes
-    Route::middleware('check.role:!client')->group(function () {
+    // Journal d'audit global — Administrateur uniquement
+    Route::middleware('check.role:admin')->group(function () {
         Route::get('activity/feed', [ActivityFeedController::class, 'index']);
         Route::get('activity/export', [ActivityFeedController::class, 'export']);
         Route::get('activity/analytics', [ActivityAnalyticsController::class, 'index']);
