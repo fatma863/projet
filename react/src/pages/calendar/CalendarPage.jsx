@@ -57,7 +57,7 @@ export default function CalendarPage() {
     return p.toString();
   }, [from, to, projectId, userId]);
 
-  const { data: tasks = [], isLoading } = useQuery({
+  const { data: tasks = [], isLoading, isError } = useQuery({
     queryKey: ['calendar', params],
     queryFn: () => api.get(`/calendar?${params}`).then((r) => r.data.tasks || []),
   });
@@ -200,6 +200,11 @@ export default function CalendarPage() {
           {isLoading ? (
             <div className="flex justify-center py-20">
               <Spinner size="lg" />
+            </div>
+          ) : isError ? (
+            <div className="flex flex-col items-center gap-3 py-20 text-center">
+              <p className="text-sm font-medium text-destructive">Impossible de charger le calendrier.</p>
+              <p className="text-xs text-muted-foreground">Vérifiez votre connexion et rechargez la page.</p>
             </div>
           ) : (
             <CalendarView

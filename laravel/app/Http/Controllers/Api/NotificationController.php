@@ -201,6 +201,7 @@ class NotificationController extends Controller
             'project_invitation',
             'invitation_received',
             'project_invitation_accepted',
+            'member_removed',   // L'Observateur doit savoir qu'il a été retiré d'un projet
         ];
     }
 
