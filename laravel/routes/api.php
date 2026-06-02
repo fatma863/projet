@@ -89,13 +89,19 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
     Route::post('invites/accept', [InviteController::class, 'accept']);
     Route::post('invites/decline', [InviteController::class, 'decline']);
 
-    // Teams
-    Route::apiResource('teams', TeamController::class);
-    Route::post('teams/{team}/members', [TeamController::class, 'addMember']);
-    Route::patch('teams/{team}/members/{user}', [TeamController::class, 'updateMember']);
-    Route::patch('teams/{team}/members/{user}/project-role', [TeamController::class, 'updateMemberProjectRole']);
-    Route::patch('teams/{team}/members/{user}/specialties', [TeamController::class, 'updateMemberSpecialties']);
-    Route::delete('teams/{team}/members/{user}', [TeamController::class, 'removeMember']);
+    // Teams — lecture autorisée pour membres, écriture admin uniquement
+    Route::get('teams', [TeamController::class, 'index']);
+    Route::get('teams/{team}', [TeamController::class, 'show']);
+    Route::middleware('check.role:!client')->group(function () {
+        Route::post('teams', [TeamController::class, 'store']);
+        Route::put('teams/{team}', [TeamController::class, 'update']);
+        Route::delete('teams/{team}', [TeamController::class, 'destroy']);
+        Route::post('teams/{team}/members', [TeamController::class, 'addMember']);
+        Route::patch('teams/{team}/members/{user}', [TeamController::class, 'updateMember']);
+        Route::patch('teams/{team}/members/{user}/project-role', [TeamController::class, 'updateMemberProjectRole']);
+        Route::patch('teams/{team}/members/{user}/specialties', [TeamController::class, 'updateMemberSpecialties']);
+        Route::delete('teams/{team}/members/{user}', [TeamController::class, 'removeMember']);
+    });
     Route::middleware('check.role:admin')->group(function () {
         Route::apiResource('users', UserController::class)->except(['show']);
         Route::delete('users/{user}/permanent', [UserController::class, 'forceDestroy']);
@@ -224,9 +230,11 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
 
     // Task Worklog (dynamic progress)
     Route::get('tasks/{task}/worklog', [WorklogController::class, 'index']);
-    Route::post('tasks/{task}/worklog', [WorklogController::class, 'store']);
+    Route::post('tasks/{task}/worklog', [WorklogController::class, 'store'])
+        ->middleware(['can:update,task', 'project.not_paused']);
     Route::get('tasks/{task}/worklog/users', [WorklogController::class, 'userProgress']);
-    Route::put('tasks/{task}/worklog/validate', [WorklogController::class, 'validate']);
+    Route::put('tasks/{task}/worklog/validate', [WorklogController::class, 'validate'])
+        ->middleware('can:update,task');
 
     // Gantt
     Route::middleware('check.project:view')->group(function () {
