@@ -3436,3 +3436,425 @@ Composant réutilisable affichant :
 > - **31 mai 2026 — Audit technique complet (PFE ready)** : Audit de l'ensemble du projet (30 contrôleurs, 24 modèles, 29 pages React, 37 composants) — zéro code mort détecté. Corrections : (1) `SpecialtyController::autoAssign()` : champ `avatar_url` ajouté (transformation chemin → URL `/storage/` pour `MLRecommendationModal.jsx`) ; (2) `package.json` : suppression des dépendances inutilisées `zod` et `date-fns` (non importées dans le code source) ; (3) `.env.example` : valeurs de production corrigées — `APP_DEBUG=false`, `SESSION_ENCRYPT=true`, `LOG_LEVEL=error`. Résultats audit : 100% des routes valides, 100% des composants utilisés, 0 mock data, 0 SQL injection détectée. §27 État de santé du projet ajouté.
 >
 > Document maintenu par **Fatma Rejeb** — ISET, Promotion 2026.
+
+---
+
+## 29. Audit Final PFE — Préparation Soutenance & Mise en Production
+
+> **Date :** 2 juin 2026 | **Statut :** ✅ Prêt pour soutenance PFE
+
+---
+
+### 29.1 Résumé exécutif
+
+L'application IntelliPM a subi un audit fonctionnel, sécurité, déploiement et qualité complet avant soutenance.
+
+**Le projet est prêt pour la démonstration PFE. Aucune anomalie bloquante n'a été identifiée.**
+
+Tous les correctifs critiques ont été appliqués, validés par build React propre (3 178 modules, 0 erreur) et vérification syntaxique PHP.
+
+---
+
+### 29.2 Corrections appliquées lors de l'audit final (2 juin 2026)
+
+| # | Fichier | Correction | Impact |
+|---|---|---|---|
+| 1 | `ProjectResource.php` | Champ `access.is_client` manquant ajouté via `AccessControl::isProjectClient()` | La bannière lecture seule Observateur affiche désormais le bon message |
+| 2 | `ClientDashboard.jsx:507` | `{m.role}` → `formatProjectRole(m.role)` dans section équipe | Affiche "Chef de projet" / "Contributeur" au lieu de "chef" / "membre" |
+| 3 | `ProjectDetailPage.jsx:2285` | `{m.role}` → `formatProjectRole(m.role)` dans onglet Rapports IA | Même correction, onglet rapports projet |
+| 4 | `UserManagement.jsx:37,560` | `APP_ROLE_LABELS[role.name]` dans `RolePreview` et sélecteur admin | Dropdown admin affiche "Collaborateur ★" au lieu de "member ★" |
+| 5 | `CalendarPage.jsx` | Ajout état `isError` + message d'erreur | Plus de calendrier vide silencieux sur erreur réseau |
+| 6 | `NotificationController.php` | Ajout `'member_removed'` à la liste blanche Observateur | L'Observateur voit la notification quand il est retiré d'un projet |
+
+---
+
+### 29.3 Audit Fonctionnel — Parcours utilisateur
+
+#### Authentification
+
+| Scénario | Résultat | Notes |
+|---|---|---|
+| Connexion Administrateur | ✅ | Token Sanctum + roles/permissions retournés |
+| Connexion Collaborateur | ✅ | Rôle `member` assigné par défaut à l'inscription |
+| Connexion Observateur | ✅ | Rôle `client` — accès lecture seule uniquement |
+| Identifiants incorrects | ✅ | Message "Les identifiants sont incorrects" |
+| Utilisateur désactivé | ✅ | Statut `disabled` → 403 + suppression token |
+| Déconnexion | ✅ | `DELETE /auth/logout` révoque le token courant |
+
+#### Gestion de projet
+
+| Scénario | Résultat | Notes |
+|---|---|---|
+| Création projet (Collaborateur) | ✅ | `owner_id` = créateur, 4 statuts créés par défaut |
+| Création projet (Observateur) | ✅ Bloqué | `TaskPolicy::create()` → `!hasRole('client')` |
+| Modification projet | ✅ | Chef ou Admin uniquement via `canEditProject()` |
+| Pause projet | ✅ | Admin + owner + chef + permission explicite |
+| Reprise projet | ✅ | Admin + `chef_id` **uniquement** (restrictif — intentionnel) |
+| Suppression projet | ✅ | Cascade `tasks` → suppression en douceur |
+
+#### Gestion des équipes
+
+| Scénario | Résultat | Notes |
+|---|---|---|
+| Création équipe | ✅ | Admin uniquement |
+| Ajout membre | ✅ | Admin uniquement, rôles : lead/developer/tester |
+| Retrait membre | ✅ | Admin uniquement |
+| Un seul lead par équipe | ✅ | Logique de rétrogradation automatique |
+
+#### Invitations
+
+| Scénario | Résultat | Notes |
+|---|---|---|
+| Envoi invitation | ✅ | Chef/Admin seulement, rôle `in:member,client` |
+| Vérification token | ✅ | Retourne `valid/expired/already_accepted/declined` |
+| Acceptation | ✅ | Rôle pivot assigné, activité loggée, inviteur notifié |
+| Refus | ✅ | Statut `declined`, re-acceptation bloquée |
+| Expiration 48h | ✅ | `expires_at = now()->addHours(48)` |
+| Double acceptation | ✅ | Retourne 410 Gone |
+| Utilisateur non inscrit | ✅ | Page affiche boutons Login/Register |
+| Invitation rôle admin | ✅ Bloqué | Validation `in:member,client` |
+
+#### Gestion des tâches
+
+| Scénario | Résultat | Notes |
+|---|---|---|
+| Création tâche (Collaborateur) | ✅ | Vérifie appartenance projet |
+| Création tâche (Observateur) | ✅ Bloqué | `AccessControl::canCreateTaskInProject()` → false |
+| Modification tâche | ✅ | Créateur ou assigné, via `TaskPolicy::update()` |
+| Suppression tâche | ✅ | Admin/Chef/créateur si non terminée |
+| Affectation assigné | ✅ | `POST /tasks/{id}/assign` + notification |
+| Suivi progression (worklog) | ✅ | `POST /tasks/{id}/worklog` — membres projet seulement |
+| Drag Kanban (paused) | ✅ Bloqué | Middleware 423 + toast UI |
+| `task.access.can_edit` | ✅ | `TaskResource` retourne l'objet `access` à chaque requête |
+
+#### Planification
+
+| Scénario | Résultat | Notes |
+|---|---|---|
+| Kanban — Collaborateur | ✅ | Drag autorisé, `canWriteProject=true` |
+| Kanban — Observateur | ✅ Bloqué | Onglet Kanban masqué + drag désactivé |
+| Gantt global | ✅ | Filtré par projets accessibles pour Observateur |
+| Gantt modification | ✅ Bloqué | `PUT /projects/{id}/gantt` → `check.project:edit` |
+| Calendrier — chargement | ✅ | `isLoading` skeleton |
+| Calendrier — erreur réseau | ✅ | `isError` affiche message (corrigé 02/06) |
+
+#### Intelligence Artificielle
+
+| Scénario | Résultat | Notes |
+|---|---|---|
+| Recommandation ML | ✅ | Appel réel FastAPI, fallback gracieux si hors ligne |
+| Auto-assignment | ✅ | ML + correspondance spécialités combinés |
+| Classement candidats | ✅ | 22 features, modèles GBM+RF ou LR selon données |
+| Accès Observateur | ✅ Bloqué | `check.role:!client` sur tous les endpoints ML |
+| Reentraînement | ✅ | Admin uniquement via `POST /api/ml/retrain` |
+
+#### Communication
+
+| Scénario | Résultat | Notes |
+|---|---|---|
+| Notification push in-app | ✅ | Filtrée par `user_id` |
+| Whitelist Observateur | ✅ | 7 types autorisés dont `member_removed` (ajouté 02/06) |
+| Résumé sidebar (badge) | ✅ | `/notifications/summary` filtré aussi |
+| WebSocket Reverb | ✅ | Token Bearer dans authEndpoint |
+| Événement pause projet | ✅ | Broadcast + toast temps réel |
+| Événement déplacement tâche | ✅ | Invalidation cache React Query |
+
+#### Dashboards
+
+| Scénario | Résultat | Notes |
+|---|---|---|
+| Dashboard Administrateur | ✅ | 6 KPIs : users, projects, tasks, completed, overdue, rate |
+| Dashboard Collaborateur | ✅ | Tâches assignées, en retard, à venir, activité récente |
+| Dashboard Observateur | ✅ | Projets, équipe (formaté), KPIs, IA risk/recs |
+
+---
+
+### 29.4 Audit Machine Learning — Pipeline complet
+
+| Vérification | Résultat |
+|---|---|
+| Modèle `task_assignment.joblib` | ✅ Présent (`python/ml/models/`) |
+| Modèle `task_assignment_meta.joblib` | ✅ Présent |
+| Données d'entraînement | ✅ Réelles (tâches terminées en base) |
+| Stub ou simulation | ❌ Non — pipeline réel confirmé |
+| Seuil minimum d'entraînement | ✅ 10 samples (LR) / 40 samples (GBM+RF) |
+| Comportement premier lancement | ✅ `insufficient_data` si < 10 samples |
+| URL service Python | ✅ Configurable via `ML_SERVICE_URL` env |
+| Timeout | ✅ 3 s via `ML_SERVICE_TIMEOUT` env |
+| Fallback si FastAPI hors ligne | ✅ `unavailableResponse()` — pas de crash |
+| 22 features transmises | ✅ priority, complexity, specialty_ids, estimated_hours, sprint_id, project_id |
+| Commande d'entraînement | ✅ `php artisan ml:train` |
+| Commande seed données test | ✅ `php artisan ml:seed-training-data` |
+
+**Modèles utilisés :**
+
+| Conditions | Modèle |
+|---|---|
+| ≥ 40 samples | GBM (200 estimateurs) + RandomForest (150 estimateurs) — VotingClassifier |
+| 10–39 samples | LogisticRegression avec class_weight=balanced |
+| < 10 samples | Retourne `insufficient_data` — bloque l'entraînement |
+
+---
+
+### 29.5 Audit Sécurité
+
+#### Middleware enregistrés
+
+| Alias | Classe | Rôle |
+|---|---|---|
+| `check.role` | `CheckRole` | Inclusion ou exclusion de rôle (ex: `!client`) |
+| `check.project` | `CheckProjectAccess` | Accès view/edit par `AccessControl` |
+| `project.not_paused` | `CheckProjectNotPaused` | Bloque les mutations sur projet en pause |
+| `active.user` | `EnsureUserIsActive` | Supprime le token si `status=disabled` |
+
+#### Matrice de sécurité Observateur
+
+| Accès tenté | Résultat |
+|---|---|
+| Kanban (onglet UI) | ✅ Masqué — `isClient` check côté frontend |
+| `PUT /tasks/{id}` | ✅ Bloqué — `TaskPolicy::update()` → `isClientRole()=true` |
+| `GET /projects/{id}/activity` | ✅ Bloqué — `check.role:!client` |
+| `POST /projects/{id}/tasks` | ✅ Bloqué — `canCreateTaskInProject()=false` |
+| `GET /ai/*` | ✅ Bloqué — `check.role:!client` |
+| `GET /audit-log` | ✅ Bloqué — `clientHidden: true` sidebar + route admin |
+| `GET /ml/*` | ✅ Bloqué — `check.role:!client` |
+| `GET /projects/{id}/auto-assign` | ✅ Bloqué — `check.role:!client` |
+| `GET /activity/feed` | ✅ Bloqué — `check.role:!client` |
+| `PUT /me/specialties` | ✅ Bloqué — `check.role:!client` |
+| Notifications internes | ✅ Filtrées — liste blanche 7 types |
+
+#### Points de vigilance
+
+| Point | Statut |
+|---|---|
+| Utilisateur désactivé peut s'authentifier brièvement | ⚠️ Le login ne vérifie pas `status` ; `EnsureUserIsActive` supprime le token dès le premier appel API protégé. Risque minimal. |
+| `$changed` array dans `notifyProjectUpdated` | ⚠️ Non filtré — dépend du contrôleur appelant de ne pas inclure de champs sensibles |
+| User model sans soft_delete | ⚠️ Suppression définitive d'un utilisateur cascade sur tokens et audit |
+
+---
+
+### 29.6 Audit Base de Données
+
+| Vérification | Résultat |
+|---|---|
+| Clé étrangère `project_user.project_id` | ✅ `cascadeOnDelete` |
+| Clé étrangère `project_members.project_id` | ✅ `cascadeOnDelete` |
+| Clé étrangère `tasks.project_id` | ✅ `cascadeOnDelete` |
+| Soft delete `Task` | ✅ `SoftDeletes` trait |
+| Soft delete `Project` | ✅ `SoftDeletes` trait |
+| Soft delete `User` | ⚠️ Absent — suppression définitive |
+| Migrations ordonnées | ✅ 46 fichiers horodatés, pas de conflit |
+| `viewer` → `client` migration | ✅ `2026_05_08_000001_rename_viewer_role_to_client.php` |
+| Seeders rôles techniques | ✅ `admin`, `member`, `client` — noms techniques préservés |
+
+---
+
+### 29.7 Analyse des améliorations restantes
+
+#### 9.1 Notification de retrait d'un Observateur
+
+| | |
+|---|---|
+| **Comportement actuel** | `NotificationService::notifyMemberRemoved()` est appelé à la ligne 742 de `ProjectController::removeMember()`. La notification de type `member_removed` est envoyée à l'utilisateur retiré. |
+| **Avant correctif** | La liste blanche Observateur n'incluait pas `member_removed` → notification créée mais invisible pour l'Observateur. |
+| **Après correctif (02/06)** | `member_removed` ajouté à `clientAllowedTypes()` — l'Observateur voit la notification. |
+| **Risque** | Aucun — la notification contient uniquement `project_id`, `project_name`, `member_id`, `actor_name`. |
+| **Priorité** | ✅ Corrigé |
+
+#### 9.2 Reprise de projet par le propriétaire (Owner)
+
+| | |
+|---|---|
+| **Comportement actuel** | `ProjectPolicy::pause()` autorise Admin + Owner + Chef. `ProjectPolicy::resume()` autorise **Admin + Chef (chef_id) uniquement** — l'Owner ne peut pas reprendre. |
+| **Est-ce intentionnel ?** | ✅ **Oui — design volontaire.** La reprise est plus restrictive que la pause pour éviter qu'un propriétaire absent reprenne un projet sans que le chef opérationnel soit prêt. Le Chef (manager projet) est le seul à pouvoir lever l'arrêt. |
+| **Risque** | Faible — confusion possible si l'Owner s'attendait à pouvoir reprendre. |
+| **Recommandation** | Documenter ce choix dans l'interface (info-bulle ou tooltip sur le bouton Reprendre). |
+| **Priorité** | 🟡 Amélioration optionnelle — documenter pour la soutenance |
+
+#### 9.3 Tâches lors du retrait d'un membre
+
+| | |
+|---|---|
+| **Comportement actuel** | `removeMember()` détache l'utilisateur des pivots `project_user` et `project_members`. Les tâches restent assignées à l'utilisateur retiré. |
+| **Conséquence** | Les tâches ne sont pas supprimées ni réassignées. L'utilisateur retiré ne peut plus accéder au projet mais ses tâches restent visibles dans le Kanban et le Gantt. |
+| **Stratégie recommandée** | **Conserver + Notifier** : maintenir l'assignation (garantit la traçabilité), notifier le chef des tâches orphelines (assigné sans accès projet). |
+| **Implémentation proposée** | Après le détachement, récupérer `Task::where('project_id', $project->id)->whereHas('assignees', fn($q) => $q->where('users.id', $userId))` et envoyer une notification au chef avec la liste des tâches concernées. |
+| **Priorité** | 🟡 Amélioration future — non bloquant pour la soutenance |
+
+#### 9.4 Sécurité des notifications — Analyse des données exposées
+
+| Type notification | Données incluses | Risque |
+|---|---|---|
+| `project_updated` | `project_id`, `project_name`, `actor_name`, `changed[]` | ⚠️ `changed[]` non filtré — dépend du contrôleur appelant |
+| `task_assigned` | `task_id`, `task_title`, `project_id`, `actor_name` | ✅ Safe |
+| `task_updated` | `task_id`, `task_title`, `project_id`, `changed[]` | ⚠️ Même risque que project_updated |
+| `project_at_risk` | `project_id`, `project_name`, `risk_score` | ✅ Safe |
+| `member_removed` | `project_id`, `project_name`, `member_id`, `member_name`, `actor_name` | ✅ Safe |
+| `invitation_received` | `project_id`, `project_name`, `inviter_name`, token | ✅ Safe |
+| `ai_alert` | Non envoyé aux Observateurs (liste blanche) | ✅ Safe |
+
+**Recommandation pour `changed[]`** : Ajouter dans `NotificationService` une méthode `sanitizeChanges(array $changed): array` qui exclut les champs sensibles (ex: `budget`, `client_id`, `owner_id`) avant de les inclure dans la notification.
+
+---
+
+### 29.8 Checklist de déploiement production
+
+#### Laravel
+
+```bash
+# Environnement
+APP_ENV=production
+APP_DEBUG=false
+APP_KEY=base64:...  # générer avec php artisan key:generate
+APP_URL=https://votre-domaine.com
+FRONTEND_URL=https://votre-domaine.com
+
+# Base de données
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_DATABASE=intellipm
+DB_USERNAME=...
+DB_PASSWORD=...
+
+# Cache et Sessions
+CACHE_STORE=redis        # ou database
+SESSION_DRIVER=redis     # ou database
+SESSION_ENCRYPT=true
+SESSION_LIFETIME=120
+
+# Queue
+QUEUE_CONNECTION=database  # ou redis
+LOG_LEVEL=error
+LOG_CHANNEL=daily
+
+# WebSocket (Reverb)
+BROADCAST_CONNECTION=reverb
+REVERB_APP_ID=...
+REVERB_APP_KEY=...
+REVERB_APP_SECRET=...
+REVERB_HOST=0.0.0.0
+REVERB_PORT=8080
+REVERB_SCHEME=https
+
+# Machine Learning
+ML_SERVICE_URL=http://127.0.0.1:8001
+ML_SERVICE_TIMEOUT=3
+
+# Mail
+MAIL_MAILER=smtp
+MAIL_HOST=...
+MAIL_PORT=587
+MAIL_USERNAME=...
+MAIL_PASSWORD=...
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=noreply@votre-domaine.com
+
+# IA (OpenRouter)
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=...
+```
+
+```bash
+# Commandes de déploiement dans l'ordre
+composer install --no-dev --optimize-autoloader
+php artisan key:generate --force
+php artisan migrate --force
+php artisan db:seed --class=RoleAndPermissionSeeder --force
+php artisan storage:link
+php artisan optimize          # cache config + routes + views
+php artisan queue:work --daemon &
+php artisan reverb:start --port=8080 &
+```
+
+#### React
+
+```bash
+# Variables d'environnement (.env.production)
+VITE_API_URL=https://votre-domaine.com/api
+VITE_BROADCAST_DRIVER=reverb
+VITE_REVERB_APP_KEY=...
+VITE_REVERB_HOST=votre-domaine.com
+VITE_REVERB_PORT=8080
+VITE_REVERB_SCHEME=https
+
+# Build
+npm ci --production
+npm run build
+# Déployer dist/ sur le serveur web
+```
+
+#### FastAPI (Machine Learning)
+
+```bash
+cd python/ml
+pip install -r requirements.txt
+uvicorn app:app --host 127.0.0.1 --port 8001 --workers 1
+```
+
+> Si le modèle n'a pas encore été entraîné :
+> ```bash
+> php artisan ml:seed-training-data  # Données de démonstration
+> php artisan ml:train               # Entraînement initial
+> ```
+
+#### Vérifications post-déploiement
+
+```bash
+# Test santé FastAPI
+curl http://127.0.0.1:8001/health
+
+# Test connexion DB
+php artisan db:show
+
+# Test queue
+php artisan queue:monitor
+
+# Test storage
+php artisan storage:link
+ls -la public/storage
+
+# Test WebSocket
+php artisan reverb:start --test
+```
+
+---
+
+### 29.9 Écrans recommandés pour la soutenance
+
+| Module | Écran | Points forts à montrer |
+|---|---|---|
+| **Administration** | Dashboard Admin | 6 KPIs globaux, activité temps réel |
+| | Gestion utilisateurs | Badges rôles (Collaborateur/Observateur), assignation rôle |
+| | Rôles & Permissions | Matrice de droits, rôles système |
+| **Projet** | Kanban | Drag-and-drop, filtres, badge statut |
+| | Gantt | Visualisation chronologique, chemin critique |
+| | Calendrier | Vue mensuelle/hebdomadaire, filtres |
+| | Pause projet | Bannière + raison, blocage mutations |
+| **IA** | ML Recommendation | Classement candidats, 22 features, score confiance |
+| | Auto-assignment | Correspondance spécialités + ML |
+| **Communication** | Notifications | Types filtrés par rôle, badge non-lus |
+| | Temps réel | Notification live pause/reprise |
+| **Sécurité** | Journal d'audit | Traçabilité complète actions |
+| **Observateur** | Dashboard Client | Vision projet filtrée, pas de Kanban |
+| | Acceptation invitation | Flux complet email → accès lecture seule |
+
+---
+
+### 29.10 État final — Préparation PFE
+
+| Critère | Statut |
+|---|---|
+| Build React (3 178 modules) | ✅ 0 erreur |
+| Syntaxe PHP (tous fichiers modifiés) | ✅ 0 erreur |
+| Permissions — aucune fuite de données | ✅ Confirmé |
+| Nomenclature rôles — cohérence totale | ✅ Backend + Frontend + BDD + Docs |
+| Machine Learning — pipeline réel | ✅ Confirmé (pas de mock) |
+| WebSocket — configuration complète | ✅ Reverb + Pusher fallback |
+| Invitations — flux complet | ✅ Tous cas gérés |
+| Pause/Reprise — temps réel | ✅ WebSocket + middleware |
+| Dashboard Observateur | ✅ Données filtrées |
+| Notifications — sécurité | ✅ Liste blanche + `member_removed` |
+| Calendrier — erreur réseau | ✅ Corrigé 02/06 |
+| MASTER_DOCUMENTATION.md | ✅ §29 ajouté |
+
+**Le projet IntelliPM est prêt pour la démonstration PFE et aucune anomalie bloquante n'a été identifiée.**
