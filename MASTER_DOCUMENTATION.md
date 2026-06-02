@@ -1361,30 +1361,32 @@ graph TD
 
 ### 20.3 22 features d'entrée
 
-| Feature | Description |
-|---|---|
-| user_completion_rate | Taux de complétion historique |
-| user_avg_complexity | Complexité moyenne des tâches réussies |
-| user_specialties_match | Correspondance spécialités utilisateur / tâche |
-| user_availability_percent | Disponibilité estimée |
-| user_workload_score | Charge de travail actuelle |
-| task_priority_weight | Poids de la priorité |
-| task_complexity_normalized | Complexité normalisée (0-1) |
-| task_issue_type_weight | Poids du type (bug > task > story) |
-| team_size | Taille de l'équipe |
-| project_avg_completion | Avancement moyen du projet |
-| project_team_diversity | Diversité de l'équipe |
-| task_specialties_count | Nombre de spécialités requises |
-| user_tasks_active | Tâches actives actuelles |
-| user_recency_score | Score d'activité récente |
-| task_estimated_hours_normalized | Durée estimée normalisée |
-| team_avg_workload | Charge moyenne de l'équipe |
-| project_complexity_avg | Complexité moyenne du projet |
-| user_skill_alignment | Alignement compétences |
-| team_stability | Stabilité de l'équipe |
-| project_milestone_proximity | Proximité d'un jalon |
-| user_success_rate | Taux de succès récent |
-| task_urgency_score | Score d'urgence |
+Source : `python/ml/features.py` — `FEATURE_NAMES` (vecteur normalisé [0,1])
+
+| # | Feature | Groupe | Description |
+|---|---|---|---|
+| 1 | `specialty_exact_match` | Correspondance compétences | Correspondance exacte spécialités utilisateur / tâche |
+| 2 | `specialty_partial_match` | Correspondance compétences | Correspondance partielle des spécialités |
+| 3 | `specialty_breadth` | Correspondance compétences | Étendue des spécialités de l'utilisateur |
+| 4 | `current_task_load` | Charge de travail | Nombre de tâches actives actuelles |
+| 5 | `capacity_utilization` | Charge de travail | Utilisation de la capacité hebdomadaire |
+| 6 | `overdue_ratio_inv` | Charge de travail | Ratio de tâches non-en-retard (inverse des retards) |
+| 7 | `overall_completion_rate` | Performance historique | Taux de complétion global des tâches |
+| 8 | `on_time_rate` | Performance historique | Taux de livraison dans les délais |
+| 9 | `hours_accuracy` | Performance historique | Précision des estimations horaires (actual ≤ estimated × 1.3) |
+| 10 | `same_priority_success` | Affinité tâche | Taux de succès sur tâches de même priorité |
+| 11 | `same_type_success` | Affinité tâche | Taux de succès sur même type (task/bug/story) |
+| 12 | `complexity_affinity` | Affinité tâche | Alignement entre complexité tâche et profil utilisateur |
+| 13 | `project_familiarity` | Contexte projet | Niveau de familiarité avec le projet |
+| 14 | `team_familiarity` | Contexte projet | Collaboration historique avec l'équipe |
+| 15 | `project_role_weight` | Contexte projet | Poids du rôle projet (admin/chef=1.0, member=0.7, client=0.3) |
+| 16 | `recent_velocity` | Tendance | Vitesse de complétion récente (30 derniers jours) |
+| 17 | `performance_trend` | Tendance | Tendance d'amélioration ou dégradation récente |
+| 18 | `recent_on_time_rate` | Tendance | Taux de livraison dans les délais récents |
+| 19 | `at_risk_tasks_inv` | Risque | Proportion de tâches non-à-risque (indicateur de fiabilité) |
+| 20 | `experience_depth` | Risque | Profondeur d'expérience sur ce type de tâche |
+| 21 | `collaboration_score` | Risque | Score de collaboration inter-membres |
+| 22 | `sprint_alignment` | Risque | Alignement avec le sprint actif |
 
 ### 20.4 Endpoints FastAPI
 

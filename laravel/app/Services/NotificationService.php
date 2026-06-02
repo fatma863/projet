@@ -400,11 +400,13 @@ class NotificationService
         // Watchers
         $ids = $ids->merge($task->watchers->pluck('id'));
 
-        // Chef de projet
+        // Chef de projet — utilise la relation déjà chargée si disponible, sinon requête ciblée
         if ($task->project_id) {
-            $chef = Project::find($task->project_id)?->chef_id;
-            if ($chef) {
-                $ids->push($chef);
+            $chefId = $task->relationLoaded('project')
+                ? $task->project?->chef_id
+                : Project::where('id', $task->project_id)->value('chef_id');
+            if ($chefId) {
+                $ids->push($chefId);
             }
         }
 
