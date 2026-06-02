@@ -169,7 +169,7 @@ export default function GanttPage() {
 
   const { data: ganttProject, isLoading: loadingProject, isError: errProject, error: errProjectDetail } = useQuery({
     queryKey: ['gantt', 'project', selectedProject],
-    queryFn: () => api.get(`/gantt?project_id=${selectedProject}`).then((r) => parseGanttPayload(r.data)),
+    queryFn: () => api.get(`/projects/${selectedProject}/gantt`).then((r) => parseGanttPayload(r.data)),
     enabled: !isGlobal && !!selectedProject,
   });
 

@@ -110,7 +110,6 @@ export default function ClientDashboard() {
   const overallProgress = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
 
   const overdueTasks = memberDash?.overdue_tasks || [];
-  const upcomingDeadlines = (memberDash?.upcoming_deadlines || []).slice(0, 5);
   const recentTasks = (memberDash?.recent_tasks || []).slice(0, 5);
 
   // Alertes agrégées
@@ -119,9 +118,8 @@ export default function ClientDashboard() {
   if (atRiskCount > 0) alerts.push({ type: 'warning', icon: Shield, message: `${atRiskCount} tâche(s) à risque` });
   if (alerts.length === 0) alerts.push({ type: 'success', icon: CheckCircle2, message: 'Tout est en bonne voie.' });
 
-  // Deadline estimée (du rapport IA ou des tâches)
-  const estimatedDeadline = clientReport?.estimated_deadline
-    || upcomingDeadlines[upcomingDeadlines.length - 1]?.due_date;
+  // Deadline estimée (du rapport IA uniquement)
+  const estimatedDeadline = clientReport?.estimated_deadline;
 
   // Rapport IA
   const aiRisk = clientReport?.ai_risk_analysis;
@@ -261,7 +259,7 @@ export default function ClientDashboard() {
               Tâches en retard
             </CardTitle>
             <p className="text-sm font-normal text-muted-foreground">
-              Tâches dont l'échéance est dépassée.
+              Tâches à traiter en priorité.
             </p>
           </CardHeader>
           <CardContent>
@@ -279,11 +277,6 @@ export default function ClientDashboard() {
                         <p className="text-xs text-muted-foreground">{pname}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        {t.due_date && (
-                          <span className="text-xs text-red-600 font-medium">
-                            {new Date(t.due_date).toLocaleDateString('fr-FR')}
-                          </span>
-                        )}
                         <Badge variant="destructive" className="text-xs">En retard</Badge>
                       </div>
                     </Link>
@@ -336,47 +329,6 @@ export default function ClientDashboard() {
           </CardContent>
         </Card>
 
-        {/* Prochaines échéances */}
-        <Card className="shadow-sm transition-shadow hover:shadow-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Calendar className="h-4 w-4" />
-              Prochaines échéances
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {upcomingDeadlines.length === 0 ? (
-              <EmptyState
-                icon={Calendar}
-                title="Aucune échéance à venir"
-                description="Les prochaines dates limites s'afficheront ici."
-                className="border-0 bg-transparent py-6"
-              />
-            ) : (
-              <ul className="space-y-2">
-                {upcomingDeadlines.map((t) => {
-                  const end = t.due_date || t.effective_end_date;
-                  return (
-                    <li key={t.id}>
-                      <Link
-                        to={`/projects/${t.project_id}?highlightTask=${t.id}`}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-3 text-sm shadow-sm transition-all hover:border-primary/25 hover:shadow-md"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate font-medium text-foreground">{t.title}</p>
-                          <p className="text-xs text-muted-foreground">{t.project_name || `Projet #${t.project_id}`}</p>
-                        </div>
-                        <span className="shrink-0 text-xs font-medium text-muted-foreground">
-                          {end ? new Date(end).toLocaleDateString('fr-FR') : '—'}
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {/* ─── Tâches récentes (lecture seule) ─── */}
@@ -402,7 +354,6 @@ export default function ClientDashboard() {
                     <th className="pb-2 font-medium text-muted-foreground">Tâche</th>
                     <th className="pb-2 font-medium text-muted-foreground">Statut</th>
                     <th className="hidden pb-2 font-medium text-muted-foreground sm:table-cell">Priorité</th>
-                    <th className="hidden pb-2 font-medium text-muted-foreground md:table-cell">Échéance</th>
                     <th className="pb-2 text-right font-medium text-muted-foreground">Avancement</th>
                   </tr>
                 </thead>
@@ -420,9 +371,6 @@ export default function ClientDashboard() {
                       </td>
                       <td className="hidden py-2.5 pr-3 sm:table-cell">
                         <PriorityBadge priority={t.priority} />
-                      </td>
-                      <td className="hidden py-2.5 pr-3 text-xs text-muted-foreground md:table-cell">
-                        {t.due_date ? new Date(t.due_date).toLocaleDateString('fr-FR') : '—'}
                       </td>
                       <td className="py-2.5 text-right">
                         <span className="text-xs font-semibold tabular-nums">{t.progress_percent ?? 0}%</span>

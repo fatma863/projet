@@ -111,12 +111,16 @@ class GanttController extends Controller
             ->whereNotNull('planned_start');
 
         // ── Visibilité selon le rôle ─────────────────────────────────────────
-        // Admin          → toutes les tâches du projet
-        // Client         → toutes les tâches (lecture seule ; écriture bloquée par check.project:edit)
+        // Admin système  → toutes les tâches du projet
+        // Client         → toutes les tâches (lecture seule)
         // Chef / Owner   → toutes les tâches du projet dont il est responsable
+        // Admin projet   → toutes les tâches (role pivot = 'admin')
         // Membre simple  → uniquement les tâches qui lui sont assignées
+        $projectRole = AccessControl::getUserProjectRole($user, $project);
+
         if (! AccessControl::isAdmin($user)
             && ! AccessControl::isClientRole($user)
+            && $projectRole !== 'admin'
             && (int) $project->chef_id   !== (int) $user->id
             && (int) $project->owner_id  !== (int) $user->id
         ) {

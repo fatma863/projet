@@ -641,15 +641,6 @@ function InternalDashboard() {
   const riskyProjects = projectDashboards.filter((p) => (p.overdue_tasks || 0) > 0 || (p.avg_progress || 0) < 50);
   const aiRiskTotal = projectDashboards.reduce((s, p) => s + (p.ai_tasks_at_risk || 0), 0);
 
-  const upcomingDeadlines = usePersonalDashboardApi
-    ? (memberDash?.upcoming_deadlines || []).slice(0, 5)
-    : scopeTasks.filter((t) => {
-        if (!t.due_date || (t.progress_percent || 0) >= 100) return false;
-        const d = new Date(t.due_date);
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        return d >= today;
-      }).sort((a, b) => new Date(a.due_date) - new Date(b.due_date)).slice(0, 5);
-
   const activities = unwrapCollection(activityData, 'activities');
 
   // At-risk tasks for AI alerts panel (admin)
@@ -787,8 +778,8 @@ function InternalDashboard() {
         </div>
       )}
 
-      {/* ── Bento Grid (3 cols) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* ── Bento Grid (2 cols) ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Panel 1 : Détails globaux / Charge membre */}
         <SectionPanel title={isAdmin ? t('dashboard.panelGlobalDetails') : t('dashboard.panelMyWorkload')} icon={BarChart3}>
@@ -806,7 +797,7 @@ function InternalDashboard() {
                 </div>
                 <div className="pt-3 border-t border-border/60">
                   <Link to="/ai" className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline">
-                    {t('dashboard.openAi')} <ArrowRight size={12} />
+                    {t('dashboard.openAnalytics')} <ArrowRight size={12} />
                   </Link>
                 </div>
               </>
@@ -920,35 +911,6 @@ function InternalDashboard() {
           )}
         </SectionPanel>
 
-        {/* Panel 3 : Prochaines échéances */}
-        <SectionPanel title={t('dashboard.panelUpcomingDeadlines')} icon={Calendar} iconColor="text-indigo-600 dark:text-indigo-400">
-          <div className="space-y-4 flex-1">
-            {upcomingDeadlines.length === 0 ? (
-              <div className="py-6 text-center">
-                <Calendar size={32} className="mx-auto text-muted-foreground/30 mb-2" />
-                <p className="text-sm text-muted-foreground">{t('dashboard.noUpcomingDeadlines')}</p>
-              </div>
-            ) : upcomingDeadlines.map((t) => {
-              const pname = t.project_name || projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
-              return (
-                <Link key={t.id} to={`/projects/${t.project_id}?highlightTask=${t.id}`}>
-                  <DeadlineItem
-                    title={t.title}
-                    sub={pname}
-                    date={t.due_date || t.effective_end_date}
-                  />
-                </Link>
-              );
-            })}
-            {upcomingDeadlines.length > 0 && (
-              <div className="pt-2 border-t border-border/60">
-                <Link to="/calendar" className="text-xs font-medium text-indigo-600 hover:underline flex items-center gap-1">
-                  {t('dashboard.viewCalendar')} <ArrowRight size={12} />
-                </Link>
-              </div>
-            )}
-          </div>
-        </SectionPanel>
       </div>
 
       {/* ── Analytics Charts ── */}
@@ -1156,11 +1118,6 @@ function InternalDashboard() {
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mb-2">{pname}</p>
-                    {(t.due_date || t.effective_end_date) && (
-                      <p className="text-xs text-muted-foreground">
-                        {t('dashboard.echéanceLabel')} : {new Date(t.due_date || t.effective_end_date).toLocaleDateString(locale === 'en' ? 'en-US' : 'fr-FR')}
-                      </p>
-                    )}
                   </div>
                 </Link>
               );

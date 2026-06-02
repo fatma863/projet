@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Badge } from '../ui/Badge';
 import { Card, CardContent } from '../ui/Card';
 import { cn } from '../../lib/utils';
-import { Calendar, Flag, GripVertical } from 'lucide-react';
+import { Flag, GripVertical } from 'lucide-react';
 
 const PRIORITY_VARIANT = {
   low: 'secondary',
@@ -90,12 +90,6 @@ export function TaskCard({
                 <Badge variant="outline" className="font-normal">
                   Dépend de {task.dependencies.length} tâche{task.dependencies.length > 1 ? 's' : ''}
                 </Badge>
-              )}
-              {task.due_date && (
-                <span className="inline-flex items-center gap-1">
-                  <Calendar size={12} />
-                  {new Date(task.due_date).toLocaleDateString('fr-FR')}
-                </span>
               )}
               {typeof task.progress_percent === 'number' && (
                 <span className="inline-flex items-center gap-1">

@@ -40,6 +40,7 @@
 28. [Maintenance](#28-maintenance)
 29. [État Actuel du Projet](#29-état-actuel-du-projet)
 30. [Conclusion](#30-conclusion)
+31. [Correctifs Finaux — Passe de Production](#31-correctifs-finaux--passe-de-production)
 
 ---
 
@@ -66,13 +67,11 @@ Projet réalisé en 2025-2026 à l'ISET par **Fatma Rejeb**. L'objectif est de d
 | **Équipes** | Gestion multi-équipes, capacité hebdomadaire, spécialités |
 | **Tâches** | Cycle de vie complet, dépendances (FS/SS/FF/SF), worklog, pièces jointes |
 | **Kanban** | Drag-and-drop, 4 colonnes workflow, filtres avancés |
-| **Gantt** | Visualisation chronologique, chemin critique, dépendances graphiques |
-| **Calendrier** | Vue mensuelle/hebdomadaire, filtres projet/utilisateur |
-| **Sprints** | Gestion backlog, démarrage/clôture sprint |
+| **Gantt** | Visualisation chronologique, chemin critique, dépendances, filtrage par rôle |
+| **Calendrier** | Vue mensuelle/hebdomadaire — Administrateur et Collaborateur uniquement |
 | **IA — Recommandation** | Machine Learning GBM+RF, 22 features, classement candidats |
-| **IA — Estimation** | Estimation durée via OpenRouter (LLM) |
-| **IA — Risques** | Détection retards, projets à risque |
-| **IA — Chat** | Assistant conversationnel avec contexte projet |
+| **IA — Estimation** | Estimation durée via OpenRouter (LLM gratuit) |
+| **IA — Risques** | Détection retards, projets à risque, rapport client |
 | **Notifications** | 17 types, filtrées par rôle, temps réel WebSocket |
 | **RBAC** | Rôles système + personnalisés, permissions granulaires, override projet |
 | **Journal d'Audit** | Traçabilité complète, admin uniquement |
@@ -1027,8 +1026,7 @@ Types de dépendances supportés :
 - Badge priorité (coloré : bleu/ambre/orange/rouge)
 - Story points + durée estimée
 - Niveau de risque
-- Indicateur retard
-- Date d'échéance
+- Indicateur retard (badge "En retard")
 - Avatars assignés (3 max, empilés)
 - Barre de progression
 
@@ -1039,12 +1037,17 @@ Types de dépendances supportés :
 ### 14.1 Données
 
 **Endpoint global** : `GET /api/gantt`
-- Admin : toutes les tâches
-- Collaborateur : tâches assignées ou projets membres
-- Observateur : tâches des projets invités
+- Administrateur : toutes les tâches de la plateforme
+- Client (Observateur) : tâches de ses projets invités
+- Chef de projet / Owner : toutes les tâches de ses projets + assignées ailleurs
+- Collaborateur simple : uniquement ses tâches assignées
 
 **Endpoint projet** : `GET /api/projects/{id}/gantt`
-- Retourne les tâches avec dépendances, is_critical, is_delayed
+- Administrateur / Chef / Owner / Admin-projet : toutes les tâches du projet
+- Collaborateur simple : uniquement ses tâches assignées dans ce projet
+- Données retournées : dépendances, `is_critical`, `is_delayed`, `progress`
+
+> **Vue "par projet (tâches)"** dans GanttPage : utilise `/projects/{id}/gantt` pour garantir le filtrage correct par rôle.
 
 ### 14.2 Calculs de visualisation
 
@@ -1103,7 +1106,9 @@ Affiche les tâches ayant `due_date`, `planned_start` ou `planned_end` dans la p
 |---|---|
 | Administrateur | Toutes les tâches accessibles |
 | Collaborateur | Tâches de ses projets |
-| Observateur | Tâches de ses projets invités |
+| Observateur (Client) | ❌ Accès bloqué — route et sidebar masqués |
+
+> **Note :** L'accès au Calendrier est restreint aux rôles internes (Admin/Collaborateur). Les clients (Observateurs) n'ont pas accès à cette vue — `clientHidden: true` dans la navigation + `RoleRoute allow={['admin','member']}` dans App.jsx.
 
 ---
 
@@ -2002,15 +2007,14 @@ php artisan migrate --force
 | Gestion des équipes (CRUD + membres) | ✅ Complet |
 | Gestion des tâches (CRUD + workflow) | ✅ Complet |
 | Kanban (drag-drop + restrictions) | ✅ Complet |
-| Gantt (visualisation + chemin critique) | ✅ Complet |
-| Calendrier (mensuel/hebdomadaire) | ✅ Complet |
-| Sprints et backlog | ✅ Complet |
+| Gantt (visualisation + chemin critique + filtrage rôle) | ✅ Complet |
+| Calendrier (mensuel/hebdomadaire — Admin/Collaborateur) | ✅ Complet |
 | Invitations (email + token 48h) | ✅ Complet |
 | Notifications (17 types + filtres rôle) | ✅ Complet |
 | WebSocket temps réel (Reverb) | ✅ Complet |
 | RBAC (Spatie + override projet) | ✅ Complet |
 | Machine Learning (GBM+RF, 22 features) | ✅ Complet |
-| IA (estimation, risque, chat, optimisation) | ✅ Complet |
+| IA (estimation, risque, rapport client) | ✅ Complet |
 | Journal d'Audit (admin uniquement) | ✅ Complet |
 | Dashboard par rôle (Admin/Collaborateur/Observateur) | ✅ Complet |
 | Spécialités et auto-assignment | ✅ Complet |
@@ -2070,9 +2074,12 @@ IntelliPM est une application **complète et fonctionnelle**, couvrant l'ensembl
 | Build React (0 erreur) | ✅ 3 178 modules |
 | Syntaxe PHP (0 erreur) | ✅ Validé |
 | Permissions cohérentes | ✅ Backend + Frontend + BDD |
-| Nomenclature rôles unifiée | ✅ Collaborateur/Observateur/Contributeur |
+| Nomenclature rôles unifiée | ✅ Collaborateur/Observateur/Administrateur |
 | ML pipeline réel | ✅ Confirmé |
 | Journal d'Audit admin uniquement | ✅ Commit 83057d1 |
+| Calendrier masqué pour Observateur | ✅ clientHidden + RoleRoute |
+| Gantt filtrage rôle corrigé | ✅ GanttController.show() + GanttPage |
+| Références IA externes supprimées | ✅ messages.js nettoyé |
 | Aucune vulnérabilité critique | ✅ SECURITY_FINAL_AUDIT.md |
 
 ### 30.3 Préparation mise en production
@@ -2090,6 +2097,58 @@ Conditions avant production :
 
 ---
 
+---
+
+## 31. Correctifs Finaux — Passe de Production
+
+> Correctifs appliqués lors de la passe finale avant soutenance (2 juin 2026).
+
+### 31.1 Suppression "Prochaine Échéance" de l'Interface
+
+Le widget "Prochaines échéances" a été retiré de l'ensemble de l'interface :
+
+| Fichier | Modification |
+|---|---|
+| `TaskCard.jsx` | Suppression affichage date + icône Calendar |
+| `DashboardPage.jsx` | Suppression panel "Prochaines échéances" (grille 3→2 colonnes) |
+| `ClientDashboard.jsx` | Suppression colonne "Échéance" du tableau + date retard |
+| `ProjectDetailPage.jsx` | Suppression date dans cartes Kanban et vue liste |
+| `messages.js` | Suppression clés `panelUpcomingDeadlines`, `noUpcomingDeadlines`, `viewCalendar`, `echéanceLabel` |
+
+### 31.2 Calendrier — Accès Restreint aux Rôles Internes
+
+| Fichier | Modification |
+|---|---|
+| `Sidebar.jsx` | `clientHidden: true` ajouté à l'item Calendrier |
+| `App.jsx` | Route `/calendar` → `allow={['admin', 'member']}` uniquement |
+
+### 31.3 Gantt — Filtrage par Rôle Corrigé
+
+| Fichier | Modification |
+|---|---|
+| `GanttController.php` `show()` | Ajout vérification `projectRole !== 'admin'` (admin projet voit tout) |
+| `GanttPage.jsx` | Vue "par projet" utilise `/projects/{id}/gantt` au lieu de `/gantt?project_id=X` |
+| `ProjectDetailPage.jsx` | Données normalisées via `normalizeGanttTasks()` + invalidation cache WebSocket |
+
+### 31.4 Nettoyage Références Externes
+
+| Fichier | Modification |
+|---|---|
+| `messages.js` | Clés `chat`, `chatWelcome`, `chatPlaceholder`, `chatSend`, `chatSuggestions`, `chatSlowWarning` supprimées (orphelines) |
+| `messages.js` | Clé `openAi` renommée `openAnalytics` |
+| `DashboardPage.jsx` | Usage mis à jour `t('dashboard.openAnalytics')` |
+| `messages.js` | Section `agile` (sprint) supprimée — non utilisée dans l'UI |
+
+### 31.5 Sécurité — Confirmations Finales
+
+- **Journal d'Audit** : exclusivement Administrateur (routes `check.role:admin`, sidebar `adminOnly`, onglet `isAdmin`) ✅
+- **Kanban** : masqué pour Observateur, drag-drop bloqué côté backend ✅
+- **Notifications** : liste blanche `clientAllowedTypes()` filtre 17 types → 7 autorisés ✅
+- **APIs** : Sanctum + policy + AccessControl sur chaque endpoint critique ✅
+
+---
+
 > **Document maintenu par :** Fatma Rejeb — ISET, Promotion 2026  
 > **Dernière mise à jour :** 2 juin 2026  
+> **Passe finale :** Consolidation documentaire + standardisation dépôt  
 > **Source de vérité :** Ce document est généré à partir du code source réel du projet IntelliPM.

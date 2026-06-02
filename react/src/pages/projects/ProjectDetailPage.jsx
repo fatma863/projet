@@ -22,6 +22,7 @@ import { cn } from '../../lib/utils';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import GanttChart from '../../components/gantt/GanttChart';
+import { normalizeGanttTasks } from '../../lib/ganttNormalize';
 import {
   getActivityHeadline,
   getActivityDetailRows,
@@ -207,11 +208,11 @@ export default function ProjectDetailPage() {
   });
   const { data: ganttData, isLoading: loadingGantt } = useQuery({
     queryKey: ['project-gantt', id],
-    // Clients have read-only access to the full project Gantt; only true guests (viewer/guest role) are blocked
     enabled: (!isViewer || isClient) && tab === 'gantt',
-    queryFn: () => api.get(`/projects/${id}/gantt`).then((r) => (
-      r.data?.gantt ?? r.data?.data?.gantt ?? r.data?.data ?? []
-    )),
+    queryFn: () => api.get(`/projects/${id}/gantt`).then((r) => {
+      const raw = r.data?.gantt ?? r.data?.data?.gantt ?? r.data?.data ?? [];
+      return normalizeGanttTasks(Array.isArray(raw) ? raw : []);
+    }),
     staleTime: 60_000,
   });
 
@@ -243,8 +244,8 @@ export default function ProjectDetailPage() {
 
     channel.listen('.task.updated', (e) => {
       queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+      queryClient.invalidateQueries({ queryKey: ['project-gantt', id] });
       if (e.action === 'moved') {
-        // Kanban move — also refresh dashboard metrics
         queryClient.invalidateQueries({ queryKey: ['project-dashboard', id] });
       }
     });
@@ -252,6 +253,7 @@ export default function ProjectDetailPage() {
     channel.listen('.task.deleted', (e) => {
       queryClient.invalidateQueries({ queryKey: ['tasks', id] });
       queryClient.invalidateQueries({ queryKey: ['project-dashboard', id] });
+      queryClient.invalidateQueries({ queryKey: ['project-gantt', id] });
       toast.info(`Tâche "${e.task_title}" supprimée par ${e.actor_name}`);
     });
 
@@ -1126,12 +1128,6 @@ function KanbanCard({ task, onClick, onDelete, onLogWork, canWriteTask, columns,
           </span>
         )}
 
-        {task.due_date && (
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Calendar className="h-3 w-3" />
-            {new Date(task.due_date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
-          </span>
-        )}
       </div>
 
       <div className="mt-2 flex items-center justify-between">
@@ -2358,12 +2354,6 @@ function ClientTasksTab({ tasks }) {
               {task.priority && (
                 <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${PRIORITY_COLORS[task.priority] || ''}`}>
                   {PRIORITY_LABELS_FR[task.priority] || task.priority}
-                </span>
-              )}
-              {task.due_date && (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Calendar className="h-3 w-3" />
-                  {new Date(task.due_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                 </span>
               )}
             </div>
