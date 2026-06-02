@@ -365,7 +365,7 @@ projet/
 | `/projects/:id/tasks/:id/edit` | TaskFormPage | RoleRoute | admin, member |
 | `/projects/:id/members-performance` | MembersPerformancePage | ProtectedRoute | Tous authentifiés |
 | `/tasks` | TasksHubPage | ProtectedRoute | Tous authentifiés |
-| `/calendar` | CalendarPage | RoleRoute | admin, member, client |
+| `/calendar` | CalendarPage | RoleRoute | **admin, member** (Observateur bloqué) |
 | `/teams` | TeamsPage | RoleRoute | **admin** |
 | `/teams/:id` | TeamDetailPage | RoleRoute | **admin** |
 | `/users` | UsersAdminPage | RoleRoute | **admin** |
@@ -673,7 +673,7 @@ isGuestViewer(user)      → true si rôle client/guest/viewer
 | Tâches (hub) | ✅ | ✅ | ✅ (lecture) |
 | Création/Édition tâche | ✅ | ✅ | ❌ |
 | Gantt | ✅ | ✅ | ✅ |
-| Calendrier | ✅ | ✅ | ✅ |
+| Calendrier | ✅ | ✅ | ❌ (bloqué — `clientHidden` + `RoleRoute`) |
 | IA | ✅ | ✅ | ❌ |
 | Équipes | ✅ | ❌ | ❌ |
 | Utilisateurs | ✅ | ❌ | ❌ |
@@ -882,6 +882,50 @@ Chaque membre d'équipe a :
 | Supprimer une équipe | **Admin** |
 | Ajouter/Retirer un membre | **Admin** |
 | Voir les équipes | Tous (filtrées par appartenance) |
+
+### 10.5 Gestion des membres de projet — Droits par rôle
+
+#### Administrateur (système)
+- ✅ Gère **tous** les projets de la plateforme
+- ✅ Ajoute des membres à n'importe quel projet
+- ✅ Retire des membres de n'importe quel projet
+- ✅ Modifie les rôles des membres (admin/member/client)
+- ✅ Invite des clients externes par email
+
+#### Chef de projet (`chef_id` / `owner_id` / `projectRole='admin'`)
+- ✅ Gère uniquement les membres de **ses propres projets**
+- ✅ Invite de nouveaux membres par email
+- ✅ Retire des membres de ses projets
+- ✅ Modifie les rôles au sein de ses projets
+- ❌ Ne peut pas gérer les membres d'autres projets
+
+#### Collaborateur / Contributeur (`member`)
+- ❌ Ne peut gérer aucun membre
+- ❌ Ne peut pas retirer de membre
+- ❌ Ne peut pas inviter de nouveau membre
+- ✅ Peut voir la liste des membres de ses projets
+
+#### Observateur (`client`)
+- ❌ Aucune gestion de membre
+- ❌ Aucune invitation
+- ❌ Aucune modification de rôle
+- ✅ Peut voir la liste des membres (noms + rôles projet uniquement)
+
+#### Matrice complète des droits de gestion des membres
+
+| Action | Administrateur | Chef de Projet | Collaborateur | Observateur |
+|---|:---:|:---:|:---:|:---:|
+| Voir membres du projet | ✅ | ✅ | ✅ | ✅ |
+| Inviter par email | ✅ | ✅ (ses projets) | ❌ | ❌ |
+| Ajouter directement | ✅ | ✅ (ses projets) | ❌ | ❌ |
+| Retirer un membre | ✅ | ✅ (ses projets) | ❌ | ❌ |
+| Changer le rôle projet | ✅ | ✅ (ses projets) | ❌ | ❌ |
+| Gérer autres projets | ✅ | ❌ | ❌ | ❌ |
+
+**Implémentation** :
+- `AccessControl::canManageProjectMembers()` — vérifie admin système ou chef/owner
+- `AccessControl::canInviteToProject()` — vérifie admin, owner, chef_id, ou projectRole='admin'
+- Routes `POST /projects/{id}/members` et `DELETE /projects/{id}/members/{user}` protégées par `check.project:edit`
 
 ---
 
@@ -1105,6 +1149,48 @@ Flèches SVG avec courbes bézier :
 
 `GanttController::propagateDelayToDependents()` : algorithme BFS qui met à jour les dates des tâches dépendantes quand un prédécesseur change.
 
+### 14.6 Normalisation des données et synchronisation temps réel
+
+> Les données du diagramme de Gantt sont systématiquement normalisées avant affichage afin de garantir la cohérence des dates, dépendances, états critiques et pourcentages d'avancement.
+
+#### Normalisation (frontend)
+
+**Fichier :** `react/src/lib/ganttNormalize.js` — fonction `normalizeGanttTasks()`
+
+| Champ | Normalisation appliquée |
+|---|---|
+| `start` / `end` | Forcé au format `YYYY-MM-DD` (ISO 8601) |
+| `progress` | Clamp `[0, 100]` — `Number.isFinite` requis |
+| `progress_percent` | Synchronisé avec `progress` |
+| `name` | Fallback `raw.title ?? 'Sans titre'` |
+| `dependencies` | Tableau d'objets `{id, type}` — null/undefined filtrés |
+| `priority` | Fallback `'medium'` si absent |
+
+Appelé dans :
+- `ProjectDetailPage.jsx` : `normalizeGanttTasks()` appliqué sur la réponse `/projects/{id}/gantt`
+- `GanttPage.jsx` : `normalizeGanttTasks()` appliqué sur la vue "par projet (tâches)"
+
+#### Invalidation du cache React Query
+
+| Événement WebSocket | Cache invalidé |
+|---|---|
+| `.task.updated` | `['project-gantt', id]` + `['tasks', id]` |
+| `.task.deleted` | `['project-gantt', id]` + `['project-dashboard', id]` |
+
+Le Gantt se rafraîchit automatiquement dès qu'une tâche est modifiée ou supprimée — synchronisation instantanée sans rechargement manuel.
+
+#### Endpoint projet dédié
+
+```http
+GET /projects/{id}/gantt
+```
+
+**Raison :** La vue "Vue par projet (tâches)" dans `GanttPage` utilise cet endpoint (et non `/gantt?project_id=X`) pour garantir le filtrage correct par rôle via `GanttController::show()`. L'endpoint global `GET /gantt` ne vérifie pas le rôle au niveau projet.
+
+#### Rôle Admin Projet (projectRole = 'admin')
+
+Un utilisateur ayant le rôle pivot `admin` sur un projet (table `project_user_roles`) voit **toutes les tâches** du projet dans le Gantt, au même titre que le Chef ou l'Owner. Cette vérification est effectuée dans `GanttController::show()` via `AccessControl::getUserProjectRole()`.
+
 ---
 
 ## 15. Calendrier
@@ -1203,21 +1289,32 @@ Affiche les tâches ayant `due_date`, `planned_start` ou `planned_end` dans la p
 
 **Widgets** :
 - Tâches assignées (résumé : todo/in_progress/done/overdue)
-- Prochaines échéances (5 tâches)
 - Tâches bloquées par dépendances
 - Tâches critiques
-- Activité récente du projet
+- Panel alertes IA (tâches à risque)
+- Activité récente du projet (admin uniquement)
 
 ### 17.3 Dashboard Observateur (Client)
 
 **Fichier** : `react/src/pages/dashboard/ClientDashboard.jsx`
 
-**Widgets** :
+> **Règle de confidentialité stricte :** Les statistiques affichées sont strictement limitées aux projets auxquels l'Observateur est invité. Aucune donnée provenant d'autres projets, équipes, utilisateurs ou activités internes de l'organisation n'est accessible.
+
+**Portée des données accessibles :**
+- ✅ Projets auxquels l'Observateur est explicitement invité (via `project_user` / `project_members`)
+- ❌ Aucune statistique globale de la plateforme
+- ❌ Aucune donnée administrative (users totaux, projets totaux, audit)
+- ❌ Aucune donnée RH (salaires, contrats, évaluations)
+- ❌ Aucune donnée interne de gestion (budgets, décisions internes)
+- ❌ Aucune information sur les membres d'autres projets
+- ❌ Aucun email ni donnée personnelle des collaborateurs
+
+**Widgets disponibles** :
 - Liste des projets invités avec barre de progression
-- KPIs projet : avancement, tâches actives, retards
-- Section équipe (noms + rôles, sans emails)
-- Alertes (danger/warning/success colorées)
-- Analyse risque IA (via `/client/projects/{id}/ai/risk`)
+- KPIs projet : avancement global, tâches actives, retards
+- Section équipe (noms + rôles seulement — **sans emails ni données personnelles**)
+- Alertes (danger/warning/success colorées — niveau projet uniquement)
+- Analyse risque IA (via `/client/projects/{id}/ai/risk` — données agrégées)
 - Recommandations IA (via `/client/projects/{id}/ai/recommendations`)
 
 ### 17.4 Onglets ProjectDetailPage par rôle
@@ -1283,15 +1380,49 @@ Affiche les tâches ayant `due_date`, `planned_start` ou `planned_end` dans la p
 
 ### 18.3 Filtrage côté serveur (Observateur)
 
+> **Garantie de sécurité :** Les notifications visibles par l'Observateur sont filtrées côté serveur via une liste blanche. Les notifications non autorisées ne peuvent pas être obtenues par manipulation de l'API, des paramètres de requête, des WebSockets ou de l'interface utilisateur.
+
 `NotificationController::clientAllowedTypes()` — liste blanche appliquée dans `index()`, `summary()` et `stats()` :
 
+#### Notifications autorisées pour l'Observateur
+
+| Type | Raison |
+|---|---|
+| `project_invitation` | Informé de son invitation |
+| `invitation_received` | Alias — informé de son invitation |
+| `project_invitation_accepted` | Confirmation acceptation |
+| `project_created` | Informé de la création du projet |
+| `project_updated` | Informé des modifications projet |
+| `project_at_risk` | Alerte pilotage haut niveau (nombre tâches en retard) |
+| `member_removed` | Informé de son propre retrait |
+
+#### Notifications interdites pour l'Observateur
+
+| Type | Raison du blocage |
+|---|---|
+| `task_assigned` | Information interne d'assignation |
+| `task_updated` | Détails de modification de tâche |
+| `task_completed` | Événement interne opérationnel |
+| `task_delayed` | Détail de retard individuel de tâche |
+| `task_comment` | Contenu de commentaire interne |
+| `task_mentioned` | Mention dans discussion interne |
+| `workload_alert` | Donnée RH/capacité interne |
+| `ai_alert` | Analyse IA interne réservée collaborateurs |
+| `gantt_updated` | Modification planning interne |
+| `permission_updated` | Changement de permission — données admin |
+
 ```php
-['project_created', 'project_updated', 'project_at_risk',
- 'project_invitation', 'invitation_received',
- 'project_invitation_accepted', 'member_removed']
+// NotificationController.php
+private function clientAllowedTypes(): array {
+    return [
+        'project_created', 'project_updated', 'project_at_risk',
+        'project_invitation', 'invitation_received',
+        'project_invitation_accepted', 'member_removed',
+    ];
+}
 ```
 
-**Non contournable par manipulation API** — filtre appliqué sur la requête Eloquent.
+**Mécanisme :** filtre appliqué directement sur la requête Eloquent — non contournable par manipulation de l'URL, des paramètres de requête, des en-têtes HTTP ou du canal WebSocket.
 
 ### 18.4 Canaux de livraison
 
@@ -2190,7 +2321,7 @@ Le widget "Prochaines échéances" a été retiré de l'ensemble de l'interface 
 ## Audit de sécurité final — Rôle Client / Observateur
 
 > **Date :** 2 juin 2026  
-> **Auditeur :** Claude Sonnet 4.6 (analyse statique complète)  
+> **Responsable :** Fatma Rejeb — ISET, Promotion 2026  
 > **Périmètre :** Rôle technique `client` (Observateur) — accès strict lecture seule  
 > **Méthodologie :** Analyse du code source (routes, middlewares, policies, contrôleurs, scopes Eloquent, composants React) + simulation de contournement
 
@@ -2441,11 +2572,11 @@ Les éléments suivants ont été signalés comme vulnerabilités potentielles p
 | `/projects/:id/tasks/:id/edit` | `RoleRoute allow=['admin','member']` | 🔄 Redirige `/dashboard` |
 | `/tasks` | `ProtectedRoute` | ✅ Lecture seule |
 | `/gantt` | `ProtectedRoute` | ✅ Lecture seule |
-| `/calendar` | `ProtectedRoute` | ✅ Lecture seule |
+| `/calendar` | `RoleRoute allow=['admin','member']` | 🔄 Redirige `/dashboard` |
 | `/ai` | `RoleRoute allow=['admin','member']` | 🔄 Redirige `/dashboard` |
 | `/teams` | `RoleRoute allow=['admin']` | 🔄 Redirige `/dashboard` |
 | `/users` | `RoleRoute allow=['admin']` | 🔄 Redirige `/dashboard` |
-| `/audit-log` | `RoleRoute allow=['admin','member']` | 🔄 Redirige `/dashboard` |
+| `/audit-log` | `RoleRoute allow=['admin']` | 🔄 Redirige `/dashboard` |
 | `/admin/roles` | `PermissionRoute permission='role.view'` | 🔄 Redirige (client n'a pas role.view) |
 | `/admin/permissions` | `PermissionRoute` | 🔄 Redirige |
 | `/settings` | `ProtectedRoute` | ✅ Filtré (pas Spécialités, pas Journal audit) |
@@ -2459,7 +2590,7 @@ Les éléments suivants ont été signalés comme vulnerabilités potentielles p
 | Projets | ✅ | `permission: 'project.view'` |
 | Tâches | ✅ | `permission: 'task.view'` |
 | Gantt | ✅ | `permission: 'gantt.view'` |
-| Calendrier | ✅ | `permission: 'sprint.view'` |
+| Calendrier | 🚫 | `clientHidden: true` |
 | IA | 🚫 | `clientHidden: true` |
 | Équipes | 🚫 | `adminOnly: true` |
 | Utilisateurs | 🚫 | `adminOnly: true` |
@@ -2672,7 +2803,6 @@ Les éléments suivants ont été signalés comme vulnerabilités potentielles p
 
 ---
 
-> **Rapport généré par :** Claude Sonnet 4.6  
 > **Document maintenu par :** Fatma Rejeb — ISET, Promotion 2026
 
 ---
@@ -3069,8 +3199,7 @@ La section §29 et §25 de MASTER_DOCUMENTATION.md sera mise à jour pour reflé
 
 ---
 
-> Document généré par **Claude Sonnet 4.6**  
-> Projet : IntelliPM — Fatma Rejeb, ISET Promotion 2026
+> **Projet :** IntelliPM — Fatma Rejeb, ISET Promotion 2026
 
 ---
 
@@ -3479,7 +3608,6 @@ R : FastAPI est optimal pour ce cas d'usage : validation automatique via Pydanti
 
 ---
 
-> **Revue effectuée par :** Claude Sonnet 4.6  
 > **Projet :** IntelliPM — Fatma Rejeb, ISET Promotion 2026
 
 ---
