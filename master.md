@@ -4262,3 +4262,879 @@ Un second audit complet a été réalisé après l'application de tous les corre
 > **Auteur :** Fatma Rejeb — ISET, Promotion 2026  
 > **Date :** 2 juin 2026  
 > **Statut :** ✅ CONFORME — Prêt pour soutenance et mise en production
+
+---
+
+## 36. Architecture Logicielle Détaillée
+
+### 36.1 Problèmes résolus par IntelliPM
+
+IntelliPM résout trois problèmes concrets rencontrés dans les équipes de développement :
+
+1. **Assignation inefficace** — le module ML recommande automatiquement le meilleur candidat par analyse de 22 features (compétences, charge, historique, contexte)
+2. **Visibilité insuffisante** — dashboards dédiés par rôle (Admin/Collaborateur/Observateur), Kanban temps réel, Gantt avec chemin critique
+3. **Détection tardive des risques** — analyse automatique via heuristiques + LLM (OpenRouter), alertes proactives
+
+**Utilisateurs ciblés :**
+
+| Rôle | Besoin principal |
+|---|---|
+| Administrateur | Superviser toute la plateforme, gérer rôles et membres |
+| Chef de projet | Planifier, suivre, répartir les tâches de ses projets |
+| Collaborateur | Exécuter les tâches, suivre sa progression |
+| Observateur (client) | Suivre l'avancement en lecture seule — sans accès aux détails internes |
+
+---
+
+### 36.2 Architecture Frontend React 19
+
+**Structure de l'application (`react/src/App.jsx`) :**
+
+```
+App.jsx
+  ├── QueryClientProvider       ← cache React Query global (staleTime: 2min)
+  │   └── BrowserRouter
+  │       └── AuthProvider      ← token Sanctum + user state + theme
+  │           └── I18nProvider  ← locale fr/en, clés messages.js
+  │               └── Routes    ← 28 routes lazy-loaded
+  │                   ├── GuestRoute          → public (login, register)
+  │                   ├── ProtectedRoute      → authentifié requis
+  │                   ├── RoleRoute           → rôle requis (admin/member)
+  │                   └── PermissionRoute     → permission Spatie requise
+```
+
+**Gestion des états :**
+
+| État | Outil | Portée | Exemple |
+|---|---|---|---|
+| Utilisateur connecté | `AuthContext` | Global | `user.roles`, `user.permissions` |
+| Données serveur | React Query `useQuery` | Cache intelligent | projets, tâches, notifications |
+| Mutations | React Query `useMutation` | Invalidation auto | créer tâche, déplacer Kanban |
+| État UI local | `useState` | Composant | modal ouverte, filtre actif |
+| Permissions | `usePermissions()` hook | Calculé | `can('task.create')` |
+| Thème / locale | `localStorage` + AuthContext | Persistant | `theme: dark`, `locale: fr` |
+
+**Flux d'une requête React :**
+
+```
+Composant
+  → useQuery({ queryKey: ['tasks', projectId], queryFn })
+  → api.js (instance Axios)
+    → baseURL: VITE_API_BASE_URL
+    → interceptor: ajoute Authorization: Bearer {token}
+    → interceptor: redirige /login si 401
+  → Laravel API
+  → Réponse JSON → Resource Laravel
+  → Mis en cache React Query (60-120s selon queryKey)
+  → Re-rendu reactif si données changées
+```
+
+**Invalidation WebSocket :**
+```javascript
+// ProjectDetailPage.jsx — quand une tâche change côté serveur
+channel.listen('.task.updated', () => {
+    queryClient.invalidateQueries({ queryKey: ['tasks', id] });
+    queryClient.invalidateQueries({ queryKey: ['project-gantt', id] });
+});
+```
+
+---
+
+### 36.3 Architecture Backend Laravel 12
+
+**Couches applicatives — chemin d'une requête :**
+
+```
+HTTP Request
+  │
+  ├─ 1. Route Middleware Stack (bootstrap/app.php)
+  │     auth:sanctum          → valide Bearer token Sanctum
+  │     active.user           → vérifie user.status = active
+  │     throttle:60,1         → rate limiting (60 req/min)
+  │     check.role:!client    → filtre rôle global
+  │     check.project:edit    → filtre accès projet
+  │     project.not_paused    → bloque écriture si projet en pause (HTTP 423)
+  │     check.permission:x    → permission Spatie granulaire
+  │
+  ├─ 2. Controller (app/Http/Controllers/Api/)
+  │     → validate($request)
+  │     → Gate::authorize('action', $model)  ← Policy
+  │     → $service->action(...)
+  │     → return ResourceClass($result)
+  │
+  ├─ 3. Service (app/Services/)
+  │     → logique métier pure
+  │     → requêtes Eloquent complexes
+  │     → dispatch(new Event(...))
+  │
+  ├─ 4. Model (app/Models/)
+  │     → scopes Eloquent (accessibleBy, whereNotNull, etc.)
+  │     → relations BelongsTo / HasMany / BelongsToMany
+  │     → casts (date → Carbon, integer, array)
+  │     → booted() hooks (ex: progress_percent sur workflow_status)
+  │
+  └─ 5. Resource (app/Http/Resources/)
+        → transforme Model → JSON structuré
+        → ajoute champs calculés (access.can_edit, access.is_client)
+        → filtre champs sensibles selon rôle
+```
+
+**Services principaux :**
+
+| Service | Fichier | Responsabilité |
+|---|---|---|
+| `AIService` | `Services/AIService.php` | Estimation durée (heuristique + LLM) + analyse risque |
+| `ActivityLogService` | `Services/ActivityLogService.php` | Traçabilité complète actions |
+| `NotificationService` | `Services/NotificationService.php` | Création + envoi + broadcast notifications |
+| `CriticalPathService` | `Services/CriticalPathService.php` | Algorithme CPM (Early/Late Start, slack) |
+| `ProgressCalculationService` | `Services/ProgressCalculationService.php` | Calcul progression pondérée des tâches |
+| `PythonMLClient` | `Services/ML/PythonMLClient.php` | Client HTTP vers FastAPI (timeout 3s, fallback gracieux) |
+| `OpenRouterService` | `Services/AI/OpenRouterService.php` | Client HTTP vers OpenRouter LLM |
+| `AdminDashboardService` | `Services/AdminDashboardService.php` | KPIs globaux admin (cache 45s) |
+| `MemberDashboardService` | `Services/MemberDashboardService.php` | KPIs personnels collaborateur |
+| `AccessControl` | `Support/AccessControl.php` | Autorisation centralisée (toutes les décisions d'accès) |
+
+---
+
+### 36.4 Middleware Laravel — Référence
+
+**5 middlewares personnalisés** enregistrés dans `bootstrap/app.php` :
+
+| Alias | Classe | Usage |
+|---|---|---|
+| `check.role` | `CheckRole` | `check.role:admin` / `check.role:!client` / `check.role:admin,member` |
+| `check.project` | `CheckProjectAccess` | `check.project:view` / `check.project:edit` |
+| `active.user` | `EnsureUserIsActive` | Bloque tokens si `user.status = disabled` |
+| `check.permission` | `CheckPermission` | `check.permission:task.edit` / `check.permission:task.edit,project` |
+| `project.not_paused` | `CheckProjectNotPaused` | Retourne HTTP 423 sur écriture si projet en pause |
+
+**Tâche planifiée :**
+```php
+// bootstrap/app.php — exécutée chaque heure par le scheduler
+$schedule->command('notifications:smart')->hourly();
+```
+
+---
+
+## 37. Flux de Données Complets
+
+### 37.1 Authentification
+
+```
+[Browser]               [Laravel API]              [MySQL]
+    |                        |                         |
+    |── POST /auth/login ────>|                         |
+    |   {email, password}     |── SELECT users ─────────>|
+    |                        |<── User record ────────--|
+    |                        |── bcrypt::verify()       |
+    |                        |── createToken(web)────── >| INSERT personal_access_tokens
+    |<── {token, user} ───────|                         |
+    |── store in localStorage |                         |
+    |                        |                         |
+    |── GET /me ─────────────>|── SELECT + eager load ──>|
+    |   Authorization: Bearer |   (roles, permissions)  |
+    |<── UserResource ─────── |                         |
+    |   {id,name,roles,perms} |                         |
+    |── AuthContext.user = … |                         |
+```
+
+### 37.2 Création de tâche
+
+```
+[React TaskFormPage]   [TaskController::store()]  [Services]   [MySQL]  [WebSocket]
+        |                        |                    |            |          |
+        |── POST /projects/42/tasks ──────────────────>|           |          |
+        |   {title, priority, …}  |── validate() ─────>|           |          |
+        |                        |── check.project:edit─>AccessControl         |
+        |                        |── Gate::authorize ──>TaskPolicy::create     |
+        |                        |── Task::create ──────────────────>| INSERT   |
+        |                        |── assign members ───────────────> | INSERT   |
+        |                        |── ActivityLogService ──────────── >| INSERT   |
+        |                        |── NotificationService ───────────>| INSERT   |
+        |                        |                    |            |          |
+        |                        |── broadcast ──────────────────────────────> |
+        |<── 201 TaskResource ───|                    |            |   .task.updated
+        |                        |                    |            |          |
+        |── invalidateQueries(['tasks', 42]) ─────────────────────────────────|
+```
+
+### 37.3 Recommandation ML
+
+```
+[React AiPage]   [AiController]   [PythonMLClient]   [FastAPI]   [MLModel]
+      |                |                  |                |           |
+      |── GET /ai/suggest-assignment/5 ──>|               |           |
+      |   Bearer: member_token            |── auth check   |           |
+      |                |── build features |               |           |
+      |                |   (task data +   |               |           |
+      |                |    candidates)   |               |           |
+      |                |── POST /recommend|               |           |
+      |                |   timeout: 3s   ────────────────>|           |
+      |                |                 |               |── load ──>|
+      |                |                 |               |   joblib  |
+      |                |                 |               |── predict |
+      |                |                 |               |<── scores-|
+      |                |<── {candidates, |               |           |
+      |                |    scores}      |               |           |
+      |<── ranked list-|                 |               |           |
+      |   [{user, score, breakdown}]     |               |           |
+```
+
+**Fallback si FastAPI indisponible :**
+- Timeout 3s → `PythonMLClient::unavailableResponse()`
+- AiController retourne `{status: unavailable, candidates: []}` — aucun crash
+
+### 37.4 Notification temps réel
+
+```
+[Event déclenché]  [NotificationService]  [MySQL]  [Reverb WS]  [React]
+       |                   |                  |          |           |
+       |── TaskAssigned ──>|                  |          |           |
+       |                   |── createNotification        |           |
+       |                   |   (recipient, type, …) ───>| INSERT    |
+       |                   |── dispatch NotificationCreated          |
+       |                   |   (ShouldBroadcastNow) ──────────────> |
+       |                   |                  |          |── private-user.{id}
+       |                   |                  |          |   notification.created
+       |                   |                  |          |           |<── event reçu
+       |                   |                  |          |           |── badge++
+       |                   |                  |          |           |── toast
+       |                   |                  |          |           |── invalidate cache
+```
+
+---
+
+## 38. Machine Learning — Pipeline Complet
+
+### 38.1 Définition du succès
+
+Le modèle prédit la probabilité de succès d'une assignation (user, tache) :
+
+> **Succès = 1** si `workflow_status = done` ET `actual_hours ≤ estimated_hours × 1.3`  
+> **Succès = 0** sinon (dépassement délai ou heures excessives)
+
+### 38.2 Collecte des données d'entraînement
+
+**Source (`recommender.py::collect_training_data()`) :**
+```sql
+SELECT taches, assignees, performance_historique
+WHERE workflow_status = 'done'
+AND assignee NOT NULL
+```
+
+Pour chaque paire `(tache_terminee, assignee)` → vecteur de 22 features + label `y ∈ {0,1}`.
+
+### 38.3 Les 22 features détaillées
+
+| # | Feature | Calcul simplifié | Normalisation |
+|---|---|---|---|
+| 1 | `specialty_exact_match` | `|specialties_user ∩ specialties_task| / |specialties_task|` | [0,1] |
+| 2 | `specialty_partial_match` | Correspondance catégories de spécialités | [0,1] |
+| 3 | `specialty_breadth` | `|specialties_user| / MAX_SPECIALTIES` | [0,1] |
+| 4 | `current_task_load` | `1 - clamp(active_tasks / 10, 0, 1)` | [0,1] |
+| 5 | `capacity_utilization` | `hours_used / weekly_capacity` | [0,1] |
+| 6 | `overdue_ratio_inv` | `1 - (overdue / total_active)` | [0,1] |
+| 7 | `overall_completion_rate` | `done / total_assigned` | [0,1] |
+| 8 | `on_time_rate` | `on_time_done / done` | [0,1] |
+| 9 | `hours_accuracy` | `clamp(estimated/actual, 0, 2) / 2` | [0,1] |
+| 10 | `same_priority_success` | Taux succès même priorité | [0,1] |
+| 11 | `same_type_success` | Taux succès même type (task/bug/story) | [0,1] |
+| 12 | `complexity_affinity` | `1 - |avg_complexity_user - task.complexity| / 10` | [0,1] |
+| 13 | `project_familiarity` | `tasks_done_project / max_project_tasks` | [0,1] |
+| 14 | `team_familiarity` | Projets en commun normalisé | [0,1] |
+| 15 | `project_role_weight` | admin=1.0, chef=1.0, member=0.7, client=0.3 | {0.3,0.7,1.0} |
+| 16 | `recent_velocity` | Tâches terminées les 30 derniers jours | [0,1] |
+| 17 | `performance_trend` | `(récent - historique) × 0.5 + 0.5` | [0,1] |
+| 18 | `recent_on_time_rate` | Ponctualité 30 derniers jours | [0,1] |
+| 19 | `at_risk_tasks_inv` | `1 - (taches_a_risque / total_actives)` | [0,1] |
+| 20 | `experience_depth` | `log(1 + total_done) / log(MAX_EXP)` | [0,1] |
+| 21 | `collaboration_score` | Completions partagées inter-membres | [0,1] |
+| 22 | `sprint_alignment` | Même sprint actif=1.0, autre=0.5, aucun=0.0 | {0,0.5,1} |
+
+### 38.4 Sélection et entraînement
+
+```python
+if n >= 40:
+    model = VotingClassifier([
+        ('gbm', GradientBoostingClassifier(n_estimators=200, max_depth=4, learning_rate=0.08)),
+        ('rf',  RandomForestClassifier(n_estimators=150, max_depth=6))
+    ], voting='soft')
+elif n >= 10:
+    model = LogisticRegression(C=1.0, max_iter=500, class_weight='balanced')
+else:
+    return {"status": "insufficient_data", "samples": n}
+
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('clf', CalibratedClassifierCV(model, cv=n_folds))
+])
+pipeline.fit(X, y)
+```
+
+### 38.5 Scoring, Ranking et Fallback
+
+```python
+# Inférence pour chaque candidat
+score = pipeline.predict_proba([features_22d])[0][1]  # proba classe 1
+score_100 = round(score * 100, 1)                     # échelle 0-100
+
+# Tri des candidats
+candidates.sort(key=lambda x: x['score'], reverse=True)
+
+# Fallback sans modèle entraîné
+score_fallback = sum(feature_val * DEFAULT_WEIGHT[name] for name, feature_val in features)
+score_fallback = clamp(score_fallback, 0.0, 1.0) * 100
+```
+
+### 38.6 Persistance et chargement
+
+```python
+# Sauvegarde après entraînement
+joblib.dump({"model": pipeline, "feature_names": FEATURE_NAMES}, "models/task_assignment.joblib")
+joblib.dump({"accuracy": acc, "f1": f1, "trained_at": now}, "models/task_assignment_meta.joblib")
+
+# Chargement au démarrage FastAPI (app.py)
+model, meta = load_model()
+# Si models/ absent → model = None → fallback automatique
+```
+
+### 38.7 Feedback Loop
+
+```
+POST /ml/feedback/{task_id}
+  Body: {was_successful: true/false}
+  → met à jour l'historique de performance de l'assignee
+  → les prochains entraînements intègreront cette donnée
+  → amélioration continue du modèle avec les données réelles
+```
+
+---
+
+## 39. Sécurité — Guide Pratique
+
+### 39.1 Cycle de vie d'un token Sanctum
+
+```
+1. POST /auth/login
+   → Sanctum crée PersonalAccessToken
+   → INSERT personal_access_tokens(tokenable_id=userId, token=hash, abilities=['*'])
+   → Retourne token_plaintext (une seule fois — jamais stocké en clair)
+   → Maximum 5 tokens actifs par utilisateur (ancien supprimé auto)
+
+2. Requête protégée
+   → Authorization: Bearer token_plaintext
+   → Sanctum::hash(plaintext) → compare SHA-256 avec token_hash en DB
+   → Charge User via tokenable_id → EnsureUserIsActive → vérifie status
+   → Disponible via $request->user()
+
+3. Logout : DELETE personal_access_tokens WHERE id = current_token_id
+4. Logout all : DELETE personal_access_tokens WHERE tokenable_id = user_id
+```
+
+### 39.2 Trace complète d'une requête bloquée (Observateur → POST tâche)
+
+```
+POST /api/projects/42/tasks
+Authorization: Bearer client_token
+
+Étape 1 — auth:sanctum
+  ✅ Token valide, user.id = 7, status = active
+
+Étape 2 — check.project:edit
+  CheckProjectAccess::handle()
+  → AccessControl::canViewProject(user#7, project#42) → OUI (invité)
+  → AccessControl::canEditProject(user#7, project#42)
+    → isAdmin ? NON
+    → isClientRole ? OUI (user.hasRole('client'))
+    → retourne FALSE
+  → abort(403, 'Accès refusé')
+
+→ HTTP 403 Forbidden
+→ TaskController::store() jamais atteint
+→ Base de données non touchée
+```
+
+### 39.3 Trace complète d'une requête autorisée (Collaborateur → POST tâche)
+
+```
+POST /api/projects/42/tasks
+Authorization: Bearer member_token
+
+Étape 1 — auth:sanctum ✅
+Étape 2 — check.project:edit
+  → canEditProject(member#5, project#42) → OUI (membre actif)
+  ✅ Continue
+
+Étape 3 — TaskController::store()
+  → validate({title: 'required|string', priority: 'in:low,medium,high,urgent', ...})
+  → Gate::authorize('create', [Task::class, $project])
+    → TaskPolicy::create(user#5, project#42)
+    → AccessControl::canCreateTaskInProject(user#5, project#42) → OUI
+  ✅ Autorisé
+
+  → Task::create([project_id: 42, title: '...', created_by: 5, ...])
+  → ActivityLogService::log('task.created', task, user#5)
+  → NotificationService::notifyTaskCreated(task, user#5)
+  → broadcast(new TaskUpdated(task, user#5, 'created'))
+
+→ 201 TaskResource
+```
+
+### 39.4 Isolation des données inter-projets
+
+**Scope Eloquent `Task::scopeAccessibleBy(User $user)` :**
+
+```php
+// Cette scope est appliquée sur TOUS les index de tâches
+Task::accessibleBy($user)->get()
+
+// Logique interne :
+// Admin   → aucun filtre
+// Client  → WHERE project_id IN (projets invités via project_user)
+// Member  → WHERE (assignee = user) OR (project membre)
+// Chef    → WHERE project_id IN (projets gérés) OR assignee = user
+```
+
+Un utilisateur ne peut **jamais** accéder aux données d'un projet auquel il n'appartient pas.
+
+### 39.5 Canaux WebSocket — Authentification
+
+```php
+// laravel/routes/channels.php
+
+// Canal utilisateur personnel
+Broadcast::channel('user.{userId}', fn(User $u, int $id) => $u->id === $id);
+
+// Canal projet — clients EXCLUS
+Broadcast::channel('project.{projectId}', function(User $user, int $projectId) {
+    if ($user->hasRole('client')) return false;  // BLOQUÉ — jamais d'events équipe
+    if ($user->hasRole('admin')) return true;    // AUTORISÉ total
+    return Project::where('id', $projectId)->where(fn($q) =>
+        $q->where('owner_id', $user->id)
+          ->orWhereHas('members', fn($m) => $m->where('users.id', $user->id))
+          ->orWhereHas('users', fn($u) => $u->where('users.id', $user->id))
+    )->exists();
+});
+```
+
+---
+
+## 40. Déploiement Pas à Pas
+
+### 40.1 Pré-requis système
+
+| Logiciel | Version | Vérification |
+|---|---|---|
+| PHP | ≥ 8.2 | `php --version` |
+| Composer | ≥ 2.x | `composer --version` |
+| Node.js | ≥ 18 | `node --version` |
+| Python | ≥ 3.10 | `python3 --version` |
+| MySQL | ≥ 8.0 | `mysql --version` |
+
+### 40.2 Backend Laravel — Étape par étape
+
+```bash
+cd laravel/
+
+# 1. Dépendances PHP
+composer install --no-dev --optimize-autoloader
+
+# 2. Environnement
+cp .env.example .env
+php artisan key:generate
+# Éditer .env : DB_*, REVERB_*, OPENROUTER_*, ML_SERVICE_URL, MAIL_*
+
+# 3. Base de données
+php artisan migrate --force
+php artisan db:seed --class=RoleAndPermissionSeeder
+# Optionnel (données de démo) :
+php artisan db:seed --class=FreshDemoSeeder
+
+# 4. Optimisations production
+php artisan optimize        # cache config + routes + views
+php artisan storage:link    # lien symbolique public/storage
+
+# 5. Démarrer le serveur
+php artisan serve --port=8000  # développement
+# Production : nginx + PHP-FPM avec document root → laravel/public/
+```
+
+### 40.3 Frontend React — Étape par étape
+
+```bash
+cd react/
+
+# 1. Dépendances
+npm install
+
+# 2. Variables d'environnement (.env.production)
+VITE_API_BASE_URL=https://votre-domaine.com/api
+VITE_BROADCAST_DRIVER=reverb
+VITE_REVERB_APP_KEY=votre-cle-reverb
+VITE_REVERB_HOST=votre-domaine.com
+VITE_REVERB_PORT=443
+VITE_REVERB_SCHEME=https
+
+# 3. Build production
+npm run build
+# → react/dist/ (fichiers statiques à servir)
+
+# Développement :
+npm run dev   # sur port 5173
+```
+
+### 40.4 WebSocket Reverb
+
+```bash
+cd laravel/
+
+# .env
+BROADCAST_CONNECTION=reverb
+REVERB_APP_ID=intellipm
+REVERB_APP_KEY=votre-cle
+REVERB_APP_SECRET=votre-secret
+REVERB_HOST=0.0.0.0
+REVERB_PORT=8080
+
+# Démarrer
+php artisan reverb:start
+php artisan reverb:start --verbose  # avec logs détaillés
+
+# Production (supervisor) :
+# [program:reverb]
+# command=php /var/www/laravel/artisan reverb:start
+# autostart=true
+# autorestart=true
+```
+
+### 40.5 Microservice FastAPI ML
+
+```bash
+cd python/ml/
+
+# 1. Dépendances
+pip install -r requirements.txt
+# Packages clés : fastapi, uvicorn, scikit-learn, pandas, numpy, sqlalchemy, pymysql, joblib, pydantic
+
+# 2. .env ou variables directes
+DATABASE_URL=mysql+pymysql://user:pass@localhost/intellipm
+
+# 3. Démarrer
+uvicorn main:app --host 0.0.0.0 --port 8001
+
+# 4. Entraîner le modèle (après avoir des données)
+php artisan ml:train
+# ou directement :
+python train.py
+
+# Vérifier santé
+curl http://localhost:8001/health
+```
+
+### 40.6 Variables d'environnement — Référence complète
+
+**Laravel (`.env`) :**
+
+```env
+APP_NAME=IntelliPM
+APP_ENV=production
+APP_DEBUG=false
+APP_KEY=base64:...
+APP_URL=https://votre-domaine.com
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=intellipm
+DB_USERNAME=root
+DB_PASSWORD=secret
+
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.mailtrap.io
+MAIL_PORT=587
+MAIL_FROM_ADDRESS=noreply@intellipm.com
+
+BROADCAST_CONNECTION=reverb
+REVERB_APP_ID=intellipm
+REVERB_APP_KEY=
+REVERB_APP_SECRET=
+REVERB_HOST=0.0.0.0
+REVERB_PORT=8080
+
+ML_SERVICE_URL=http://127.0.0.1:8001
+ML_SERVICE_TIMEOUT=3
+
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
+```
+
+**React (`.env`) :**
+
+```env
+VITE_API_BASE_URL=http://localhost:8000/api
+VITE_BROADCAST_DRIVER=reverb
+VITE_REVERB_APP_KEY=
+VITE_REVERB_HOST=localhost
+VITE_REVERB_PORT=8080
+VITE_REVERB_SCHEME=http
+```
+
+### 40.7 Checklist de déploiement production
+
+- [ ] `APP_DEBUG=false` et `APP_ENV=production`
+- [ ] `php artisan key:generate` exécuté
+- [ ] Variables DB configurées, connexion testée
+- [ ] `php artisan migrate --force` exécuté
+- [ ] `php artisan db:seed --class=RoleAndPermissionSeeder` exécuté
+- [ ] `php artisan optimize` exécuté
+- [ ] `php artisan storage:link` exécuté
+- [ ] FastAPI démarré sur port 8001, `/health` répond 200
+- [ ] Reverb démarré sur port 8080
+- [ ] `ML_SERVICE_URL` pointe vers FastAPI
+- [ ] `OPENROUTER_API_KEY` configurée
+- [ ] `php artisan ml:train` exécuté (si données disponibles)
+- [ ] Build React (`npm run build`) exécuté
+- [ ] `react/dist/` servi correctement par nginx
+- [ ] HTTPS configuré (certificat SSL)
+- [ ] Sauvegardes MySQL planifiées
+
+---
+
+## 41. Guide du Développeur
+
+### 41.1 Ajouter un endpoint API
+
+```bash
+# 1. Route (laravel/routes/api.php)
+Route::middleware(['auth:sanctum', 'active.user', 'check.role:!client'])
+    ->group(function() {
+        Route::get('mon-module', [MonModuleController::class, 'index']);
+        Route::post('mon-module', [MonModuleController::class, 'store']);
+    });
+
+# 2. Controller
+php artisan make:controller Api/MonModuleController
+# → laravel/app/Http/Controllers/Api/MonModuleController.php
+
+# 3. Service (logique métier)
+# → laravel/app/Services/MonModuleService.php
+
+# 4. Resource JSON
+php artisan make:resource MonModuleResource
+# → laravel/app/Http/Resources/MonModuleResource.php
+
+# 5. Tester
+php artisan route:list | grep mon-module
+```
+
+### 41.2 Ajouter une permission Spatie
+
+```php
+// laravel/database/seeders/RoleAndPermissionSeeder.php
+
+// 1. Déclarer la permission
+$allPermissions = [
+    'mon_groupe' => ['mon_groupe.view', 'mon_groupe.create', 'mon_groupe.edit'],
+    // ...autres groupes existants
+];
+
+// 2. Assigner aux rôles
+$adminRole->givePermissionTo('mon_groupe.create');
+$memberRole->givePermissionTo('mon_groupe.view');
+
+// 3. Appliquer
+// php artisan db:seed --class=RoleAndPermissionSeeder
+
+// 4. Utiliser en middleware
+Route::middleware('check.permission:mon_groupe.create')->group(...)
+
+// 5. Utiliser dans React
+const { can } = usePermissions();
+{can('mon_groupe.create') && <Button>Créer</Button>}
+```
+
+### 41.3 Ajouter un type de notification
+
+```php
+// 1. Ajouter la méthode dans NotificationService.php
+public function notifyMonEvenement(Task $task, User $actor): void {
+    foreach ($this->taskNotificationRecipients($task, $actor) as $recipient) {
+        $this->createNotification(
+            recipient: $recipient,
+            type: 'mon_evenement',
+            message: "Description de l'événement",
+            severity: 'info',  // info | warning | alert
+            data: $this->taskPayload($task, $actor, []),
+            projectId: $task->project_id,
+            actor: $actor
+        );
+    }
+}
+
+// 2. Ajouter à la whitelist client si nécessaire (NotificationController.php)
+private function clientAllowedTypes(): array {
+    return [...types_existants..., 'mon_evenement'];
+}
+```
+
+```javascript
+// 3. Frontend (NotificationsPage.jsx)
+const TYPE_GROUPS = { ..., mon_evenement: 'Mon Groupe' };
+const LABELS = { ..., mon_evenement: 'Mon Événement' };
+const COLORS = { ..., mon_evenement: 'blue' };
+```
+
+### 41.4 Ajouter une page React
+
+```javascript
+// 1. Créer le composant
+// react/src/pages/mon-module/MaPage.jsx
+
+// 2. Enregistrer la route (App.jsx)
+const MaPage = lazy(() => import('./pages/mon-module/MaPage'));
+// Dans <Routes> :
+<Route path="/ma-page" element={<RoleRoute allow={['admin', 'member']}><MaPage /></RoleRoute>} />
+
+// 3. Ajouter dans la Sidebar (Sidebar.jsx)
+{ to: '/ma-page', icon: MonIcone, labelKey: 'layout.nav.maPage', permission: 'mon_groupe.view' }
+
+// 4. Traduction (messages.js — sections fr ET en)
+layout: { nav: { maPage: 'Ma Page' } }
+```
+
+### 41.5 Ajouter une feature ML
+
+```python
+# python/ml/features.py
+
+# 1. Ajouter au tableau FEATURE_NAMES
+FEATURE_NAMES = [
+    ...features_existantes...,
+    'ma_nouvelle_feature',  # index 22
+]
+
+# 2. Implémenter le calcul dans FeatureExtractor.extract()
+def extract(self, user_id, task_id):
+    features = {...features_existantes...}
+    features['ma_nouvelle_feature'] = self._clamp(
+        self._calculer_ma_feature(user_id, task_id),
+        0.0, 1.0
+    )
+    return features
+```
+
+```bash
+# 3. Réentraîner
+php artisan ml:train
+```
+
+### 41.6 Ajouter un événement WebSocket
+
+```php
+// 1. Créer l'event (laravel/app/Events/MonEvenement.php)
+class MonEvenement implements ShouldBroadcastNow
+{
+    use Dispatchable, InteractsWithSockets, SerializesModels;
+
+    public function __construct(
+        private readonly int $projectId,
+        private readonly array $data
+    ) {}
+
+    public function broadcastOn(): array {
+        return [new PrivateChannel("project.{$this->projectId}")];
+    }
+
+    public function broadcastAs(): string { return 'mon.evenement'; }
+
+    public function broadcastWith(): array {
+        return ['project_id' => $this->projectId, ...$this->data];
+    }
+}
+
+// 2. Dispatcher depuis un Service
+broadcast(new MonEvenement($project->id, ['key' => 'value']));
+```
+
+```javascript
+// 3. Écouter dans React
+channel.listen('.mon.evenement', (e) => {
+    queryClient.invalidateQueries({ queryKey: ['ma-cle', e.project_id] });
+});
+```
+
+---
+
+## 42. Référence Rapide des Modules
+
+### 42.1 Cartographie code source
+
+| Fonctionnalité | Contrôleur Backend | Page(s) Frontend |
+|---|---|---|
+| Authentification | `AuthController` | `LoginPage.jsx`, `RegisterPage.jsx` |
+| Profil utilisateur | `UserController` / `AuthController` | `SettingsPage.jsx` |
+| Projets (liste) | `ProjectController::index` | `ProjectsPage.jsx` |
+| Projet (détail) | `ProjectController::show` | `ProjectDetailPage.jsx` |
+| Kanban | `TaskController::move` | `ProjectDetailPage.jsx` (WorkflowBoard) |
+| Tâches | `TaskController` (2 500+ lignes) | `TasksHubPage.jsx`, `TaskFormPage.jsx` |
+| Gantt | `GanttController` | `GanttPage.jsx`, `GanttChart.jsx` |
+| Calendrier | `CalendarController` | `CalendarPage.jsx`, `CalendarView.jsx` |
+| Équipes | `TeamController` | `TeamsPage.jsx`, `TeamDetailPage.jsx` |
+| Invitations | `InvitationController` | `AcceptInvitePage.jsx` |
+| Notifications | `NotificationController` | `NotificationsPage.jsx` |
+| Journal d'audit | `ActivityFeedController` | `AuditLogPage.jsx`, `AuditReportPage.jsx` |
+| IA / ML | `AiController` + FastAPI | `AiPage.jsx`, `MLRecommendationModal.jsx` |
+| Dashboard Admin | `AdminDashboardController` | `DashboardPage.jsx` |
+| Dashboard Client | `ClientDashboardController` | `ClientDashboard.jsx` |
+| RBAC | `RolesController` | `RolesPage.jsx`, `PermissionMatrixPage.jsx` |
+| Utilisateurs Admin | `UserAdminController` | `UsersAdminPage.jsx` |
+| Recherche | `SearchController` | `Topbar.jsx` |
+| WebSocket | `channels.php` + Events | `echo.js` + listeners pages |
+
+### 42.2 Patterns à connaître
+
+**Pattern "Query + Mutation" React :**
+```javascript
+// Lire des données
+const { data, isLoading } = useQuery({
+    queryKey: ['ma-ressource', id],
+    queryFn: () => api.get(`/ma-ressource/${id}`).then(r => r.data),
+    staleTime: 60_000,
+    enabled: Boolean(id),
+});
+
+// Modifier des données
+const mutation = useMutation({
+    mutationFn: (payload) => api.post('/ma-ressource', payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ma-ressource'] }),
+    onError: (err) => toast.error(err.response?.data?.message || 'Erreur'),
+});
+```
+
+**Pattern "Service + Resource" Laravel :**
+```php
+// Controller
+public function store(StoreRequest $request): JsonResponse {
+    Gate::authorize('create', MonModel::class);
+    $result = $this->monService->create($request->validated(), $request->user());
+    return response()->json(new MonResource($result), 201);
+}
+
+// Service
+public function create(array $data, User $actor): MonModel {
+    $model = MonModel::create($data);
+    $this->activityLog->log('mon_model.created', $model, $actor);
+    return $model;
+}
+
+// Resource
+public function toArray(Request $request): array {
+    return [
+        'id' => $this->id,
+        'name' => $this->name,
+        'access' => [
+            'can_edit' => AccessControl::canEdit($request->user(), $this->resource),
+        ],
+    ];
+}
+```
