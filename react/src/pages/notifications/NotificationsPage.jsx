@@ -16,12 +16,9 @@ import { formatRelativeTimeFr, groupNotificationsByDate } from '../../lib/format
 import { UserAvatar } from '../../components/ui/UserAvatar';
 import { cn } from '../../lib/utils';
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
 const TYPE_GROUPS = [
   { key: '',                                                                label: 'Toutes' },
   { key: 'task_assigned,task_updated,task_completed',                       label: 'Tâches' },
-  { key: 'task_comment,comment_added,task_mentioned,mention',               label: 'Commentaires' },
   { key: 'task_delayed,workload_alert',                                      label: 'Alertes' },
   { key: 'project_created,project_updated,project_at_risk,member_removed,gantt_updated', label: 'Projets' },
   { key: 'invitation_received,project_invitation,project_invitation_accepted', label: 'Invitations' },
@@ -77,8 +74,6 @@ const TYPE_COLORS = {
   workload_alert:              'bg-red-100 text-red-700',
 };
 
-// ── Small helpers ────────────────────────────────────────────────────────────
-
 function SeverityIcon({ severity }) {
   if (severity === 'alert')   return <AlertCircle   size={12} className="text-red-500" />;
   if (severity === 'warning') return <AlertTriangle size={12} className="text-amber-500" />;
@@ -93,14 +88,10 @@ function TypeBadge({ type }) {
   );
 }
 
-// ── Data fetching ────────────────────────────────────────────────────────────
-
 const fetchPage = ({ pageParam = 1, type = '', unread_only = false, search = '' }) =>
   api.get('/notifications', {
     params: { page: pageParam, per_page: 20, type: type || undefined, unread_only: unread_only || undefined, search: search || undefined },
   }).then((r) => r.data);
-
-// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function NotificationsPage() {
   const { user }  = useAuth();

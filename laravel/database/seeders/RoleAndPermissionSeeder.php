@@ -142,11 +142,7 @@ class RoleAndPermissionSeeder extends Seeder
             });
         }
 
-        // ─── Roles ──────────────────────────────────────────────────────────
-        // Nomenclature officielle (affiché dans l'UI) :
-        //   admin  → Administrateur : accès complet à la plateforme
-        //   member → Collaborateur  : utilisateur standard inscrit
-        //   client → Observateur    : utilisateur externe en lecture seule
+        // ─── Rôles système ──────────────────────────────────────────────────
         $admin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $admin->fill(['description' => 'Administrateur — accès complet à la plateforme', 'color' => '#6366f1'])->save();
         $admin->syncPermissions(Permission::all());
@@ -177,7 +173,7 @@ class RoleAndPermissionSeeder extends Seeder
         ]);
 
         $client = Role::firstOrCreate(['name' => 'client', 'guard_name' => 'web']);
-        $client->fill(['description' => 'Observateur — externe en lecture seule sur les projets invités', 'color' => '#f59e0b'])->save();
+        $client->fill(['description' => 'Observateur — accès en lecture seule aux projets invités', 'color' => '#f59e0b'])->save();
         $client->syncPermissions([
             'project.view',
             'project.export',

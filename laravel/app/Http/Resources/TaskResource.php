@@ -55,6 +55,7 @@ class TaskResource extends JsonResource
                 ] : null,
             ),
             'is_overdue' => $this->isOverdue(),
+            'is_at_risk' => ($this->workflow_status ?? Task::inferWorkflowStatus($this->resource)) === 'at_risk',
             'is_blocked' => $this->when(
                 $this->relationLoaded('dependencies'),
                 fn () => app(TaskDependencyService::class)->isTaskBlocked($this->resource)

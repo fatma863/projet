@@ -3,14 +3,25 @@
 
 \begin{document}
 
+% ============================================================
+%  PAGE DE TITRE
+% ============================================================
 \input{chapters/00_page_titre}
 
+% ============================================================
+%  REMERCIEMENTS
+% ============================================================
 \chapter*{Remerciements}
 \addcontentsline{toc}{chapter}{Remerciements}
+\markboth{Remerciements}{}
 \input{chapters/02_remerciements}
 \clearpage
 
-\tableofcontents\clearpage
+% ============================================================
+%  TABLES DES MATIÈRES / FIGURES / TABLEAUX
+% ============================================================
+\tableofcontents
+\clearpage
 \listoffigures
 \addcontentsline{toc}{chapter}{Liste des figures}
 \clearpage
@@ -18,17 +29,24 @@
 \addcontentsline{toc}{chapter}{Liste des tableaux}
 \clearpage
 
+% ============================================================
+%  LISTE DES ABRÉVIATIONS
+% ============================================================
 \chapter*{Liste des abréviations}
 \addcontentsline{toc}{chapter}{Liste des abréviations}
-\begin{description}[leftmargin=3.5cm,style=nextline]
+\markboth{Liste des abréviations}{}
+\begin{description}[leftmargin=3.5cm, style=nextline]
   \item[API]   Application Programming Interface
+  \item[AUC]   Area Under the Curve
+  \item[BFS]   Breadth-First Search
   \item[CI/CD] Continuous Integration / Continuous Deployment
   \item[CPM]   Critical Path Method
-  \item[DSI]   Développement des Systèmes d'Information
-  \item[ERD]   Entity-Relationship Diagram
+  \item[CRUD]  Create, Read, Update, Delete
+  \item[ESN]   Entreprise de Services Numériques
   \item[GBM]   Gradient Boosting Machine
   \item[IA]    Intelligence Artificielle
   \item[ISET]  Institut Supérieur des Études Technologiques
+  \item[JSON]  JavaScript Object Notation
   \item[LLM]   Large Language Model
   \item[MAE]   Mean Absolute Error
   \item[ML]    Machine Learning
@@ -37,40 +55,78 @@
   \item[RBAC]  Role-Based Access Control
   \item[REST]  Representational State Transfer
   \item[RF]    Random Forest
-  \item[RMSE]  Root Mean Square Error
-  \item[ROC]   Receiver Operating Characteristic
+  \item[SaaS]  Software as a Service
   \item[SPA]   Single Page Application
+  \item[SQL]   Structured Query Language
+  \item[SVG]   Scalable Vector Graphics
   \item[TDD]   Test-Driven Development
   \item[TLS]   Transport Layer Security
   \item[UML]   Unified Modeling Language
+  \item[UUID]  Universally Unique Identifier
+  \item[VPS]   Virtual Private Server
 \end{description}
 \clearpage
 
+% ============================================================
+%  INTRODUCTION GÉNÉRALE
+% ============================================================
 \chapter*{Introduction générale}
 \addcontentsline{toc}{chapter}{Introduction générale}
 \markboth{Introduction générale}{}
 \input{chapters/04_intro_generale}
 \clearpage
 
+% ============================================================
+%  CHAPITRE I — Cadre général du projet
+% ============================================================
 \input{chapters/ch1_cadre_general}
-\input{chapters/ch2_etude_preliminaire}
-\input{chapters/ch3_sprint1_utilisateurs}
-\input{chapters/ch4_sprint2_projets}
-\input{chapters/ch5_sprint3_taches}
-\input{chapters/ch6_sprint4_planification}
-\input{chapters/ch7_sprint5_ia}
-\input{chapters/ch8_sprint6_audit_rbac}
-\input{chapters/ch9_tests}
 
-\chapter*{Conclusion générale et perspectives}
-\addcontentsline{toc}{chapter}{Conclusion générale et perspectives}
-\markboth{Conclusion générale et perspectives}{}
+% ============================================================
+%  CHAPITRE II — Planification et Architecture
+% ============================================================
+\input{chapters/ch2_etude_preliminaire}
+
+% ============================================================
+%  CHAPITRE III — Réalisation des modules fondamentaux
+%  (Sprints 1, 2, 3 : Auth, Projets, Tâches+Kanban+Gantt)
+% ============================================================
+\input{chapters/ch3_modules_base}
+
+% ============================================================
+%  CHAPITRE IV — Réalisation des modules avancés
+%  (Sprint 4 : Notifications ; Sprint 5 : IA hybride)
+% ============================================================
+\input{chapters/ch4_modules_avances}
+
+% ============================================================
+%  CHAPITRE V — Administration et pilotage
+%  (Sprint 6 : RBAC, journal d'audit, analytics)
+% ============================================================
+\input{chapters/ch5_admin_pilotage}
+
+% ============================================================
+%  CHAPITRE VI — Tests, Validation et Déploiement
+% ============================================================
+\input{chapters/ch6_tests_devops}
+
+% ============================================================
+%  CONCLUSION GÉNÉRALE ET PERSPECTIVES
+% ============================================================
+\chapter*{Conclusion générale}
+\addcontentsline{toc}{chapter}{Conclusion générale}
+\markboth{Conclusion générale}{}
 \input{chapters/conclusion_generale}
 \clearpage
 
-\printbibliography[heading=bibintoc,title={Références bibliographiques}]
+% ============================================================
+%  BIBLIOGRAPHIE
+% ============================================================
+\printbibliography[heading=bibintoc, title={Références bibliographiques}]
 \clearpage
 
+% ============================================================
+%  ANNEXES
+% ============================================================
 \appendix
 \input{appendices/annexe_c_glossaire}
 

@@ -36,6 +36,7 @@ class ProjectResource extends JsonResource
             'members' => ProjectMemberResource::collection($this->whenLoaded('members')),
             'members_count' => $this->whenCounted('members'),
             'tasks_count' => $this->whenCounted('tasks'),
+            'overdue_tasks_count' => (int) ($this->overdue_tasks_count ?? 0),
             'statuses' => TaskStatusResource::collection($this->whenLoaded('statuses')),
             'access' => [
                 'is_chef'          => $user ? (int) $this->chef_id === (int) $user->id : false,

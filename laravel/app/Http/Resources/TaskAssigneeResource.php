@@ -14,6 +14,7 @@ class TaskAssigneeResource extends JsonResource
             'name' => $this->name,
             'email' => $this->email,
             'avatar' => $this->avatar,
+            'avatar_url' => $this->avatar ? '/storage/'.str_replace('\\', '/', $this->avatar) : null,
             'allocation_percent' => (int) ($this->pivot?->allocation_percent ?? 100),
             'assigned_at' => $this->pivot?->assigned_at,
         ];

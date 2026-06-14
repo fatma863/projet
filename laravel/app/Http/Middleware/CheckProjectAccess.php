@@ -30,6 +30,10 @@ class CheckProjectAccess
             return response()->json(['message' => 'Modification projet refusée.'], 403);
         }
 
+        if ($mode === 'create_task' && !AccessControl::canCreateTaskInProject($user, $project)) {
+            return response()->json(['message' => 'Création de tâche refusée.'], 403);
+        }
+
         return $next($request);
     }
 }

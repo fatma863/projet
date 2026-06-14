@@ -1,0 +1,222 @@
+% ============================================================
+%  ANNEXES — TAC-TIC IntelliPM
+% ============================================================
+
+\chapter{Glossaire technique}
+\label{ann:glossaire}
+
+\begin{description}[leftmargin=4cm, style=nextline]
+
+  \item[API]
+  Application Programming Interface — interface logicielle permettant à deux
+  applications de communiquer entre elles via des protocoles standardisés (REST, GraphQL).
+
+  \item[AUC ROC]
+  Area Under the ROC Curve — métrique d'évaluation d'un modèle de classification
+  binaire. Une valeur proche de 1 indique un modèle discriminant.
+
+  \item[Bearer Token]
+  Jeton d'authentification stateless inclus dans chaque requête HTTP via l'en-tête
+  \texttt{Authorization: Bearer <token>}. Utilisé avec Laravel Sanctum.
+
+  \item[BFS]
+  Breadth-First Search (parcours en largeur) — algorithme de graphe utilisé ici
+  pour détecter les cycles dans le graphe des dépendances de tâches.
+
+  \item[CI/CD]
+  Continuous Integration / Continuous Deployment — pratique DevOps consistant à
+  automatiser la compilation, les tests et le déploiement à chaque modification
+  du code source.
+
+  \item[CPM]
+  Critical Path Method — méthode de planification de projet qui identifie la
+  séquence de tâches la plus longue déterminant la durée minimale du projet.
+
+  \item[Docker]
+  Plateforme de conteneurisation permettant d'empaqueter une application et ses
+  dépendances dans un conteneur isolé et reproductible.
+
+  \item[Eloquent]
+  ORM (Object-Relational Mapper) de Laravel permettant d'interagir avec la base
+  de données MySQL via des objets PHP plutôt que des requêtes SQL brutes.
+
+  \item[FastAPI]
+  Framework Python haute performance pour la construction d'APIs RESTful, basé
+  sur les annotations de type Python 3.6+ et le standard ASGI.
+
+  \item[GBM]
+  Gradient Boosting Machine — algorithme d'ensemble supervisé qui construit
+  séquentiellement des arbres de décision pour minimiser une fonction de perte.
+
+  \item[GitHub Actions]
+  Outil d'intégration et de déploiement continus intégré à GitHub, permettant
+  de définir des workflows automatisés déclenchés par des événements git.
+
+  \item[InnoDB]
+  Moteur de stockage MySQL supportant les transactions ACID, les clés étrangères
+  et le niveau d'isolation REPEATABLE READ.
+
+  \item[Joblib]
+  Bibliothèque Python permettant la sérialisation (sauvegarde/chargement) efficace
+  d'objets Python volumineux, comme les modèles Scikit-learn entraînés.
+
+  \item[Laravel Reverb]
+  Serveur WebSocket natif de l'écosystème Laravel, permettant le broadcast
+  d'événements en temps réel vers les clients connectés.
+
+  \item[Laravel Sanctum]
+  Package Laravel fournissant un système d'authentification léger par tokens
+  Bearer pour les SPA et les APIs mobiles.
+
+  \item[LLM]
+  Large Language Model — modèle de langage massif entraîné sur de grandes quantités
+  de texte pour la génération de texte, la traduction et la compréhension du langage
+  naturel (ex. Llama 3.3 70B Instruct).
+
+  \item[MAE]
+  Mean Absolute Error — erreur absolue moyenne, métrique de régression mesurant
+  l'écart moyen entre les valeurs prédites et réelles.
+
+  \item[MoSCoW]
+  Méthode de priorisation des exigences en quatre catégories : Must (obligatoire),
+  Should (devrait), Could (pourrait), Won't (ne sera pas). Utilisée pour le
+  product backlog.
+
+  \item[MSW]
+  Mock Service Worker — bibliothèque JavaScript permettant d'intercepter et
+  de simuler des requêtes réseau dans les tests unitaires frontend.
+
+  \item[N+1]
+  Problème de performance des ORM où N requêtes SQL supplémentaires sont générées
+  pour charger des relations (au lieu d'une seule requête avec JOIN).
+
+  \item[ORM]
+  Object-Relational Mapper — couche d'abstraction permettant de manipuler une
+  base de données relationnelle via des objets du langage de programmation.
+
+  \item[PestPHP]
+  Framework de tests PHP moderne basé sur PHPUnit, avec une syntaxe expressive
+  de type BDD (Behavior-Driven Development).
+
+  \item[RBAC]
+  Role-Based Access Control — modèle de contrôle d'accès où les permissions
+  sont attribuées à des rôles, eux-mêmes assignés aux utilisateurs.
+
+  \item[REST]
+  Representational State Transfer — style d'architecture pour les services web
+  basé sur les méthodes HTTP (GET, POST, PUT, PATCH, DELETE).
+
+  \item[RF]
+  Random Forest — algorithme d'ensemble supervisé qui construit un grand nombre
+  d'arbres de décision en parallèle pour améliorer la précision et réduire le
+  surapprentissage.
+
+  \item[RMSE]
+  Root Mean Square Error — racine carrée de l'erreur quadratique moyenne, métrique
+  de régression pénalisant davantage les grandes erreurs.
+
+  \item[ROC]
+  Receiver Operating Characteristic — courbe représentant le taux de vrais positifs
+  en fonction du taux de faux positifs pour différents seuils de classification.
+
+  \item[Sanctum]
+  Voir \textit{Laravel Sanctum}.
+
+  \item[Scikit-learn]
+  Bibliothèque Python open-source pour le Machine Learning, incluant des algorithmes
+  de classification, régression, clustering et prétraitement des données.
+
+  \item[SonarCloud]
+  Service cloud d'analyse statique de code source qui mesure la qualité (bugs,
+  vulnérabilités, code smells, duplication, couverture de tests).
+
+  \item[SPA]
+  Single Page Application — application web dont le rendu s'effectue côté client
+  (navigateur) via JavaScript, sans rechargement de page.
+
+  \item[Spatie]
+  Entreprise belge créatrice de nombreux packages Laravel open-source, notamment
+  \texttt{laravel-permission} utilisé pour le RBAC système.
+
+  \item[Sprint]
+  Itération de développement de durée fixe (ici 2 semaines) dans le cadre de
+  la méthodologie Scrum, à l'issue de laquelle un incrément fonctionnel est livré.
+
+  \item[Story Points]
+  Unité d'estimation relative de l'effort nécessaire pour réaliser une user story,
+  basée sur la complexité, l'effort et l'incertitude.
+
+  \item[TanStack Query]
+  Bibliothèque React (anciennement React Query) pour la gestion de l'état serveur :
+  mise en cache, invalidation, refetching automatique.
+
+  \item[TailwindCSS]
+  Framework CSS utilitaire permettant de styliser des composants directement via
+  des classes CSS prédéfinies dans le HTML/JSX.
+
+  \item[User Story]
+  Description fonctionnelle d'une fonctionnalité du point de vue de l'utilisateur,
+  selon le format : \textit{En tant que [rôle], je veux [action] afin de [bénéfice]}.
+
+  \item[Uvicorn]
+  Serveur ASGI (Asynchronous Server Gateway Interface) ultra-performant pour Python,
+  utilisé pour servir les applications FastAPI en production.
+
+  \item[Vite]
+  Outil de build frontend nouvelle génération basé sur les modules ES natifs,
+  offrant un démarrage à froid quasi-instantané et un rechargement à chaud (HMR).
+
+  \item[WebSocket]
+  Protocole de communication full-duplex permettant des échanges bidirectionnels
+  en temps réel entre le navigateur et le serveur sur une connexion TCP persistante.
+
+\end{description}
+
+% ============================================================
+\chapter{Product Backlog complet}
+\label{ann:product_backlog}
+
+Le tableau complet du Product Backlog — incluant toutes les 34 user stories,
+leur priorisation MoSCoW, leurs story points et leur sprint d'affectation —
+est présenté dans le Chapitre~II, section~\ref{tab:product_backlog},
+page~\pageref{tab:product_backlog}.
+
+% ============================================================
+\chapter{Sprint Backlogs détaillés}
+\label{ann:sprint_backlogs}
+
+Les sprint backlogs détaillés de chaque sprint sont présentés dans les chapitres
+correspondants :
+
+\begin{description}[leftmargin=3cm]
+  \item[Sprint 1] Chapitre III — Tableau~\ref{tab:backlog_s1}
+  \item[Sprint 2] Chapitre III — Tableau~\ref{tab:backlog_s2}
+  \item[Sprint 3] Chapitre III — Tableau~\ref{tab:backlog_s3}
+  \item[Sprint 4] Chapitre IV — Tableau~\ref{tab:backlog_s4}
+  \item[Sprint 5] Chapitre IV — Tableau~\ref{tab:backlog_s5}
+  \item[Sprint 6] Chapitre V — Tableau~\ref{tab:backlog_s6}
+\end{description}
+
+% ============================================================
+\chapter{Résultats détaillés de l'analyse SonarCloud}
+\label{ann:sonarcloud}
+
+Les résultats complets de l'analyse SonarCloud (rapport PDF d'analyse statique,
+métriques de couverture par fichier, liste des code smells corrigés) sont
+disponibles dans le dépôt GitHub du projet sous le répertoire
+\texttt{docs/sonarcloud-report/}.
+
+Le Quality Gate final est synthétisé dans le Chapitre~VI,
+section~\ref{tab:sonar_results}.
+
+% ============================================================
+\chapter{Résultats de validation des modèles ML}
+\label{ann:ml_validation}
+
+Les métriques détaillées de validation des modèles Machine Learning (matrices de
+confusion, courbes ROC par fold, importance des 22 variables, courbes
+d'apprentissage) sont disponibles dans le Jupyter Notebook
+\texttt{ml-service/notebooks/model\_evaluation.ipynb} du dépôt GitHub.
+
+Les indicateurs clés sont synthétisés dans le Chapitre~IV,
+tableau~\ref{tab:ml_metrics}.

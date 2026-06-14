@@ -52,7 +52,9 @@
       "PowerShell(ls \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\laravel\\\\app\\\\Policies\" | Where-Object { $_.Extension -eq '.php' } | Select-Object -ExpandProperty Name)",
       "Bash(Get-ChildItem \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\laravel\\\\database\\\\migrations\\\\2026_05_21_*\")",
       "PowerShell($log = Get-Content \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\laravel\\\\storage\\\\logs\\\\laravel.log\" -Raw; $entries = $log -split '\\\\[20'; $last = $entries[-1]; $last.Substring\\(0, [Math]::Min\\(800, $last.Length\\)\\))",
-      "PowerShell($log = Get-Content \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\laravel\\\\storage\\\\logs\\\\laravel.log\" -Raw; $entries = $log -split '\\\\[20\\\\d\\\\d-'; $last = $entries[-1]; $last.Substring\\(0, [Math]::Min\\(600, $last.Length\\)\\))"
+      "PowerShell($log = Get-Content \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\\\\laravel\\\\storage\\\\logs\\\\laravel.log\" -Raw; $entries = $log -split '\\\\[20\\\\d\\\\d-'; $last = $entries[-1]; $last.Substring\\(0, [Math]::Min\\(600, $last.Length\\)\\))",
+      "Bash(python3)",
+      "Bash(dir \"c:\\\\Users\\\\rjebf\\\\Downloads\\\\projet\" /b)"
     ]
   }
 }

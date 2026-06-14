@@ -34,6 +34,11 @@ class NotificationController extends Controller
             }
         }
 
+        if ($request->filled('search')) {
+            $term = '%'.$request->input('search').'%';
+            $query->where('message', 'like', $term);
+        }
+
         $notifications = $query->paginate(ApiPagination::perPage($request));
 
         // Le compteur non-lu respecte aussi le filtre de rôle client

@@ -181,7 +181,7 @@ Route::middleware(['auth:sanctum', 'active.user', 'throttle:60,1'])->group(funct
         Route::get('projects/{project}/tasks', [TaskController::class, 'index']);
     });
     // Task creation is guarded by the paused-lock middleware
-    Route::middleware(['check.project:edit', 'project.not_paused'])->group(function () {
+    Route::middleware(['check.project:create_task', 'project.not_paused'])->group(function () {
         Route::post('projects/{project}/tasks', [TaskController::class, 'store']);
     });
     Route::get('tasks/{task}', [TaskController::class, 'show']);

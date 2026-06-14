@@ -44,20 +44,22 @@ export function formatAppRole(role) {
 
 /**
  * Rôles projet (table project_members) — nomenclature officielle :
- *   chef    → Chef de projet  (responsable du projet)
- *   membre  → Contributeur    (participe aux tâches)
- *   client  → Observateur     (suit le projet en lecture seule)
+ *   chef         → Chef de projet  (responsable du projet)
+ *   admin        → Administrateur  (droits étendus sans gouvernance chef)
+ *   membre       → Contributeur    (participe aux tâches)
+ *   client       → Observateur     (suit le projet en lecture seule)
  */
 export const PROJECT_ROLE_LABELS = {
-  chef:   'Chef de projet',
-  membre: 'Contributeur',
-  // Legacy — conservés pour la compatibilité d'affichage uniquement
-  admin:  'Chef de projet',
-  member: 'Contributeur',
-  client: 'Observateur',
-  guest:  'Observateur',
-  viewer: 'Observateur',
-  owner:  'Chef de projet',
+  chef:         'Chef de projet',
+  admin:        'Administrateur',
+  membre:       'Contributeur',
+  member:       'Contributeur',
+  client:       'Observateur',
+  guest:        'Observateur',
+  viewer:       'Observateur',
+  observateur:  'Observateur',
+  contributeur: 'Contributeur',
+  owner:        'Chef de projet',
 };
 
 /** Retourne le label affiché pour un rôle projet */

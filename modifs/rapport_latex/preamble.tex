@@ -1,0 +1,231 @@
+% ============================================================
+%  PRÉAMBULE — TAC-TIC IntelliPM — Rapport PFE 2026
+%  Institut Supérieur des Études Technologiques (ISET)
+% ============================================================
+
+% --- Encodage et langue ---
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\frenchbsetup{StandardLists=true}
+
+% --- Géométrie de la page ---
+\usepackage[top=2.5cm, bottom=2.5cm, left=3cm, right=2.5cm,
+            headheight=15pt]{geometry}
+
+% --- Typographie ---
+\usepackage{microtype}
+\usepackage{lmodern}
+\usepackage{setspace}
+\onehalfspacing
+
+% --- Mathématiques ---
+\usepackage{amsmath, amssymb}
+
+% --- Couleurs ---
+\usepackage[table, dvipsnames]{xcolor}
+\definecolor{primary}{RGB}{0,84,166}
+\definecolor{lightgray}{RGB}{242,242,242}
+\definecolor{codebg}{RGB}{248,248,250}
+\definecolor{codeframe}{RGB}{210,215,220}
+\definecolor{chapcolor}{RGB}{0,84,166}
+
+% --- Tableaux ---
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage{colortbl}
+\usepackage{float}
+\usepackage{makecell}
+\renewcommand\theadfont{\bfseries\small}
+\renewcommand\theadgape{\Gape[4pt]}
+\renewcommand{\arraystretch}{1.3}
+
+% Colonnes personnalisées (C = centré, L = gauche avec largeur fixe)
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+% --- Figures ---
+\usepackage{graphicx}
+\usepackage[font=small, labelfont=bf, labelsep=period]{caption}
+\usepackage{subcaption}
+\graphicspath{{figures/}}
+
+% --- Boîtes et encadrés ---
+\usepackage[framemethod=TikZ]{mdframed}
+
+% --- Listes ---
+\usepackage{enumitem}
+\usepackage{pifont}
+\newcommand{\cmark}{\textcolor{green!60!black}{\ding{51}}}
+\newcommand{\xmark}{\textcolor{red!80!black}{\ding{55}}}
+
+% --- Code source ---
+\usepackage{listings}
+
+\lstset{
+  basicstyle    = \ttfamily\small,
+  backgroundcolor = \color{codebg},
+  frame         = single,
+  rulecolor     = \color{codeframe},
+  numbers       = left,
+  numberstyle   = \tiny\color{gray!70},
+  numbersep     = 8pt,
+  breaklines    = true,
+  breakatwhitespace = false,
+  captionpos    = b,
+  showstringspaces = false,
+  tabsize       = 2,
+  xleftmargin   = 14pt,
+  xrightmargin  = 4pt,
+  aboveskip     = 6pt,
+  belowskip     = 6pt,
+}
+
+\lstdefinestyle{sqlstyle}{
+  language      = SQL,
+  keywordstyle  = \color{blue!80!black}\bfseries,
+  commentstyle  = \color{gray}\itshape,
+  stringstyle   = \color{orange!70!black},
+  morecomment   = [l]{--},
+}
+
+\lstdefinestyle{jsstyle}{
+  language      = JavaScript,
+  keywordstyle  = \color{blue!80!black}\bfseries,
+  commentstyle  = \color{gray}\itshape,
+  stringstyle   = \color{orange!70!black},
+  morecomment   = [l]{//},
+}
+
+\lstdefinestyle{phpstyle}{
+  language      = PHP,
+  keywordstyle  = \color{blue!80!black}\bfseries,
+  commentstyle  = \color{gray}\itshape,
+  stringstyle   = \color{orange!70!black},
+  morecomment   = [l]{//},
+  morestring    = [b]{"},
+  morestring    = [b]{'},
+}
+
+% --- Bibliographie ---
+\usepackage[backend=biber, style=ieee, sorting=none, maxbibnames=5]{biblatex}
+\addbibresource{references.bib}
+
+% --- En-têtes et pieds de page ---
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\nouppercase{\leftmark}}
+\fancyhead[R]{\small\textit{TAC-TIC IntelliPM — PFE 2026}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\fancypagestyle{plain}{%
+  \fancyhf{}%
+  \fancyfoot[C]{\thepage}%
+  \renewcommand{\headrulewidth}{0pt}%
+}
+
+% --- Liens hypertexte ---
+\usepackage[hidelinks,
+            pdftitle={TAC-TIC IntelliPM — Rapport de Projet de Fin d'Études},
+            pdfauthor={Fatma Rejeb},
+            pdfsubject={Plateforme de gestion de projets intelligente}]{hyperref}
+
+% --- Numérotation ---
+\setcounter{tocdepth}{3}
+\setcounter{secnumdepth}{3}
+
+% --- Style des titres de chapitre ---
+\usepackage{titlesec}
+
+\titleformat{\chapter}[display]
+  {\normalfont\huge\bfseries\color{chapcolor}}
+  {\filleft\large\MakeUppercase{\chaptertitlename}\ \thechapter}
+  {8pt}
+  {\filright\Huge}
+  [\vspace{4pt}\color{chapcolor}\rule{\linewidth}{1.2pt}\vspace{-2pt}]
+
+\titlespacing*{\chapter}{0pt}{-20pt}{28pt}
+
+\titleformat{\section}
+  {\normalfont\large\bfseries\color{chapcolor!85!black}}
+  {\thesection}{1em}{}
+
+\titleformat{\subsection}
+  {\normalfont\normalsize\bfseries}
+  {\thesubsection}{1em}{}
+
+\titleformat{\subsubsection}
+  {\normalfont\normalsize\itshape\bfseries}
+  {\thesubsubsection}{1em}{}
+
+% --- Environnements personnalisés ---
+
+% Encadré d'introduction de chapitre (fond bleu clair)
+\newenvironment{chapintro}{%
+  \vspace{4pt}%
+  \begin{mdframed}[
+    linecolor   = primary!40,
+    linewidth   = 0.8pt,
+    backgroundcolor = primary!5,
+    leftmargin  = 0pt,
+    rightmargin = 0pt,
+    innerleftmargin  = 14pt,
+    innerrightmargin = 14pt,
+    innertopmargin   = 10pt,
+    innerbottommargin= 10pt,
+    skipabove   = 6pt,
+    skipbelow   = 8pt,
+  ]%
+  \itshape
+}{%
+  \end{mdframed}%
+  \vspace{6pt}%
+}
+
+% Encadré de conclusion de chapitre (fond bleu, titre "Conclusion du chapitre")
+\newenvironment{chapconclusion}{%
+  \vspace{10pt}%
+  \begin{mdframed}[
+    linecolor   = primary,
+    linewidth   = 1.5pt,
+    backgroundcolor = primary!7,
+    leftmargin  = 0pt,
+    rightmargin = 0pt,
+    innerleftmargin  = 14pt,
+    innerrightmargin = 14pt,
+    innertopmargin   = 12pt,
+    innerbottommargin= 12pt,
+    skipabove   = 8pt,
+    skipbelow   = 8pt,
+    frametitle  = {\textbf{\textcolor{primary}{Conclusion du chapitre}}},
+    frametitleaboveskip = 8pt,
+    frametitlebelowskip = 6pt,
+  ]%
+}{%
+  \end{mdframed}%
+}
+
+% Encadré de problématique (ligne bleue épaisse)
+\newmdenv[
+  linecolor   = primary,
+  linewidth   = 1.5pt,
+  frametitle  = {},
+  skipabove   = 8pt,
+  skipbelow   = 8pt,
+]{problembox}
+
+% --- Macro utilitaire : placeholder image manquante ---
+% Utilisé dans les chapitres comme \imgplaceholder{largeur}{fichier}{légende}
+\newcommand{\imgplaceholder}[3]{%
+  \fbox{\parbox{#1}{\centering\vspace{1.2cm}
+    \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+    \texttt{#2}\\[0.3em]
+    \textit{#3}
+  \vspace{1.2cm}}}%
+}

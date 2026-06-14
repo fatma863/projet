@@ -1,18 +1,21 @@
-\chapter{Sprint 6 : Sécurité enterprise et journal d'audit analytique}
+\chapter{Implémentation des modules administratifs et analytiques}
 
 \section*{Introduction}
 \begin{chapintro}
-Le sixième sprint consolide l'architecture de la plateforme autour de deux axes
-complémentaires : d'un côté, un système de \textbf{contrôle d'accès basé sur les
-rôles (RBAC) entièrement personnalisable} permettant à l'administrateur de créer
-des rôles sur mesure et d'affecter des permissions atomiques ; de l'autre, un
-\textbf{journal d'audit enterprise} traçant chaque action avec ses valeurs avant/après,
-sa sévérité, l'adresse IP et le rôle de l'acteur, et présentant ces données via un
-tableau de bord analytique interactif.
+Ce chapitre décrit la réalisation du sixième et dernier sprint, qui élève la
+plateforme au niveau enterprise sur deux axes complémentaires : d'un côté, un
+\textbf{système RBAC (Role-Based Access Control) entièrement personnalisable}
+permettant à l'administrateur de créer des rôles sur mesure et d'affecter des
+permissions atomiques granulaires ; de l'autre, un \textbf{journal d'audit
+enterprise} traçant chaque action avec ses valeurs avant/après, sa sévérité
+automatique, l'adresse IP et le rôle de l'acteur, présenté via un tableau de
+bord analytique interactif avec export PDF.
 \end{chapintro}
 
+\section{Sprint 6 : Sécurité enterprise et journal d'audit analytique}
+
 % ============================================================
-\section{Sprint Backlog}
+\subsection{Sprint Backlog}
 
 \begin{table}[H]
   \centering
@@ -38,9 +41,9 @@ tableau de bord analytique interactif.
 \end{table}
 
 % ============================================================
-\section{Conception}
+\subsection{Conception}
 
-\subsection{Diagramme de cas d'utilisation}
+\subsubsection{Diagramme de cas d'utilisation}
 
 \begin{figure}[H]
   \centering
@@ -57,7 +60,7 @@ tableau de bord analytique interactif.
   \label{fig:uc_s6}
 \end{figure}
 
-\subsection{Diagramme de séquence — Journal d'audit temps réel}
+\subsubsection{Diagramme de séquence — Journal d'audit temps réel}
 
 \begin{figure}[H]
   \centering
@@ -76,7 +79,7 @@ tableau de bord analytique interactif.
   \label{fig:seq_audit}
 \end{figure}
 
-\subsection{Diagramme de classes}
+\subsubsection{Diagramme de classes}
 
 \begin{figure}[H]
   \centering
@@ -94,8 +97,7 @@ tableau de bord analytique interactif.
   \label{fig:class_s6}
 \end{figure}
 
-% ============================================================
-\subsection{Architecture RBAC — Rôles et permissions}
+\subsubsection{Architecture RBAC — Rôles et permissions}
 
 Le système RBAC de TAC-TIC IntelliPM opère sur \textbf{deux niveaux distincts} :
 
@@ -120,7 +122,7 @@ Le système RBAC de TAC-TIC IntelliPM opère sur \textbf{deux niveaux distincts}
   \end{tabularx}
 \end{table}
 
-\subsection{Schéma enrichi de la table \texttt{activity\_logs}}
+\subsubsection{Schéma enrichi de la table \texttt{activity\_logs}}
 
 Huit nouvelles colonnes ont été ajoutées à la table existante pour constituer
 un audit trail conforme aux exigences enterprise :
@@ -143,7 +145,7 @@ CREATE INDEX idx_activity_logs_created_at        ON activity_logs(created_at);
 CREATE INDEX idx_activity_logs_project_sev_date  ON activity_logs(project_id, severity, created_at);
 \end{lstlisting}
 
-\subsection{Détection automatique de sévérité}
+\subsubsection{Détection automatique de sévérité}
 
 \begin{table}[H]
   \centering
@@ -165,7 +167,7 @@ CREATE INDEX idx_activity_logs_project_sev_date  ON activity_logs(project_id, se
   \end{tabularx}
 \end{table}
 
-\subsection{Analytics d'activité — Algorithmes de détection d'anomalies}
+\subsubsection{Analytics d'activité — Algorithmes de détection d'anomalies}
 
 Le contrôleur \texttt{ActivityAnalyticsController} calcule cinq métriques avancées
 mises en cache pendant 5 minutes :
@@ -196,9 +198,9 @@ mises en cache pendant 5 minutes :
 \end{table}
 
 % ============================================================
-\section{Réalisation}
+\subsection{Réalisation}
 
-\subsection{Page Rôles et permissions}
+\subsubsection{Page Rôles et permissions}
 
 \begin{figure}[H]
   \centering
@@ -216,7 +218,7 @@ mises en cache pendant 5 minutes :
   \label{fig:ui_roles}
 \end{figure}
 
-\subsection{Matrice des permissions}
+\subsubsection{Matrice des permissions}
 
 \begin{figure}[H]
   \centering
@@ -234,7 +236,7 @@ mises en cache pendant 5 minutes :
   \label{fig:ui_permissions}
 \end{figure}
 
-\subsection{Journal d'audit enterprise — Onglet Timeline}
+\subsubsection{Journal d'audit enterprise — Onglet Timeline}
 
 \begin{figure}[H]
   \centering
@@ -269,7 +271,7 @@ naturelles françaises :
 //   Priorité :  Moyenne  →  Haute
 \end{lstlisting}
 
-\subsection{Journal d'audit enterprise — Onglet Analytics}
+\subsubsection{Journal d'audit enterprise — Onglet Analytics}
 
 \begin{figure}[H]
   \centering
@@ -315,7 +317,7 @@ naturelles françaises :
 sans dépendance externe (pas de Recharts, Chart.js ou D3). Cela réduit la taille
 du bundle de \textasciitilde{}150\,ko.
 
-\subsection{Rapport PDF — Page d'impression dédiée}
+\subsubsection{Rapport PDF — Page d'impression dédiée}
 
 \begin{figure}[H]
   \centering
@@ -338,7 +340,7 @@ accessible à \texttt{/audit-log/report?...params}. La page charge les données
 depuis l'API, rend le rapport, puis déclenche \texttt{window.print()} automatiquement.
 Le format A4 est configuré avec \texttt{@media print} et \texttt{@page \{ size: A4 \}}.
 
-\subsection{Sidebar SaaS redesign}
+\subsubsection{Sidebar SaaS redesign}
 
 La barre de navigation latérale a été entièrement redessinée dans un style
 inspiré des plateformes \textbf{Linear} et \textbf{Notion}, avec trois innovations
@@ -364,7 +366,7 @@ majeures par rapport à la version précédente :
   \end{tabularx}
 \end{table}
 
-\subsection{Optimisations de performance — Bilan Sprint 6}
+\subsubsection{Optimisations de performance — Bilan Sprint 6}
 
 \begin{table}[H]
   \centering
@@ -396,7 +398,7 @@ majeures par rapport à la version précédente :
 \end{table}
 
 % ============================================================
-\section{Tests et validation}
+\subsection{Tests et validation}
 
 \begin{lstlisting}[style=phpstyle,caption={Tests unitaires — RBAC et journal d'audit},
   label={lst:tests_s6}]

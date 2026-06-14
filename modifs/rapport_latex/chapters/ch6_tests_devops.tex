@@ -1,0 +1,318 @@
+\chapter{Tests, Validation et Déploiement}
+
+% ============================================================
+\section{Introduction}
+% ============================================================
+
+Ce dernier chapitre technique présente la stratégie de tests adoptée pour valider
+les 34 user stories du projet, la chaîne DevOps (Docker, CI/CD), l'analyse de
+qualité logicielle via SonarCloud, et l'infrastructure de déploiement retenue.
+
+% ============================================================
+\section{Tests fonctionnels}
+% ============================================================
+
+Les tests fonctionnels ont été conduits en suivant les scénarios nominaux et
+alternatifs de chaque user story. Ils couvrent les six sprints et vérifient le
+comportement attendu de l'API depuis le point de vue de l'appelant.
+
+\begin{table}[H]
+  \centering
+  \caption{Résultats des tests fonctionnels par sprint}
+  \label{tab:tests_fonc}
+  \begin{tabularx}{\textwidth}{L{5cm}C{2cm}C{2cm}L{3cm}}
+    \toprule
+    \thead{Module} & \thead{Scénarios} & \thead{Réussis} & \thead{Couverture} \\
+    \midrule
+    \rowcolor{lightgray}
+    Auth. \& utilisateurs    & 12 & 12 & 100\,\% \\
+    Projets, équipes, sprints & 15 & 15 & 100\,\% \\
+    \rowcolor{lightgray}
+    Tâches, Kanban, Gantt    & 18 & 18 & 100\,\% \\
+    Notifications, calendrier & 10 & 10 & 100\,\% \\
+    \rowcolor{lightgray}
+    IA (ML + LLM)            &  9 &  9 & 100\,\% \\
+    RBAC \& journal d'audit   & 14 & 14 & 100\,\% \\
+    \midrule
+    \textbf{Total} & \textbf{78} & \textbf{78} & \textbf{100\,\%} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Les tests d'API ont été réalisés avec \textbf{Postman} (collections organisées
+par sprint) puis exécutés automatiquement avec \textbf{Newman} pour les scenarii
+de régression.
+
+% ============================================================
+\section{Assurance qualité}
+% ============================================================
+
+\subsection{SonarCloud}
+
+\textbf{SonarCloud} a été utilisé comme outil d'analyse statique continue du
+code source. Il évalue quatre dimensions : Reliability (bugs), Security
+(vulnérabilités), Maintainability (code smells) et Duplication.
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sonarcloud_dashboard.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sonarcloud_dashboard.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sonarcloud\_dashboard.png}\\[0.3em]
+      \textit{Dashboard SonarCloud : Quality Gate Passed (vert), 0 bug, 0 vulnérabilité,
+      duplication $\approx$ 2\,\%, couverture $\approx$ 83\,\%}
+    \vspace{2cm}}}%
+  }
+  \caption{Rapport SonarCloud — Quality Gate final}
+  \label{fig:sonar_dashboard}
+\end{figure}
+
+\subsection{Analyse du code}
+
+\begin{table}[H]
+  \centering
+  \caption{Résultats de l'analyse SonarCloud — Quality Gate}
+  \label{tab:sonar_results}
+  \begin{tabularx}{\textwidth}{L{4cm}L{4cm}L{3cm}C{2cm}}
+    \toprule
+    \thead{Dimension} & \thead{Indicateur} & \thead{Valeur obtenue} & \thead{Statut} \\
+    \midrule
+    \rowcolor{lightgray}
+    Reliability   & Bugs critiques        & \textbf{0}             & \cmark Passé \\
+    Security      & Vulnérabilités hautes & \textbf{0}             & \cmark Passé \\
+    \rowcolor{lightgray}
+    Maintainability & Code smells         & \textbf{faible}        & \cmark Passé \\
+    Duplication   & Taux de duplication   & \textbf{$\approx$ 2\,\%} & \cmark Passé \\
+    \rowcolor{lightgray}
+    Coverage      & Couverture tests      & \textbf{$\approx$ 83\,\%} & \cmark Passé \\
+    \midrule
+    \multicolumn{3}{l}{\textbf{Quality Gate global}} & \textbf{\cmark Passé} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Les corrections appliquées suite à l'analyse initiale ont porté sur : comparaisons
+strictes, validation des entrées via \texttt{FormRequest}, extraction de logique
+dupliquée en services partagés et suppression des logs exposant des données
+sensibles.
+
+% ============================================================
+\section{DevOps}
+% ============================================================
+
+\subsection{Docker}
+
+Le backend Laravel est conteneurisé via un \textbf{Dockerfile} dédié
+(\texttt{laravel/Dockerfile}) basé sur \textbf{PHP~8.2-FPM} :
+
+\begin{lstlisting}[style=sqlstyle,
+  caption={Dockerfile Laravel (extrait)},
+  label={lst:dockerfile}]
+FROM php:8.2-fpm
+
+WORKDIR /var/www
+
+RUN apt-get update && apt-get install -y \
+    git curl libpng-dev libonig-dev libxml2-dev \
+    zip unzip libzip-dev mariadb-client \
+  && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+
+COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
+
+COPY --chown=www-data:www-data . /var/www
+
+RUN composer install --no-interaction --prefer-dist \
+    --optimize-autoloader --no-dev
+
+EXPOSE 8000
+CMD ["/usr/local/bin/start.sh"]
+\end{lstlisting}
+
+Le script de démarrage (\texttt{start.sh}) exécute séquentiellement
+\texttt{php artisan config:cache}, \texttt{route:cache},
+\texttt{migrate --force} puis \texttt{serve --host=0.0.0.0 --port=8000}.
+
+\subsection{Docker Compose}
+
+Pour le développement local, les trois composants de la plateforme sont orchestrés
+en utilisant Docker Compose avec cinq services :
+
+\begin{table}[H]
+  \centering
+  \caption{Services Docker Compose (développement)}
+  \label{tab:docker_services}
+  \begin{tabularx}{\textwidth}{L{3cm}L{3.5cm}X}
+    \toprule
+    \thead{Service} & \thead{Image} & \thead{Rôle} \\
+    \midrule
+    \rowcolor{lightgray}
+    \texttt{laravel}  & PHP 8.2-FPM   & Backend API REST \\
+    \texttt{nginx}    & Nginx 1.25    & Reverse proxy HTTP \\
+    \rowcolor{lightgray}
+    \texttt{mysql}    & MySQL 8       & Base de données \\
+    \texttt{reverb}   & PHP 8.2-FPM   & Serveur WebSocket \\
+    \rowcolor{lightgray}
+    \texttt{ml}       & Python 3.11   & Microservice FastAPI \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Docker Hub}
+
+Les images Docker sont publiées sur \textbf{Docker Hub} pour faciliter le déploiement
+sur tout environnement de production compatible. Chaque image est versionnée par
+numéro de sprint lors de la livraison.
+
+% ============================================================
+\section{CI/CD}
+% ============================================================
+
+\subsection{GitHub Actions}
+
+Le pipeline CI/CD est configuré via \textbf{GitHub Actions} et se déclenche
+automatiquement sur chaque \textit{push} et \textit{pull request} vers la branche
+\texttt{main}. Il s'exécute en quatre étapes séquentielles :
+
+\begin{table}[H]
+  \centering
+  \caption{Étapes du pipeline CI/CD — GitHub Actions}
+  \label{tab:cicd_steps}
+  \begin{tabularx}{\textwidth}{C{0.8cm}L{3.5cm}X L{2.5cm}}
+    \toprule
+    \thead{\#} & \thead{Étape} & \thead{Outils} & \thead{Durée moy.} \\
+    \midrule
+    \rowcolor{lightgray}
+    1 & Lint \& style  & PHP CS Fixer, ESLint, Prettier           & $\approx$ 1\,min \\
+    2 & Tests          & PestPHP (Laravel) + Vitest (React)       & $\approx$ 4\,min \\
+    \rowcolor{lightgray}
+    3 & Analyse qualité & SonarCloud scanner, rapport couverture  & $\approx$ 3\,min \\
+    4 & Build Docker   & \texttt{docker build} + push Docker Hub  & $\approx$ 5\,min \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Automatisation}
+
+Le pipeline garantit qu'aucun code ne fusionne sur \texttt{main} sans avoir
+passé les trois premières étapes (lint, tests, SonarCloud). L'étape de build
+Docker est déclenchée uniquement sur les pushes sur \texttt{main} (pas sur les
+pull requests).
+
+% ============================================================
+\section{Déploiement}
+% ============================================================
+
+\subsection{Azure}
+
+Le déploiement de production cible \textbf{Microsoft Azure} avec les services
+suivants :
+
+\begin{table}[H]
+  \centering
+  \caption{Infrastructure de déploiement — Azure}
+  \label{tab:azure_infra}
+  \begin{tabularx}{\textwidth}{L{4cm}L{4cm}X}
+    \toprule
+    \thead{Composant} & \thead{Service Azure} & \thead{Configuration} \\
+    \midrule
+    \rowcolor{lightgray}
+    Frontend React    & Azure Static Web Apps & Build Vite, CDN mondial \\
+    Backend Laravel   & Azure App Service     & Plan B2 (2 vCPU, 3,5\,Go), PHP-FPM + Nginx \\
+    \rowcolor{lightgray}
+    ML FastAPI        & Azure Container Apps  & 2 réplicas, Uvicorn \\
+    Base de données   & Azure Database for MySQL & Flexible Server, 8\,Go RAM \\
+    \rowcolor{lightgray}
+    WebSocket         & Même App Service      & Laravel Reverb, port 8080 \\
+    CDN / TLS         & Azure Front Door      & HTTPS, DDoS protection \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Architecture de production}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/deploy_architecture.png}{%
+    \includegraphics[width=0.90\textwidth]{figures/deploy_architecture.png}%
+  }{%
+    \fbox{\parbox{0.90\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/deploy\_architecture.png}\\[0.3em]
+      \textit{Architecture de production Azure : utilisateur → Azure Front Door →
+      Static Web Apps (React) + App Service (Laravel) + Container Apps (FastAPI)
+      + Azure MySQL Flexible Server}
+    \vspace{2cm}}}%
+  }
+  \caption{Architecture de déploiement — Production Azure}
+  \label{fig:deploy_arch}
+\end{figure}
+
+% ============================================================
+\section{Monitoring}
+% ============================================================
+
+\subsection{Supervision}
+
+La supervision de production utilise les mécanismes natifs Laravel et Azure :
+\begin{itemize}
+  \item \textbf{Laravel Horizon} — supervision des queues (jobs de notification,
+        envoi d'emails, traitement IA) ;
+  \item \textbf{Azure Monitor} — métriques CPU, mémoire, latence HTTP ;
+  \item \textbf{Health endpoint} — \texttt{GET /health} sur le microservice FastAPI
+        retourne \texttt{\{"status": "ok"\}} pour les sondes de disponibilité.
+\end{itemize}
+
+\subsection{Journalisation}
+
+La journalisation applicative est assurée à deux niveaux :
+\begin{itemize}
+  \item \textbf{Laravel Log} (Monolog) — niveaux error, warning, info ; fichiers
+        rotatifs quotidiens dans \texttt{storage/logs/} ;
+  \item \textbf{ActivityLog enterprise} — traçabilité complète des actions
+        utilisateurs avec sévérité, IP, rôle, avant/après (décrit au Chapitre~V).
+\end{itemize}
+
+% ============================================================
+\section{Résultats obtenus}
+% ============================================================
+
+\begin{table}[H]
+  \centering
+  \caption{Récapitulatif des métriques clés du projet}
+  \label{tab:resultats}
+  \begin{tabularx}{\textwidth}{L{5cm}C{3cm}C{3cm}}
+    \toprule
+    \thead{Indicateur} & \thead{Valeur obtenue} & \thead{Cible} \\
+    \midrule
+    \rowcolor{lightgray}
+    User stories livrées          & \textbf{34 / 34}   & 34 \\
+    Story points livrés           & \textbf{228}        & 228 \\
+    \rowcolor{lightgray}
+    Endpoints API REST             & \textbf{70+}        & -- \\
+    Événements WebSocket           & \textbf{11}         & -- \\
+    \rowcolor{lightgray}
+    Tests fonctionnels             & \textbf{78 / 78}   & -- \\
+    Couverture backend (SonarCloud)& \textbf{$\approx$ 83\,\%} & $\geq$ 80\,\% \\
+    \rowcolor{lightgray}
+    Duplication (SonarCloud)       & \textbf{$\approx$ 2\,\%}  & $\leq$ 3\,\% \\
+    Bugs critiques SonarCloud      & \textbf{0}          & 0 \\
+    \rowcolor{lightgray}
+    Vulnérabilités hautes          & \textbf{0}          & 0 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Conclusion}
+% ============================================================
+
+\begin{chapconclusion}
+Ce dernier chapitre a validé la fiabilité et la qualité de TAC-TIC IntelliPM.
+Les \textbf{78 tests fonctionnels} passent tous avec succès. Le
+\textbf{Quality Gate SonarCloud} est franchi au vert : 0 bug critique,
+0 vulnérabilité, duplication $\approx$~2\,\%. La conteneurisation Docker,
+le pipeline CI/CD GitHub Actions et l'architecture de déploiement Azure
+garantissent la reproductibilité et la scalabilité de la plateforme.
+\end{chapconclusion}

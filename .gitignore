@@ -23,6 +23,10 @@ laravel/storage/*.key
 laravel/storage/logs/
 laravel/bootstrap/cache/
 
+# Python
+__pycache__/
+*.pyc
+
 # Misc
 .qodo/
 

@@ -1,63 +1,53 @@
 La transformation numérique des organisations a profondément reconfiguré les pratiques
 de gestion de projets. Les équipes de développement logiciel évoluent désormais dans
 des environnements où la complexité, la rapidité et la collaboration distribuée exigent
-des outils à la hauteur des ambitions. Les plateformes existantes — Jira, Trello,
-Asana — répondent partiellement à ce besoin, mais aucune n'intègre nativement une
-couche d'intelligence artificielle capable d'assister les décisions opérationnelles en
-temps réel.
+des outils à la hauteur de leurs ambitions. Les plateformes existantes — Jira, Trello,
+Asana — répondent partiellement à ces besoins, mais aucune n'intègre nativement une
+couche d'intelligence artificielle capable d'assister les décisions opérationnelles.
 
 \bigskip
 C'est dans ce contexte que s'inscrit ce projet de fin d'études, réalisé au sein de
-l'entreprise \textbf{TAC-TIC} (Groupe New Ways, Technoparc El Ghazela, Ariana).
-La mission confiée : concevoir et développer \textbf{TAC-TIC IntelliPM}, une plateforme
-de gestion de projets intelligente qui combine les meilleures pratiques de l'ingénierie
-logicielle — architecture distribuée, sécurité multicouche, temps réel — avec un moteur
-d'IA hybride pour la recommandation et la prédiction.
+l'entreprise \textbf{TAC-TIC} (Groupe New Ways, Technoparc El Ghazela, Ariana,
+Tunisie). La mission confiée : concevoir et développer \textbf{TAC-TIC IntelliPM},
+une plateforme de gestion de projets intelligente combinant architecture distribuée,
+sécurité multicouche et moteur IA hybride.
 
 \bigskip
 \noindent\textbf{Organisation du rapport}
 
 \medskip
-Ce document est structuré en neuf chapitres suivant la progression des sprints Scrum
-et les étapes du cycle de développement logiciel :
+Ce document est structuré en \textbf{six chapitres} :
 
-\begin{description}[leftmargin=3cm,style=nextline]
-  \item[Chapitre 1] \textit{Cadre général du projet} — présentation de l'entreprise,
-        problématique, étude de l'existant, méthodologie Scrum, livrables et critères
-        d'évaluation.
+\begin{description}[leftmargin=3.5cm, style=nextline]
+  \item[Chapitre I] \textit{Cadre général du projet} — présentation de TAC-TIC,
+        contexte, problématique, étude de l'existant, méthodologie Scrum et
+        planification des six sprints.
 
-  \item[Chapitre 2] \textit{Étude préliminaire} — acteurs, besoins fonctionnels et
-        non fonctionnels, product backlog, architecture globale, environnement de
-        travail, pile technologique et maquettes des interfaces.
+  \item[Chapitre II] \textit{Planification et Architecture} — analyse des besoins
+        (acteurs, rôles, RBAC), spécification fonctionnelle et non fonctionnelle,
+        modélisation UML, product backlog (34 user stories), conception architecturale
+        distribuée et modèle de données.
 
-  \item[Chapitre 3] \textit{Sprint 1 — Gestion des utilisateurs} — authentification
-        Sanctum, RBAC Spatie, profil, préférences, dashboard administrateur.
+  \item[Chapitre III] \textit{Réalisation des modules fondamentaux} — trois premiers
+        sprints : authentification Sanctum et RBAC Spatie (Sprint~1), gestion des
+        projets, équipes et invitations (Sprint~2), gestion des tâches avec Kanban
+        drag-and-drop, dépendances BFS et Gantt CPM (Sprint~3).
 
-  \item[Chapitre 4] \textit{Sprint 2 — Gestion des projets et des équipes} —
-        création de projets, invitations email, gestion des sprints, équipes.
+  \item[Chapitre IV] \textit{Réalisation des modules avancés} — Sprint~4 (notifications
+        temps réel WebSocket, dashboards multi-rôles, calendrier, recherche globale)
+        et Sprint~5 (moteur IA hybride : recommandation ML via FastAPI, estimation
+        de durée par heuristiques, détection de risques, assistant LLM).
 
-  \item[Chapitre 5] \textit{Sprint 3 — Gestion des tâches et Kanban} — tâches
-        hiérarchiques, dépendances, tableau Kanban drag-and-drop, wizard 4 étapes,
-        recherche et filtrage avancé.
+  \item[Chapitre V] \textit{Administration et pilotage} — Sprint~6 : système RBAC
+        entièrement personnalisable (rôles, permissions atomiques, matrice), journal
+        d'audit enterprise (valeurs avant/après, sévérité, IP, export PDF, broadcast
+        WebSocket) et tableau de bord analytique (KPIs, détection d'anomalies).
 
-  \item[Chapitre 6] \textit{Sprint 4 — Planification visuelle et notifications} —
-        diagramme de Gantt avec chemin critique (CPM), calendrier, notifications
-        temps réel, préférences, scoring intelligent et indicateurs KPI.
-
-  \item[Chapitre 7] \textit{Sprint 5 — Intelligence artificielle} — recommandation
-        ML à 22 variables, pipeline complet (collecte, prétraitement, entraînement,
-        évaluation, déploiement), estimation LLM, détection de risques, chat assistant.
-
-  \item[Chapitre 8] \textit{Sprint 6 — Sécurité enterprise et journal d'audit} —
-        RBAC entièrement personnalisable (rôles + permissions atomiques), journal
-        d'audit enrichi (valeurs avant/après, IP, sévérité automatique), tableau
-        de bord analytique d'activité, export PDF et diffusion WebSocket temps réel.
-
-  \item[Chapitre 9] \textit{Analyse de la qualité du code — SonarCloud} — présentation
-        de SonarCloud/SonarQube, rapports d'analyse avant et après corrections,
-        Quality Gate du projet TAC-TIC IntelliPM.
+  \item[Chapitre VI] \textit{Tests, Validation et Déploiement} — stratégie de tests
+        fonctionnels, analyse SonarCloud (Quality Gate passé), conteneurisation Docker,
+        pipeline CI/CD GitHub Actions et déploiement Azure.
 \end{description}
 
 \medskip
-Le rapport se clôt par une conclusion générale récapitulant les apports du projet,
-ses limites et les perspectives d'évolution vers une solution SaaS industrielle.
+Le rapport se clôt par une \textbf{conclusion générale} récapitulant les résultats,
+les limites identifiées et les perspectives d'évolution.

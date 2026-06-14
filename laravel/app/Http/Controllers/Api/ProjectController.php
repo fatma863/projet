@@ -38,7 +38,15 @@ class ProjectController extends Controller
         $user = $request->user();
 
         $query = Project::with(['owner', 'team', 'chef'])
-            ->withCount('members', 'tasks')
+            ->withCount([
+                'members',
+                'tasks',
+                'tasks as overdue_tasks_count' => fn ($q) => $q
+                    ->whereNotNull('planned_end')
+                    ->where('planned_end', '<', now())
+                    ->where('progress_percent', '<', 100)
+                    ->whereNull('archived_at'),
+            ])
             ->when($request->status, fn ($q, $s) => $q->where('status', $s))
             ->when($request->team_id, fn ($q, $t) => $q->where('team_id', $t))
             ->when($request->search, fn ($q, $s) => $q->where(function ($q2) use ($s) {

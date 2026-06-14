@@ -34,10 +34,6 @@ export default function DashboardPage() {
   return <InternalDashboard />;
 }
 
-/* ─────────────────────────────────────────────────────────────
-   Composants de base
-   ───────────────────────────────────────────────────────────── */
-
 function KpiCard({ label, value, icon: Icon, error = false, progress = null, sub = null }) {
   return (
     <div className={cn(
@@ -187,9 +183,6 @@ DeadlineItem.propTypes = {
   date: PropTypes.string,
 };
 
-/* ─────────────────────────────────────────────────────────────
-   Project Card — Prototype Style
-   ───────────────────────────────────────────────────────────── */
 const PROJECT_ICON_COLORS = [
   'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400',
   'bg-orange-50 text-orange-600 dark:bg-orange-950/30 dark:text-orange-400',
@@ -321,10 +314,6 @@ ProjectCard.propTypes = {
   }),
 };
 
-/* ─────────────────────────────────────────────────────────────
-   Premium chart primitives — inline SVG, no external lib
-   ───────────────────────────────────────────────────────────── */
-
 function DashDonut({ segments, size = 130, stroke = 17, label, sublabel, labelColor = '#6366f1' }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { const t = setTimeout(() => setMounted(true), 60); return () => clearTimeout(t); }, []);
@@ -433,9 +422,6 @@ DashBarRows.propTypes = {
   })),
 };
 
-/* ─────────────────────────────────────────────────────────────
-   DashboardTaskBadges (kept for at-risk task cards)
-   ───────────────────────────────────────────────────────────── */
 function DashboardTaskBadges({ task }) {
   const { t } = useI18n();
   const wf = task.workflow_status || 'todo';
@@ -472,9 +458,6 @@ DashboardTaskBadges.propTypes = {
   }),
 };
 
-/* ─────────────────────────────────────────────────────────────
-   InternalDashboard — main component
-   ───────────────────────────────────────────────────────────── */
 function InternalDashboard() {
   const { user } = useAuth();
   const { t, locale } = useI18n();
@@ -643,7 +626,6 @@ function InternalDashboard() {
 
   const activities = unwrapCollection(activityData, 'activities');
 
-  // At-risk tasks for AI alerts panel (admin)
   const alertTasks = flatTasks
     .filter((t) => t.is_overdue || tasksAtRisk.some((x) => x.id === t.id))
     .slice(0, 4);
@@ -662,7 +644,6 @@ function InternalDashboard() {
     return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, 5);
   })();
 
-  // Chart data derived from already-fetched lists
   const projectsByStatus = {
     active: projects.filter((p) => p.status === 'active').length,
     planning: projects.filter((p) => !p.status || p.status === 'planning').length,
@@ -686,7 +667,6 @@ function InternalDashboard() {
 
   const hasErrors = projectsError || memberDashError || adminDashError || (isAdmin && activityError) || invitesError;
 
-  /* ─── RENDER ─── */
   return (
     <div className="space-y-6">
       {/* Error banner */}
@@ -845,17 +825,13 @@ function InternalDashboard() {
                   <p className="text-sm text-muted-foreground py-4 text-center">{t('dashboard.noAlerts')}</p>
                 ) : alertTasks.map((t) => {
                   const pname = projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
-                  const score = t.risk_score != null ? t.risk_score
-                    : t.is_overdue ? 88
-                    : (t.priority === 'urgent') ? 75
-                    : 62;
                   return (
                     <Link key={t.id} to={`/projects/${t.project_id}?highlightTask=${t.id}`}>
                       <AiAlertItem
                         title={t.title}
                         sub={pname}
                         level={t.is_overdue ? 'danger' : 'warning'}
-                        score={score}
+                        score={t.risk_score ?? null}
                       />
                     </Link>
                   );
@@ -1106,15 +1082,15 @@ function InternalDashboard() {
             </h2>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {tasksAtRiskList.slice(0, 6).map((t) => {
-              const pname = t.project_name || projects?.find((p) => p.id === t.project_id)?.name || `Projet #${t.project_id}`;
+            {tasksAtRiskList.slice(0, 6).map((task) => {
+              const pname = task.project_name || projects?.find((p) => p.id === task.project_id)?.name || `Projet #${task.project_id}`;
               return (
-                <Link key={t.id} to={`/projects/${t.project_id}?highlightTask=${t.id}`}>
+                <Link key={task.id} to={`/projects/${task.project_id}?highlightTask=${task.id}`}>
                   <div className="rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-amber-200/80 transition-all">
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <p className="text-sm font-medium text-foreground truncate">{t.title}</p>
-                      <Badge variant={t.is_overdue ? 'destructive' : 'outline'} className="shrink-0 text-[10px]">
-                        {t.is_overdue ? t('dashboard.overdueShort') : t('dashboard.atRiskShort')}
+                      <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
+                      <Badge variant={task.is_overdue ? 'destructive' : 'outline'} className="shrink-0 text-[10px]">
+                        {task.is_overdue ? t('dashboard.overdueShort') : t('dashboard.atRiskShort')}
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mb-2">{pname}</p>
@@ -1158,9 +1134,6 @@ function InternalDashboard() {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   Petit helper : ligne dans le panel "Détails globaux"
-   ───────────────────────────────────────────────────────────── */
 function DetailRow({ label, value, sub, error = false }) {
   return (
     <div className="flex items-center justify-between gap-2">

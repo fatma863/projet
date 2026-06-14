@@ -1,0 +1,440 @@
+\chapter{Réalisation des modules fondamentaux}
+
+% ============================================================
+\section{Introduction}
+% ============================================================
+
+Ce chapitre présente la réalisation des trois premiers sprints du projet
+TAC-TIC IntelliPM, couvrant les modules fondamentaux de la plateforme :
+l'authentification et la gestion des utilisateurs (Sprint~1), la gestion des
+projets et des équipes (Sprint~2), puis la gestion des tâches, du tableau
+Kanban et du diagramme de Gantt (Sprint~3).
+
+Pour chaque sprint, nous suivons le même schéma : spécifications fonctionnelles
+(sprint backlog), conception UML et réalisation.
+
+% ============================================================
+\section{Sprint 1 : Authentification et gestion des utilisateurs}
+% ============================================================
+
+\subsection{Spécifications fonctionnelles}
+
+\begin{table}[H]
+  \centering
+  \caption{Sprint Backlog — Sprint 1 (26 story points)}
+  \label{tab:backlog_s1}
+  \begin{tabularx}{\textwidth}{C{1.2cm}L{5.8cm}L{2.2cm}C{2cm}C{1.5cm}}
+    \toprule
+    \thead{ID} & \thead{User Story} & \thead{Acteur} & \thead{Priorité} & \thead{Points} \\
+    \midrule
+    \rowcolor{lightgray}
+    US-01 & S'inscrire et se connecter en sécurité & Tous  & Must   & 5 \\
+    US-02 & Gérer les comptes utilisateurs          & Admin & Must   & 8 \\
+    \rowcolor{lightgray}
+    US-03 & Définir rôles et permissions Spatie     & Admin & Must   & 5 \\
+    US-04 & Modifier profil, avatar et préférences  & Tous  & Should & 5 \\
+    \rowcolor{lightgray}
+    US-05 & Réinitialiser mot de passe par email    & Tous  & Should & 3 \\
+    \midrule
+    \multicolumn{4}{r}{\textbf{Total :}} & \textbf{26} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Conception}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint1_use_case.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint1_use_case.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint1\_use\_case.png}\\[0.3em]
+      \textit{Cas d'utilisation Sprint 1 : inscription, connexion, gestion utilisateurs,
+      profil, réinitialisation mot de passe}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de cas d'utilisation — Sprint 1}
+  \label{fig:uc_s1}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint1_sequence_auth.png}{%
+    \includegraphics[width=0.90\textwidth]{figures/sprint1_sequence_auth.png}%
+  }{%
+    \fbox{\parbox{0.90\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint1\_sequence\_auth.png}\\[0.3em]
+      \textit{Séquence : Client → POST /auth/login → AuthController → Sanctum →
+      PersonalAccessToken → Bearer Token}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de séquence — Authentification Bearer Token Sanctum}
+  \label{fig:seq_auth}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint1_class.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint1_class.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint1\_class.png}\\[0.3em]
+      \textit{Classes : User, Role, Permission, PersonalAccessToken, Specialty}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de classes — Sprint 1}
+  \label{fig:class_s1}
+\end{figure}
+
+\subsection{Réalisation}
+
+Le module d'authentification repose sur \textbf{Laravel Sanctum} (Bearer Token
+stateless). Les routes publiques sont protégées par un throttle de 5 requêtes/minute
+(\texttt{throttle:5,1}). Les routes protégées requièrent le middleware
+\texttt{auth:sanctum} combiné à \texttt{active.user} (vérifiant que le compte n'est
+pas désactivé).
+
+La gestion des rôles système utilise le package \textbf{Spatie/Permission} avec trois
+rôles initiaux : \texttt{admin}, \texttt{member}, \texttt{client}. Les politiques
+d'autorisation sont vérifiées par les middlewares \texttt{CheckRole} et
+\texttt{CheckPermission}.
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint1_01_login.png}{%
+    \includegraphics[width=0.85\textwidth]{figures/sprint1_01_login.png}%
+  }{%
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint1\_01\_login.png}\\[0.3em]
+      \textit{Page de connexion : formulaire email/mot de passe, lien inscription,
+      lien « Mot de passe oublié »}
+    \vspace{2cm}}}%
+  }
+  \caption{Page de connexion — TAC-TIC IntelliPM}
+  \label{fig:ui_login}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint1_02_users.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint1_02_users.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint1\_02\_users.png}\\[0.3em]
+      \textit{Page gestion des utilisateurs (admin) : tableau paginé, filtres par
+      rôle et statut, actions CRUD}
+    \vspace{2cm}}}%
+  }
+  \caption{Interface de gestion des utilisateurs — Vue administrateur}
+  \label{fig:ui_users}
+\end{figure}
+
+% ============================================================
+\section{Sprint 2 : Gestion des projets et équipes}
+% ============================================================
+
+\subsection{Spécifications fonctionnelles}
+
+\begin{table}[H]
+  \centering
+  \caption{Sprint Backlog — Sprint 2 (35 story points)}
+  \label{tab:backlog_s2}
+  \begin{tabularx}{\textwidth}{C{1.2cm}L{5.8cm}L{2.2cm}C{2cm}C{1.5cm}}
+    \toprule
+    \thead{ID} & \thead{User Story} & \thead{Acteur} & \thead{Priorité} & \thead{Points} \\
+    \midrule
+    \rowcolor{lightgray}
+    US-06 & Créer et configurer un projet             & Member & Must   & 5 \\
+    US-07 & Inviter des membres par email (7 jours)   & Chef   & Must   & 8 \\
+    \rowcolor{lightgray}
+    US-08 & Définir des statuts Kanban personnalisés  & Chef   & Should & 5 \\
+    US-09 & Créer et démarrer un sprint               & Chef   & Must   & 8 \\
+    \rowcolor{lightgray}
+    US-10 & Clôturer un sprint avec report du backlog & Chef   & Should & 5 \\
+    \midrule
+    \multicolumn{4}{r}{\textbf{Total :}} & \textbf{35} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Les fonctionnalités supplémentaires réalisées dans ce sprint incluent :
+pause/reprise de projet (\texttt{POST /projects/\{id\}/pause} et \texttt{/resume}),
+gestion des équipes (\texttt{TeamController}), invitation via deux systèmes
+(\texttt{InvitationController} avec token UUID et \texttt{InviteController} direct),
+et export des tâches d'un projet (\texttt{GET /projects/\{id\}/export/tasks}).
+
+\subsection{Conception}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint2_use_case.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint2_use_case.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint2\_use\_case.png}\\[0.3em]
+      \textit{Cas d'utilisation Sprint 2 : gestion projets, invitations, sprints,
+      équipes, statuts Kanban}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de cas d'utilisation — Sprint 2}
+  \label{fig:uc_s2}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint2_sequence_invite.png}{%
+    \includegraphics[width=0.90\textwidth]{figures/sprint2_sequence_invite.png}%
+  }{%
+    \fbox{\parbox{0.90\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint2\_sequence\_invite.png}\\[0.3em]
+      \textit{Séquence invitation : Chef → POST /projects/\{id\}/invite →
+      ProjectInvitation (UUID, 7j) → Email → Invité accepte →
+      ProjectMember créé avec rôle}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de séquence — Système d'invitation par email}
+  \label{fig:seq_invite}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint2_class.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint2_class.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint2\_class.png}\\[0.3em]
+      \textit{Classes : Project, Team, ProjectInvitation, Sprint, TaskStatus,
+      ProjectUserRole}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de classes — Sprint 2}
+  \label{fig:class_s2}
+\end{figure}
+
+\subsection{Réalisation}
+
+Les projets disposent d'un mécanisme de \textbf{pause/reprise} (\texttt{pause\_reason},
+\texttt{paused\_at}, \texttt{paused\_by}) protégé par le middleware
+\texttt{CheckProjectNotPaused} qui bloque toutes les écritures sur un projet mis en pause.
+Les invitations expirent automatiquement après 7 jours et peuvent être acceptées ou déclinées.
+La clôture d'un sprint (\texttt{POST /sprints/\{id\}/end}) transfère les tâches non
+terminées vers le backlog du sprint suivant.
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint2_01_projects.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint2_01_projects.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint2\_01\_projects.png}\\[0.3em]
+      \textit{Liste des projets : cartes avec statut, membres, sprint actif,
+      progression}
+    \vspace{2cm}}}%
+  }
+  \caption{Vue liste des projets}
+  \label{fig:ui_projects}
+\end{figure}
+
+% ============================================================
+\section{Sprint 3 : Gestion des tâches, Kanban et Gantt}
+% ============================================================
+
+\subsection{Spécifications fonctionnelles}
+
+\begin{table}[H]
+  \centering
+  \caption{Sprint Backlog — Sprint 3 (52 story points)}
+  \label{tab:backlog_s3}
+  \begin{tabularx}{\textwidth}{C{1.2cm}L{5.8cm}L{2.2cm}C{2cm}C{1.5cm}}
+    \toprule
+    \thead{ID} & \thead{User Story} & \thead{Acteur} & \thead{Priorité} & \thead{Points} \\
+    \midrule
+    \rowcolor{lightgray}
+    US-11 & Créer des tâches hiérarchiques (sous-tâches) & Member & Must   & 8 \\
+    US-12 & Définir des dépendances FS/SS/FF/SF           & Member & Must   & 8 \\
+    \rowcolor{lightgray}
+    US-13 & Affecter des membres avec allocation \%       & Member & Must   & 5 \\
+    US-14 & Déplacer une tâche en Kanban (drag-and-drop)  & Member & Must   & 5 \\
+    \rowcolor{lightgray}
+    US-15 & Saisir le temps passé sur une tâche           & Member & Should & 3 \\
+    US-16 & Visualiser le Gantt avec chemin critique      & Member & Must   & 13 \\
+    \midrule
+    \multicolumn{4}{r}{\textbf{Total :}} & \textbf{42} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Les fonctionnalités supplémentaires de ce sprint : commentaires sur tâches
+(\texttt{TaskController::addComment/updateComment/deleteComment}), pièces jointes
+(\texttt{addAttachment/deleteAttachment}), worklog de progression quotidienne
+(\texttt{WorklogController}), surveillance de tâches (\texttt{WatcherController}) et
+chemin critique (\texttt{CriticalPathController}).
+
+\subsection{Conception}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint3_use_case.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint3_use_case.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint3\_use\_case.png}\\[0.3em]
+      \textit{Cas d'utilisation Sprint 3 : création tâches, dépendances, Kanban,
+      Gantt, chemin critique, worklog}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de cas d'utilisation — Sprint 3}
+  \label{fig:uc_s3}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint3_sequence_task.png}{%
+    \includegraphics[width=0.90\textwidth]{figures/sprint3_sequence_task.png}%
+  }{%
+    \fbox{\parbox{0.90\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint3\_sequence\_task.png}\\[0.3em]
+      \textit{Séquence création tâche : Frontend → POST /projects/\{id\}/tasks →
+      vérification BFS dépendances → TaskController → TaskResource}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de séquence — Création de tâche avec vérification BFS}
+  \label{fig:seq_task}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint3_sequence_gantt.png}{%
+    \includegraphics[width=0.90\textwidth]{figures/sprint3_sequence_gantt.png}%
+  }{%
+    \fbox{\parbox{0.90\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint3\_sequence\_gantt.png}\\[0.3em]
+      \textit{Séquence Gantt : Frontend → GET /projects/\{id\}/gantt →
+      GanttController → CriticalPathService (CPM) → TaskResource avec
+      early\_start, early\_finish, late\_start, late\_finish, total\_float}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de séquence — Calcul du chemin critique CPM}
+  \label{fig:seq_gantt}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint3_class.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint3_class.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint3\_class.png}\\[0.3em]
+      \textit{Classes : Task, TaskAssignment, TaskDependency, TaskComment,
+      TimeEntry, DailyTaskProgress, CriticalPathService}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de classes — Sprint 3}
+  \label{fig:class_s3}
+\end{figure}
+
+\subsection{Réalisation}
+
+\subsubsection*{Tableau Kanban drag-and-drop}
+
+Le tableau Kanban affiche les tâches groupées par statut personnalisé. Le
+déplacement inter-colonnes est implémenté avec \textbf{@dnd-kit} (composant
+\texttt{WorkflowBoard.jsx}). À chaque déplacement, un \texttt{PATCH /tasks/\{id\}/move}
+est envoyé en arrière-plan.
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint3_01_kanban.png}{%
+    \includegraphics[width=0.90\textwidth]{figures/sprint3_01_kanban.png}%
+  }{%
+    \fbox{\parbox{0.90\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint3\_01\_kanban.png}\\[0.3em]
+      \textit{Tableau Kanban : colonnes personnalisées, cartes tâches avec priorité
+      colorée, assignés, date d'échéance, drag-and-drop}
+    \vspace{2cm}}}%
+  }
+  \caption{Tableau Kanban avec drag-and-drop}
+  \label{fig:ui_kanban}
+\end{figure}
+
+\subsubsection*{Dépendances et détection de cycles}
+
+Quatre types de dépendances sont supportés : FS (\textit{Finish-to-Start}),
+SS (\textit{Start-to-Start}), FF (\textit{Finish-to-Finish}) et SF
+(\textit{Start-to-Finish}). Avant toute insertion, le service
+\texttt{TaskDependencyService} exécute un parcours BFS (\textit{Breadth-First
+Search}) du graphe existant pour détecter tout cycle potentiel.
+
+\subsubsection*{Diagramme de Gantt avec chemin critique (CPM)}
+
+Le Gantt est rendu en \textbf{SVG pur} (composant \texttt{GanttChart.jsx})
+sans bibliothèque externe. L'algorithme CPM est implémenté dans
+\texttt{CriticalPathService.php} et calcule pour chaque tâche :
+
+\begin{table}[H]
+  \centering
+  \caption{Variables CPM calculées par le \texttt{CriticalPathService}}
+  \label{tab:cpm}
+  \begin{tabularx}{\textwidth}{L{2.5cm}L{3cm}X}
+    \toprule
+    \thead{Variable} & \thead{Signification} & \thead{Description} \\
+    \midrule
+    \rowcolor{lightgray}
+    ES & Early Start  & Date de début au plus tôt \\
+    EF & Early Finish & Date de fin au plus tôt (ES + durée) \\
+    \rowcolor{lightgray}
+    LS & Late Start   & Date de début au plus tard \\
+    LF & Late Finish  & Date de fin au plus tard \\
+    \rowcolor{lightgray}
+    TF & Total Float  & Marge totale = LS $-$ ES. Si TF = 0, la tâche est critique \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Les tâches du chemin critique (TF = 0) sont visualisées avec des
+\textbf{barres rouges} sur le Gantt.
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint3_02_gantt.png}{%
+    \includegraphics[width=0.92\textwidth]{figures/sprint3_02_gantt.png}%
+  }{%
+    \fbox{\parbox{0.92\textwidth}{\centering\vspace{2.2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint3\_02\_gantt.png}\\[0.3em]
+      \textit{Diagramme de Gantt : barres bleues (tâches normales), barres rouges
+      (chemin critique CPM), flèches de dépendances, ligne de date courante}
+    \vspace{2.2cm}}}%
+  }
+  \caption{Diagramme de Gantt avec chemin critique CPM}
+  \label{fig:ui_gantt}
+\end{figure}
+
+% ============================================================
+\section{Conclusion}
+% ============================================================
+
+\begin{chapconclusion}
+Les trois premiers sprints ont livré les fondations solides de TAC-TIC IntelliPM :
+\textbf{16 user stories} pour \textbf{103 story points}. L'authentification Sanctum
+garantit la sécurité des accès, la gestion des projets permet une collaboration
+structurée avec invitations et pause/reprise, et le moteur de tâches — avec Kanban
+drag-and-drop, dépendances BFS et Gantt CPM en SVG pur — constitue le cœur
+opérationnel. Le chapitre suivant décrit les modules avancés : notifications temps
+réel et intelligence artificielle.
+\end{chapconclusion}

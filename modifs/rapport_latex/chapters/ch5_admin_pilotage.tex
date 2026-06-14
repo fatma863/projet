@@ -1,0 +1,389 @@
+\chapter{Administration et pilotage}
+
+% ============================================================
+\section{Introduction}
+% ============================================================
+
+Ce chapitre décrit la réalisation du sixième et dernier sprint, consacré aux
+fonctionnalités d'administration enterprise et d'analytique. Deux axes sont
+développés : d'une part un \textbf{système RBAC entièrement personnalisable}
+(rôles sur mesure, permissions atomiques, matrice) ; d'autre part un \textbf{journal
+d'audit enterprise} avec analytique avancée, diffusion WebSocket temps réel et
+export PDF.
+
+% ============================================================
+\section{Administration}
+% ============================================================
+
+\subsection{Gestion des rôles}
+
+Le \texttt{RoleController} expose un CRUD complet de rôles Spatie enrichi par
+rapport aux rôles système de base :
+
+\begin{table}[H]
+  \centering
+  \caption{Endpoints de gestion des rôles (\texttt{RoleController})}
+  \label{tab:role_endpoints}
+  \begin{tabularx}{\textwidth}{L{5cm}L{2.5cm}X}
+    \toprule
+    \thead{Route} & \thead{Méthode} & \thead{Action} \\
+    \midrule
+    \rowcolor{lightgray}
+    \texttt{/roles}                      & GET    & Liste tous les rôles \\
+    \texttt{/roles}                      & POST   & Crée un rôle (permission : \texttt{role.create}) \\
+    \rowcolor{lightgray}
+    \texttt{/roles/\{role\}}             & PUT    & Modifie un rôle (permission : \texttt{role.edit}) \\
+    \texttt{/roles/\{role\}}             & DELETE & Supprime un rôle (permission : \texttt{role.delete}) \\
+    \rowcolor{lightgray}
+    \texttt{/roles/\{role\}/duplicate}   & POST   & Duplique un rôle \\
+    \texttt{/roles/\{role\}/archive}     & POST   & Archive / désarchive un rôle \\
+    \rowcolor{lightgray}
+    \texttt{/roles/\{role\}/permissions} & PUT    & Synchronise les permissions du rôle \\
+    \texttt{/roles/audit-log}            & GET    & Journal d'audit des changements de rôles \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint6_01_roles.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint6_01_roles.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint6\_01\_roles.png}\\[0.3em]
+      \textit{Page Rôles : liste des rôles avec nombre d'utilisateurs et de
+      permissions, bouton créer rôle, badges colorés}
+    \vspace{2cm}}}%
+  }
+  \caption{Page de gestion des rôles — \texttt{RolesPage.jsx}}
+  \label{fig:ui_roles}
+\end{figure}
+
+\subsection{Gestion des permissions}
+
+Le \texttt{PermissionController} expose la matrice globale des permissions
+(toutes les permissions atomiques × tous les rôles) :
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint6_02_permissions.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint6_02_permissions.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint6\_02\_permissions.png}\\[0.3em]
+      \textit{Matrice des permissions : lignes = permissions atomiques groupées
+      par module, colonnes = rôles, cases = toggle actif/inactif}
+    \vspace{2cm}}}%
+  }
+  \caption{Matrice globale des permissions — \texttt{PermissionMatrixPage.jsx}}
+  \label{fig:ui_permissions}
+\end{figure}
+
+Les permissions sont regroupées par module dans la table
+\texttt{permission\_groups} (migration
+\texttt{2026\_05\_21\_000001\_create\_permission\_groups\_table.php}). Un audit
+log des modifications est persisté dans \texttt{permission\_audit\_logs}.
+
+\subsection{Audit}
+
+Le journal d'audit enterprise est implémenté par l'\texttt{ActivityLogService} qui
+trace chaque action significative avec :
+
+\begin{lstlisting}[style=sqlstyle,
+  caption={Colonnes enrichies de la table \texttt{activity\_logs} — Sprint 6},
+  label={lst:activity_logs}]
+-- Migration : 2026_05_22_100000_add_enterprise_fields_to_activity_logs.php
+ALTER TABLE activity_logs
+  ADD COLUMN old_values     JSON         NULL,
+  ADD COLUMN new_values     JSON         NULL,
+  ADD COLUMN changed_fields JSON         NULL,
+  ADD COLUMN ip_address     VARCHAR(45)  NULL,
+  ADD COLUMN user_agent     VARCHAR(500) NULL,
+  ADD COLUMN severity       VARCHAR(20)  DEFAULT 'info',
+  ADD COLUMN source         VARCHAR(50)  DEFAULT 'web',
+  ADD COLUMN actor_role     VARCHAR(100) NULL;
+
+-- Index de performance (migration 2026_05_22_110000)
+CREATE INDEX idx_activity_logs_action           ON activity_logs(action);
+CREATE INDEX idx_activity_logs_project_sev_date
+  ON activity_logs(project_id, severity, created_at);
+\end{lstlisting}
+
+La sévérité est détectée automatiquement par \texttt{ActivityLogService::detectSeverity()} :
+
+\begin{table}[H]
+  \centering
+  \caption{Règles de sévérité automatique}
+  \label{tab:severity_rules}
+  \begin{tabularx}{\textwidth}{L{2.5cm}L{4cm}X}
+    \toprule
+    \thead{Sévérité} & \thead{Actions déclenchantes} & \thead{Couleur UI} \\
+    \midrule
+    \rowcolor{lightgray}
+    \textbf{critical} & \texttt{task.deleted}, \texttt{project.deleted} & Bande rouge \\
+    \textbf{warning}  & \texttt{task.assigned}, \texttt{project.member\_*},
+                        \texttt{sprint.*} & Bande ambrée \\
+    \rowcolor{lightgray}
+    \textbf{info}     & Toutes les autres actions & Bande bleue (défaut) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint6_03_audit_timeline.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint6_03_audit_timeline.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint6\_03\_audit\_timeline.png}\\[0.3em]
+      \textit{Timeline audit : entrées groupées par date, bande sévérité colorée,
+      panneau avant/après expandable, badge WebSocket « nouvelles activités »}
+    \vspace{2cm}}}%
+  }
+  \caption{Journal d'audit enterprise — Timeline (\texttt{AuditLogPage.jsx})}
+  \label{fig:ui_audit_timeline}
+\end{figure}
+
+\subsection{Journalisation}
+
+L'événement \texttt{ActivityLogged} est broadcasté en temps réel sur le canal
+WebSocket \texttt{private-project.\{id\}}, permettant à la page
+\texttt{AuditLogPage.jsx} de recevoir les nouvelles entrées sans rechargement.
+La bibliothèque \texttt{projectActivityHumanize.js} transforme les actions brutes
+en phrases françaises naturelles :
+
+\begin{lstlisting}[style=jsstyle,
+  caption={Humanisation des événements d'audit (\texttt{projectActivityHumanize.js})},
+  label={lst:humanize}]
+// Entrée brute :
+{ action: "task.updated",
+  meta: { task_title: "Auth JWT", changed: ["priority"] },
+  old: { priority: "medium" }, new: { priority: "high" } }
+
+// Sortie affichée dans la timeline :
+// "Fatma a modifié la priorité de « Auth JWT »"
+// Panneau avant/après : Priorité : Moyenne → Haute
+\end{lstlisting}
+
+L'export PDF est implémenté via la page React standalone
+\texttt{AuditReportPage.jsx} accessible à \texttt{/audit-log/report}.
+La page charge les données depuis l'API puis déclenche
+\texttt{window.print()} avec les styles \texttt{@media print} et
+\texttt{@page \{ size: A4 \}}.
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint6_05_audit_pdf.png}{%
+    \includegraphics[width=0.78\textwidth]{figures/sprint6_05_audit_pdf.png}%
+  }{%
+    \fbox{\parbox{0.78\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint6\_05\_audit\_pdf.png}\\[0.3em]
+      \textit{Rapport PDF A4 : en-tête, synthèse analytique, tableau des événements
+      avec sévérité colorée}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Rapport PDF du journal d'audit}
+  \label{fig:ui_audit_pdf}
+\end{figure}
+
+% ============================================================
+\section{Analytics}
+% ============================================================
+
+\subsection{KPI}
+
+L'\texttt{ActivityAnalyticsController} expose les indicateurs clés d'activité pour
+un ou plusieurs projets. Les calculs sont mis en cache pendant \textbf{5 minutes}
+(\texttt{Cache::remember}) et ne sont déclenchés que si le paramètre
+\texttt{?with\_stats=1} est présent (optimisation performance — le polling
+WebSocket ne les sollicite jamais).
+
+\begin{table}[H]
+  \centering
+  \caption{KPIs calculés par \texttt{ActivityAnalyticsController}}
+  \label{tab:kpis}
+  \begin{tabularx}{\textwidth}{L{3.5cm}X}
+    \toprule
+    \thead{KPI} & \thead{Calcul} \\
+    \midrule
+    \rowcolor{lightgray}
+    Activités 30\,j / 7\,j  & Comptage total sur période glissante \\
+    Activités critiques       & Comptage \texttt{WHERE severity = 'critical'} \\
+    \rowcolor{lightgray}
+    Utilisateurs actifs       & Comptage \texttt{DISTINCT actor\_id} sur 30\,j \\
+    Score de collaboration    & \% actions multi-utilisateurs × 2,5 (max 100) \\
+    \rowcolor{lightgray}
+    Tendance 28\,j            & Série temporelle par \texttt{DATE(created\_at)},
+                                jours manquants remplis à 0 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Tableaux de bord}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint6_04_audit_analytics.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint6_04_audit_analytics.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{2.2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint6\_04\_audit\_analytics.png}\\[0.3em]
+      \textit{Dashboard analytics : 5 KPI cards, Sparkline 28j (SVG polyline),
+      Top 5 utilisateurs (barres CSS), distribution sévérité (conic-gradient),
+      alertes anomalies}
+    \vspace{2.2cm}}}%
+  }
+  \caption{Tableau de bord analytics du journal d'audit}
+  \label{fig:ui_audit_analytics}
+\end{figure}
+
+Tous les graphiques sont implémentés en \textbf{CSS/SVG pur}, sans bibliothèque
+externe (pas de Recharts, Chart.js ou D3), réduisant la taille du bundle de
+$\approx$150\,ko.
+
+\subsection{Statistiques}
+
+L'analytique détecte automatiquement trois types d'anomalies :
+
+\begin{table}[H]
+  \centering
+  \caption{Algorithmes de détection d'anomalies}
+  \label{tab:anomalies}
+  \begin{tabularx}{\textwidth}{L{3.5cm}L{3cm}X}
+    \toprule
+    \thead{Anomalie} & \thead{Seuil} & \thead{Requête SQL} \\
+    \midrule
+    \rowcolor{lightgray}
+    Tâches instables & $>$ 5 mises à jour en 7\,j &
+      \texttt{GROUP BY entity\_id HAVING count(*) > 5} \\
+    Membres inactifs & 0 activité en 14\,j &
+      \texttt{LEFT JOIN} excludant les acteurs récents \\
+    \rowcolor{lightgray}
+    Pics d'activité  & Count $>$ 2× moyenne 28\,j &
+      Agrégation journalière puis comparaison par collection Eloquent \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Spécifications fonctionnelles}
+
+\begin{table}[H]
+  \centering
+  \caption{Sprint Backlog — Sprint 6 (42 story points)}
+  \label{tab:backlog_s6}
+  \begin{tabularx}{\textwidth}{C{1.2cm}L{5.8cm}L{2.5cm}C{2cm}C{1.5cm}}
+    \toprule
+    \thead{ID} & \thead{User Story} & \thead{Acteur} & \thead{Priorité} & \thead{Points} \\
+    \midrule
+    \rowcolor{lightgray}
+    US-29 & Créer et gérer des rôles personnalisés       & Admin        & Must   &  8 \\
+    US-30 & Affecter des permissions atomiques aux rôles  & Admin        & Must   &  8 \\
+    \rowcolor{lightgray}
+    US-31 & Consulter la matrice globale des permissions  & Admin        & Should &  5 \\
+    US-32 & Consulter le journal d'audit enrichi          & Admin/Member & Must   &  8 \\
+    \rowcolor{lightgray}
+    US-33 & Analyser l'activité via le dashboard analytics & Admin       & Should &  8 \\
+    US-34 & Exporter le journal d'audit en PDF            & Admin        & Could  &  5 \\
+    \midrule
+    \multicolumn{4}{r}{\textbf{Total :}} & \textbf{42} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Conception}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint6_use_case.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint6_use_case.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint6\_use\_case.png}\\[0.3em]
+      \textit{Source : \texttt{diagrams-code/sprint6/use\_case.puml} —
+      RBAC personnalisable, journal d'audit, analytics, temps réel}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de cas d'utilisation — Sprint 6}
+  \label{fig:uc_s6}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint6_sequence_audit.png}{%
+    \includegraphics[width=0.92\textwidth]{figures/sprint6_sequence_audit.png}%
+  }{%
+    \fbox{\parbox{0.92\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint6\_sequence\_audit.png}\\[0.3em]
+      \textit{Source : \texttt{diagrams-code/sprint6/sequence\_audit.puml} —
+      Action utilisateur → Controller → ActivityLogService → activity\_logs →
+      ActivityLogged event → Reverb WebSocket → AuditLogPage}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de séquence — Pipeline journal d'audit enterprise}
+  \label{fig:seq_audit}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint6_class.png}{%
+    \includegraphics[width=0.90\textwidth]{figures/sprint6_class.png}%
+  }{%
+    \fbox{\parbox{0.90\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint6\_class.png}\\[0.3em]
+      \textit{Source : \texttt{diagrams-code/sprint6/class\_diagram.puml} —
+      ActivityLog, ActivityLogService, ActivityFeedController,
+      ActivityAnalyticsController, Role, Permission}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de classes — Sprint 6}
+  \label{fig:class_s6}
+\end{figure}
+
+\subsection{Réalisation}
+
+Les optimisations de performance réalisées en parallèle du Sprint~6 :
+
+\begin{table}[H]
+  \centering
+  \caption{Optimisations techniques réalisées lors du Sprint~6}
+  \label{tab:optims_s6}
+  \begin{tabularx}{\textwidth}{L{4cm}L{3cm}X}
+    \toprule
+    \thead{Problème} & \thead{Impact avant} & \thead{Solution} \\
+    \midrule
+    \rowcolor{lightgray}
+    N+1 \texttt{GanttController}    & 1 requête / tâche &
+      Eager loading : tasks + dependents en 2 requêtes fixes \\
+    Stats audit à chaque page       & +4 requêtes SQL  &
+      Paramètre \texttt{?with\_stats=1} optionnel \\
+    \rowcolor{lightgray}
+    \texttt{AiController::chat}     & 3 requêtes séparées &
+      Scope \texttt{accessibleToUser(\$user)} → 1 requête \\
+    WebSocket incomplet             & Commentaires non synchronisés &
+      Événement \texttt{.task.comment.deleted} ajouté \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ============================================================
+\section{Conclusion}
+% ============================================================
+
+\begin{chapconclusion}
+Le sprint~6 élève TAC-TIC IntelliPM au niveau enterprise sur deux dimensions
+complémentaires. Le système RBAC à permissions atomiques (35+ permissions,
+rôles personnalisables, matrice de droits) offre une granularité de contrôle
+suffisante pour des organisations multi-équipes. Le journal d'audit enrichi —
+avec valeurs avant/après, sévérité automatique, analytics CSS/SVG et export
+PDF — constitue un outil de gouvernance à part entière. Avec ce sprint, la
+plateforme atteint sa maturité production sur l'ensemble de ses
+\textbf{34 user stories} et \textbf{228 story points}.
+\end{chapconclusion}

@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
-import { PRIORITY_OPTIONS, WORKFLOW_OPTIONS } from '../../lib/taskConstants';
+import { PRIORITY_OPTIONS, WORKFLOW_OPTIONS, ISSUE_TYPE_OPTIONS } from '../../lib/taskConstants';
 import { Input } from '../../components/ui/Input';
 import { Textarea } from '../../components/ui/Textarea';
 import { Select } from '../../components/ui/Select';
@@ -22,15 +22,17 @@ import { MembersPerformanceModal } from '../../components/tasks/MembersPerforman
 import WatcherButton from '../../components/tasks/WatcherButton';
 import ProjectDateBanner from '../../components/projects/ProjectDateBanner';
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const STEPS = [
+const STEPS_FULL = [
   { id: 'basics',      label: 'Informations de base',   icon: LayoutGrid,   desc: 'Titre, description, type et priorité' },
   { id: 'planning',    label: 'Planification',           icon: CalendarRange,desc: 'Dates, durée et complexité' },
   { id: 'specialties', label: 'Compétences & Liens',     icon: Tag,          desc: 'Spécialité requise et dépendances' },
   { id: 'assignation', label: 'Assignation',             icon: UserCircle,   desc: 'Membre assigné et recommandation IA' },
+];
+
+const STEPS_NO_ASSIGN = [
+  { id: 'basics',      label: 'Informations de base',   icon: LayoutGrid,   desc: 'Titre, description, type et priorité' },
+  { id: 'planning',    label: 'Planification',           icon: CalendarRange,desc: 'Dates, durée et complexité' },
+  { id: 'specialties', label: 'Compétences & Liens',     icon: Tag,          desc: 'Spécialité requise et dépendances' },
 ];
 
 const EMPTY_FORM = {
@@ -56,14 +58,10 @@ function fmtFr(v) {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR');
 }
 
-// ---------------------------------------------------------------------------
-// Step indicator
-// ---------------------------------------------------------------------------
-
-function StepIndicator({ current }) {
+function StepIndicator({ current, steps }) {
   return (
     <div className="flex items-start justify-center gap-0 mb-8 px-4">
-      {STEPS.map((step, idx) => {
+      {steps.map((step, idx) => {
         const Icon = step.icon;
         const isActive    = idx === current;
         const isCompleted = idx < current;
@@ -92,10 +90,6 @@ function StepIndicator({ current }) {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Per-step validation
-// ---------------------------------------------------------------------------
 
 function validateStep(step, form, projectStart, projectEnd, isEdit) {
   const e = {};
@@ -135,10 +129,6 @@ function validateStep(step, form, projectStart, projectEnd, isEdit) {
   return e;
 }
 
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
-
 export default function TaskFormPage() {
   const { id: projectId, taskId } = useParams();
   const isEdit = Boolean(taskId);
@@ -147,6 +137,7 @@ export default function TaskFormPage() {
   const { user } = useAuth();
   const isAdmin = user?.roles?.includes('admin');
   const queryClient = useQueryClient();
+  const CONTRIBUTOR_ROLES = new Set(['membre', 'member']);
 
   const [step, setStep]             = useState(0);
   const [form, setForm]             = useState(EMPTY_FORM);
@@ -159,7 +150,7 @@ export default function TaskFormPage() {
 
   const set = (field, value) => setForm(f => ({ ...f, [field]: value }));
 
-  // ── Remote data ──────────────────────────────────────────────────────────
+
 
   const { data: taskDetail, isLoading: loadingTask } = useQuery({
     queryKey: ['task', taskId],
@@ -199,7 +190,7 @@ export default function TaskFormPage() {
     staleTime: 10 * 60_000,  // specialties rarely change
   });
 
-  // ── Init form for edit ────────────────────────────────────────────────────
+
 
   useEffect(() => {
     if (isEdit && taskDetail) {
@@ -230,7 +221,7 @@ export default function TaskFormPage() {
     setStep(0);
   }, [isEdit, taskDetail, searchParams]);
 
-  // ── Members helpers ───────────────────────────────────────────────────────
+
 
   const memberOptions = useMemo(() => {
     return (membersRaw || [])
@@ -246,6 +237,15 @@ export default function TaskFormPage() {
       .filter(m => m.id && m.name && !m.is_app_admin);
   }, [membersRaw]);
 
+  const isContributor = useMemo(() => {
+    if (isAdmin) return false;
+    const me = (membersRaw || []).find(m => String(m.id || m.user_id) === String(user?.id));
+    const role = me?.role ?? me?.pivot?.project_role ?? me?.pivot?.role ?? '';
+    return CONTRIBUTOR_ROLES.has(role);
+  }, [membersRaw, isAdmin, user]);
+
+  const STEPS = (!isEdit && isContributor) ? STEPS_NO_ASSIGN : STEPS_FULL;
+
   const recommendedIds = useMemo(() => {
     const sel = new Set((form.specialty_ids || []).map(String));
     if (!sel.size) return new Set();
@@ -259,14 +259,14 @@ export default function TaskFormPage() {
   const projectStart = toDateOnly(projectMeta?.start_date);
   const projectEnd   = toDateOnly(projectMeta?.end_date);
 
-  // ── ML auto-trigger on step 3 ─────────────────────────────────────────────
+
 
   useEffect(() => {
-    if (step === 3 && !mlTriggered && !isAutoAssigning && projectId) {
+    if (step === 3 && STEPS.length > 3 && !mlTriggered && !isAutoAssigning && projectId) {
       setMLTrigg(true);
       doAutoAssign();
     }
-  }, [step]);
+  }, [step, STEPS.length]);
 
   const doAutoAssign = async () => {
     setIA(true);
@@ -289,7 +289,7 @@ export default function TaskFormPage() {
     }
   };
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+
 
   const saveMutation = useMutation({
     mutationFn: (data) =>
@@ -343,17 +343,18 @@ export default function TaskFormPage() {
     const pe = form.planned_end?.trim()   || '';
 
     const payload = {
-      title:           form.title.trim(),
-      description:     form.description || undefined,
-      issue_type:      form.issue_type,
-      priority:        form.priority,
-      complexity:      form.complexity,
-      story_points:    form.story_points === '' ? undefined : Number(form.story_points),
-      planned_end:     pe || undefined,
-      estimated_hours: form.estimated_hours === '' ? undefined : Number(form.estimated_hours),
+      title:            form.title.trim(),
+      description:      form.description || undefined,
+      issue_type:       form.issue_type,
+      priority:         form.priority,
+      complexity:       form.complexity,
+      story_points:     form.story_points === '' ? undefined : Number(form.story_points),
+      planned_end:      pe || undefined,
+      estimated_hours:  form.estimated_hours === '' ? undefined : Number(form.estimated_hours),
       depends_on_task_ids: (form.depends_on_task_ids || []).map(Number),
-      specialty_ids:   specialtyIds,
-      workflow_status: form.workflow_status || 'todo',
+      specialty_ids:    specialtyIds,
+      workflow_status:  form.workflow_status || 'todo',
+      progress_percent: isEdit ? form.progress_percent : 0,
     };
 
     if (!isEdit) {
@@ -361,8 +362,9 @@ export default function TaskFormPage() {
     }
 
     if (isEdit) {
-      payload.assignee_id    = form.assignee_id ? Number(form.assignee_id) : null;
-      payload.progress_percent = form.progress_percent;
+      payload.assignee_id = form.assignee_id ? Number(form.assignee_id) : null;
+    } else if (isContributor) {
+      payload.assignee_id = Number(user.id);
     } else if (form.assignee_id) {
       payload.assignee_id = Number(form.assignee_id);
     }
@@ -370,7 +372,7 @@ export default function TaskFormPage() {
     saveMutation.mutate(payload);
   };
 
-  // ── Delete ────────────────────────────────────────────────────────────────
+
 
   const deleteMutation = useMutation({
     mutationFn: () => api.delete(`/tasks/${taskId}`),
@@ -392,7 +394,7 @@ export default function TaskFormPage() {
     }
   };
 
-  // ── Step navigation ───────────────────────────────────────────────────────
+
 
   const goNext = () => {
     const stepErrors = validateStep(step, form, projectStart, projectEnd, isEdit);
@@ -409,7 +411,7 @@ export default function TaskFormPage() {
     setStep(s => Math.max(s - 1, 0));
   };
 
-  // ── Loading state ─────────────────────────────────────────────────────────
+
 
   if (isEdit && loadingTask) {
     return (
@@ -427,7 +429,7 @@ export default function TaskFormPage() {
   // Admin, chef de projet ou créateur d'une tâche non terminée
   const canDelete = isEdit && (isAdmin || Boolean(taskDetail?.access?.can_delete));
 
-  // ── Render ────────────────────────────────────────────────────────────────
+
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
@@ -463,7 +465,7 @@ export default function TaskFormPage() {
       </div>
 
       {/* Step indicator */}
-      <StepIndicator current={step} />
+      <StepIndicator current={step} steps={STEPS} />
 
       {/* Step description */}
       <div className="mb-6 text-center">
@@ -507,12 +509,20 @@ export default function TaskFormPage() {
               />
             </div>
 
-            <div className="max-w-xs">
-              <label className="mb-1.5 block text-sm font-medium">Priorité *</label>
-              <Select value={form.priority} onChange={e => set('priority', e.target.value)} disabled={!canEdit}>
-                {PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </Select>
-              {errors.priority && <FieldError msg={errors.priority} />}
+            <div className="grid gap-4 sm:grid-cols-2 max-w-lg">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Priorité *</label>
+                <Select value={form.priority} onChange={e => set('priority', e.target.value)} disabled={!canEdit}>
+                  {PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+                {errors.priority && <FieldError msg={errors.priority} />}
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Type</label>
+                <Select value={form.issue_type} onChange={e => set('issue_type', e.target.value)} disabled={!canEdit}>
+                  {ISSUE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+              </div>
             </div>
 
             <div className="max-w-xs">
@@ -855,10 +865,6 @@ export default function TaskFormPage() {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Small helpers
-// ---------------------------------------------------------------------------
 
 function SectionTitle({ icon: Icon, label }) {
   return (

@@ -1,0 +1,421 @@
+\chapter{Réalisation des modules avancés}
+
+% ============================================================
+\section{Introduction}
+% ============================================================
+
+Ce chapitre présente la réalisation des sprints~4 et~5. Le Sprint~4 développe les
+fonctionnalités de notifications temps réel, collaboration, dashboards et calendrier.
+Le Sprint~5 implémente le moteur d'intelligence artificielle hybride de la plateforme :
+recommandation d'assignation par Machine Learning, estimation de durée par heuristiques
+enrichies, détection de risques par règles métier, et assistant conversationnel LLM.
+
+% ============================================================
+\section{Sprint 4 : Notifications, collaboration et communication}
+% ============================================================
+
+\subsection{Spécifications fonctionnelles}
+
+\begin{table}[H]
+  \centering
+  \caption{Sprint Backlog — Sprint 4 (39 story points)}
+  \label{tab:backlog_s4}
+  \begin{tabularx}{\textwidth}{C{1.2cm}L{5.8cm}L{2.2cm}C{2cm}C{1.5cm}}
+    \toprule
+    \thead{ID} & \thead{User Story} & \thead{Acteur} & \thead{Priorité} & \thead{Points} \\
+    \midrule
+    \rowcolor{lightgray}
+    US-17 & Recevoir des notifications in-app temps réel  & Tous   & Must   & 8 \\
+    US-18 & Configurer ses préférences de notification    & Tous   & Should & 3 \\
+    \rowcolor{lightgray}
+    US-19 & Consulter le calendrier mensuel               & Member & Should & 5 \\
+    US-20 & Accéder à un dashboard personnel              & Member & Should & 8 \\
+    \rowcolor{lightgray}
+    US-21 & Accéder au dashboard administrateur           & Admin  & Should & 5 \\
+    US-22 & Utiliser la recherche globale cross-projet    & Tous   & Should & 5 \\
+    \rowcolor{lightgray}
+    US-23 & Consulter le rapport d'avancement (Client)   & Client & Should & 5 \\
+    \midrule
+    \multicolumn{4}{r}{\textbf{Total :}} & \textbf{39} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Les fonctionnalités complémentaires réalisées : suivi de tâches
+(\texttt{WatcherController} — \texttt{POST /tasks/\{id\}/watch}),
+suivi de projets (\texttt{FollowerController} — \texttt{POST /projects/\{id\}/follow}),
+performance des membres (\texttt{SpecialtyController::membersPerformance}) et
+analytics de charge de travail.
+
+\subsection{Conception}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint4_use_case.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint4_use_case.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint4\_use\_case.png}\\[0.3em]
+      \textit{Cas d'utilisation Sprint 4 : notifications, calendrier, dashboards,
+      recherche, suivi tâches/projets}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de cas d'utilisation — Sprint 4}
+  \label{fig:uc_s4}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint4_sequence_notif.png}{%
+    \includegraphics[width=0.90\textwidth]{figures/sprint4_sequence_notif.png}%
+  }{%
+    \fbox{\parbox{0.90\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint4\_sequence\_notif.png}\\[0.3em]
+      \textit{Séquence notification : Action → Event broadcast → Laravel Reverb →
+      Canal privé \texttt{private-project.\{id\}} → Echo.js Frontend → Toast}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de séquence — Pipeline de notification WebSocket}
+  \label{fig:seq_notif}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint4_class.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint4_class.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint4\_class.png}\\[0.3em]
+      \textit{Classes : Notification, NotificationController,
+      MemberDashboardService, AdminDashboardService}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de classes — Sprint 4}
+  \label{fig:class_s4}
+\end{figure}
+
+\subsection{Réalisation}
+
+\subsubsection*{Système de notifications temps réel (Laravel Reverb \& WebSocket)}
+
+Le système de notifications utilise \textbf{Laravel Reverb} (serveur WebSocket natif)
+avec \textbf{Laravel Echo} côté frontend. Onze événements sont broadcastés sur des
+canaux privés :
+
+\begin{table}[H]
+  \centering
+  \caption{Événements WebSocket — 11 canaux broadcastés}
+  \label{tab:ws_events}
+  \begin{tabularx}{\textwidth}{L{4.5cm}X}
+    \toprule
+    \thead{Événement (classe PHP)} & \thead{Déclencheur} \\
+    \midrule
+    \rowcolor{lightgray}
+    \texttt{TaskUpdated}           & Modification d'une tâche \\
+    \texttt{TaskDeleted}           & Suppression de tâche \\
+    \rowcolor{lightgray}
+    \texttt{TaskAssignmentChanged} & Changement d'assignation \\
+    \texttt{TaskCommentCreated}    & Nouveau commentaire \\
+    \rowcolor{lightgray}
+    \texttt{TaskCommentDeleted}    & Suppression de commentaire \\
+    \texttt{ProjectStatusChanged}  & Statut de projet changé \\
+    \rowcolor{lightgray}
+    \texttt{SprintStateChanged}    & Démarrage / clôture de sprint \\
+    \texttt{ProgressUpdated}       & Mise à jour de progression \\
+    \rowcolor{lightgray}
+    \texttt{NotificationCreated}   & Nouvelle notification in-app \\
+    \texttt{NotificationUpdated}   & Notification mise à jour \\
+    \rowcolor{lightgray}
+    \texttt{ActivityLogged}        & Nouvelle entrée journal d'audit \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint4_01_notifications.png}{%
+    \includegraphics[width=0.85\textwidth]{figures/sprint4_01_notifications.png}%
+  }{%
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint4\_01\_notifications.png}\\[0.3em]
+      \textit{Dropdown notifications : liste avec icône type, timestamp relatif,
+      badge compteur non lues, action marquer comme lu}
+    \vspace{2cm}}}%
+  }
+  \caption{Dropdown des notifications temps réel}
+  \label{fig:ui_notifs}
+\end{figure}
+
+\subsubsection*{Dashboards multi-rôles}
+
+Trois vues de dashboard différenciées sont exposées :
+\begin{itemize}
+  \item \textbf{Admin} (\texttt{AdminDashboardController}) : métriques globales,
+        utilisateurs actifs, projets en cours, accès rapide audit ;
+  \item \textbf{Member} (\texttt{MemberDashboardController}) : mes tâches actives,
+        sprints en cours, vélocité personnelle ;
+  \item \textbf{Client} (\texttt{ClientDashboardController}) : rapport d'avancement
+        lecture seule des projets auxquels il est invité.
+\end{itemize}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint4_02_dashboard.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint4_02_dashboard.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint4\_02\_dashboard.png}\\[0.3em]
+      \textit{Dashboard Member : KPIs, tâches actives, sprints en cours,
+      graphique d'activité personnelle}
+    \vspace{2cm}}}%
+  }
+  \caption{Dashboard personnel (vue Member)}
+  \label{fig:ui_dashboard}
+\end{figure}
+
+% ============================================================
+\section{Sprint 5 : Intelligence artificielle}
+% ============================================================
+
+\subsection{Estimation de durée}
+
+L'estimation de durée d'une tâche est réalisée par le service
+\texttt{AIService::estimateTaskDuration()} selon une approche heuristique en
+plusieurs étapes :
+\begin{enumerate}
+  \item Calcul d'une durée de base à partir des \textbf{story points}
+        (multipliés par \texttt{Task::DEFAULT\_HOURS\_PER\_STORY\_POINT}) ;
+  \item Ajustement selon la \textbf{priorité} (urgent: $\times$0.75,
+        high: $\times$0.88, low: $\times$1.18) ;
+  \item Prise en compte de la \textbf{complexité de la description} (si > 100
+        caractères : $\times$1.12) ;
+  \item Moyenne pondérée avec la \textbf{durée réelle des tâches similaires}
+        passées du même projet.
+\end{enumerate}
+Le résultat (en minutes) est exposé via \texttt{GET /ai/estimate/\{task\}}.
+
+\subsection{Détection de risques}
+
+Le service \texttt{AIService::detectTaskRisk()} calcule un score de risque
+de 0 à 100 par accumulation de points pondérés selon quatre facteurs :
+
+\begin{table}[H]
+  \centering
+  \caption{Facteurs de calcul du score de risque}
+  \label{tab:risk_factors}
+  \begin{tabularx}{\textwidth}{L{4cm}X}
+    \toprule
+    \thead{Facteur} & \thead{Contribution au score} \\
+    \midrule
+    \rowcolor{lightgray}
+    Priorité de la tâche      & Urgent = +30, High = +15, Low = 0 \\
+    Proximité de l'échéance   & De 0 à +30 selon les jours restants jusqu'à \texttt{due\_date} \\
+    \rowcolor{lightgray}
+    Dérapage calendaire       & Si \texttt{planned\_end} dépassé : +20 à +35 \\
+    Dépendances bloquantes    & Tâches amont non terminées : +10 à +20 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Trois niveaux de risque sont retournés : \texttt{low} (< 30), \texttt{medium}
+(30--69) et \texttt{high} ($\geq$ 70). Deux endpoints existent :
+\texttt{GET /ai/delay-risk/task/\{task\}} et
+\texttt{GET /ai/delay-risk/project/\{project\}}.
+
+\subsection{Recommandation d'affectation}
+
+La recommandation d'assignation repose sur le \textbf{microservice ML FastAPI}
+(\texttt{python/ml/app.py}) via le client \texttt{PythonMLClient.php}. Le modèle
+(GBM et Random Forest ensemblés via Scikit-learn) est entraîné à partir des
+historiques d'assignations de la base de données.
+
+\begin{table}[H]
+  \centering
+  \caption{Schéma d'entrée du microservice ML (\texttt{POST /recommend})}
+  \label{tab:ml_input}
+  \begin{tabularx}{\textwidth}{L{3.5cm}L{2.5cm}X}
+    \toprule
+    \thead{Variable} & \thead{Type} & \thead{Description} \\
+    \midrule
+    \rowcolor{lightgray}
+    \texttt{project\_id}      & int        & Identifiant du projet \\
+    \texttt{priority}         & string     & low / medium / high / urgent \\
+    \rowcolor{lightgray}
+    \texttt{issue\_type}      & string     & task / bug / story \\
+    \texttt{complexity}       & int (1–10) & Niveau de complexité estimé \\
+    \rowcolor{lightgray}
+    \texttt{story\_points}    & int?       & Points si estimés \\
+    \texttt{estimated\_hours} & float?     & Heures si estimées \\
+    \rowcolor{lightgray}
+    \texttt{sprint\_id}       & int?       & Sprint cible \\
+    \texttt{specialty\_ids}   & int[]      & Spécialités requises \\
+    \rowcolor{lightgray}
+    \texttt{top\_n}           & int (1–10) & Nombre de candidats retournés \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Le modèle retourne un classement des membres par score de probabilité d'assignation
+réussie. En cas de données insuffisantes (< 10 échantillons), un modèle de repli
+(\textit{LogisticRegression}) est utilisé.
+
+\subsection{Analytics IA}
+
+En complément des fonctionnalités d'estimation et de risque, plusieurs endpoints
+d'analyse IA sont disponibles :
+\begin{itemize}
+  \item \texttt{GET /ai/workload-balance/\{project\}} — analyse de la charge de
+        travail par membre ;
+  \item \texttt{GET /ai/optimize-assignments/\{project\}} — suggestions d'optimisation
+        des assignations à l'échelle du projet ;
+  \item \texttt{GET /ai/recommendations/project/\{project\}} — recommandations
+        globales sur l'avancement du projet ;
+  \item \texttt{GET /projects/\{project\}/auto-assign} — auto-assignation basée
+        sur les spécialités (\texttt{SpecialtyController}).
+\end{itemize}
+
+\subsection{Spécifications fonctionnelles}
+
+\begin{table}[H]
+  \centering
+  \caption{Sprint Backlog — Sprint 5 (42 story points)}
+  \label{tab:backlog_s5}
+  \begin{tabularx}{\textwidth}{C{1.2cm}L{5.8cm}L{2.2cm}C{2cm}C{1.5cm}}
+    \toprule
+    \thead{ID} & \thead{User Story} & \thead{Acteur} & \thead{Priorité} & \thead{Points} \\
+    \midrule
+    \rowcolor{lightgray}
+    US-24 & Obtenir une recommandation ML d'assignation & Member & Must   & 13 \\
+    US-25 & Estimer la durée d'une tâche               & Member & Must   &  8 \\
+    \rowcolor{lightgray}
+    US-26 & Détecter les risques de retard             & Member & Must   &  8 \\
+    US-27 & Discuter avec l'assistant IA               & Member & Should &  8 \\
+    \rowcolor{lightgray}
+    US-28 & Relancer l'entraînement du modèle ML       & Admin  & Could  &  5 \\
+    \midrule
+    \multicolumn{4}{r}{\textbf{Total :}} & \textbf{42} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Conception}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint5_use_case.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint5_use_case.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint5\_use\_case.png}\\[0.3em]
+      \textit{Cas d'utilisation Sprint 5 : recommandation ML, estimation, risques,
+      chat LLM, réentraînement admin}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de cas d'utilisation — Sprint 5}
+  \label{fig:uc_s5}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint5_sequence_ml.png}{%
+    \includegraphics[width=0.92\textwidth]{figures/sprint5_sequence_ml.png}%
+  }{%
+    \fbox{\parbox{0.92\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint5\_sequence\_ml.png}\\[0.3em]
+      \textit{Séquence recommandation : Frontend → GET /ml/recommend/\{task\} →
+      MLController → PythonMLClient → FastAPI /recommend →
+      GBM+RF modèle → Top-N membres avec scores}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de séquence — Pipeline de recommandation ML}
+  \label{fig:seq_ml}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint5_class.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint5_class.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{1.8cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint5\_class.png}\\[0.3em]
+      \textit{Classes : AIService, AiController, MLController, PythonMLClient,
+      OpenRouterService, AiRecommendation}
+    \vspace{1.8cm}}}%
+  }
+  \caption{Diagramme de classes — Sprint 5}
+  \label{fig:class_s5}
+\end{figure}
+
+\subsection{Réalisation}
+
+\subsubsection*{Interface de recommandation ML}
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint5_01_ml_recommend.png}{%
+    \includegraphics[width=0.88\textwidth]{figures/sprint5_01_ml_recommend.png}%
+  }{%
+    \fbox{\parbox{0.88\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint5\_01\_ml\_recommend.png}\\[0.3em]
+      \textit{Modal recommandation : liste des membres candidats avec score de
+      confiance, badges spécialités, bouton assigner}
+    \vspace{2cm}}}%
+  }
+  \caption{Modal de recommandation ML d'assignation (\texttt{MLRecommendationModal.jsx})}
+  \label{fig:ui_ml_recommend}
+\end{figure}
+
+\subsubsection*{Assistant conversationnel LLM}
+
+L'assistant (\texttt{AiController::chat}) charge dynamiquement le contexte de
+tous les projets accessibles à l'utilisateur via le scope Eloquent
+\texttt{Project::accessibleToUser(\$user)} (1 seule requête SQL avec eager loading).
+Ce contexte est inclus dans le prompt système envoyé à \textbf{OpenRouter (Llama
+3.3 70B Instruct)}.
+
+\begin{figure}[H]
+  \centering
+  \IfFileExists{figures/sprint5_02_ai_chat.png}{%
+    \includegraphics[width=0.85\textwidth]{figures/sprint5_02_ai_chat.png}%
+  }{%
+    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}
+      \textbf{[IMAGE À INSÉRER]}\\[0.4em]
+      \texttt{figures/sprint5\_02\_ai\_chat.png}\\[0.3em]
+      \textit{Interface chat IA : historique de messages, champ de saisie,
+      indicateur de chargement, réponses formatées en Markdown}
+    \vspace{2cm}}}%
+  }
+  \caption{Assistant conversationnel IA — Page \texttt{AiPage.jsx}}
+  \label{fig:ui_ai_chat}
+\end{figure}
+
+\subsubsection*{Réentraînement du modèle ML}
+
+L'administrateur peut déclencher manuellement le réentraînement via
+\texttt{POST /ml/retrain}. Le \texttt{MLController} transmet la requête
+à FastAPI \texttt{POST /train}, qui exécute \texttt{recommender.train()} sur les
+données de la base. Un minimum de 40 échantillons est requis pour l'entraînement
+du modèle ensemblé (GBM + RF), ou 10 pour le modèle de repli (LogisticRegression).
+
+% ============================================================
+\section{Conclusion}
+% ============================================================
+
+\begin{chapconclusion}
+Les sprints~4 et~5 ont apporté les fonctionnalités différenciantes de TAC-TIC
+IntelliPM. Le Sprint~4 a livré un système de notifications temps réel couvrant
+11 événements WebSocket, des dashboards multi-rôles et la collaboration étendue.
+Le Sprint~5 a intégré un moteur IA hybride : recommandation ML via microservice
+FastAPI, estimation de durée par heuristiques, détection de risques par règles
+métier et assistant conversationnel LLM avec contexte projet dynamique. Le chapitre
+suivant présente les modules d'administration enterprise et d'analytique.
+\end{chapconclusion}
